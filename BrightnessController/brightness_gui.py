@@ -69,6 +69,11 @@ class BrightnessGUI:
                                     command=self.stop_control, state="disabled")
         self.stop_button.pack(side="left", padx=5)
 
+        # Add Test button
+        self.test_button = ttk.Button(button_frame, text="Test (5s)",
+                                    command=self.start_test_control)
+        self.test_button.pack(side="left", padx=5)
+
     def _update_current_brightness(self):
         """Update the brightness display in the GUI."""
         current = sbc.get_brightness()[0]
@@ -155,6 +160,23 @@ class BrightnessGUI:
         self.stop_button.config(state="normal")
         self._update_current_brightness()
 
+    def start_test_control(self):
+        """Start a 5-second test run of the brightness control."""
+        self.test_button.config(state="disabled")
+        self.start_button.config(state="disabled")
+        
+        # Start the control
+        self.start_control()
+        
+        # Schedule the stop after 5 seconds
+        self.root.after(5000, self.stop_test_control)
+
+    def stop_test_control(self):
+        """Stop the test run and reset buttons."""
+        self.stop_control()
+        self.test_button.config(state="normal")
+        self.start_button.config(state="normal")
+
     def stop_control(self):
         """Stop the brightness control."""
         self.running = False
@@ -165,6 +187,7 @@ class BrightnessGUI:
 
         self.start_button.config(state="normal")
         self.stop_button.config(state="disabled")
+        self.test_button.config(state="normal")  # Enable test button
         self.active_mode = None
 
     def run(self):
