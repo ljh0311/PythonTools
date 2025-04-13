@@ -41,12 +41,10 @@ The system considers:
    python car_rental_recommender.py
    ```
    Or simply double-click on `run_recommender.bat` on Windows.
-3. Enter your planned trip details when prompted:
-   - Distance in kilometers
-   - Duration in hours
-   - Whether it's a weekend trip
-
-4. Review the top 5 recommendations based on estimated cost
+3. Choose from the main menu:
+   - **Get Rental Recommendations**: Enter trip details and get cost comparisons
+   - **Manage Rental Records**: Add, view, modify, or delete rental records
+   - **Exit**: Close the application
 
 ### GUI Version
 
@@ -59,10 +57,28 @@ For a more user-friendly experience, you can use the GUI version:
    ```
    Or simply double-click on `run_gui.bat` on Windows.
 
-3. The application has three tabs:
+3. The application has four tabs:
    - **Recommendations**: Enter trip details and get recommendations with cost breakdown
    - **Data Analysis**: Analyze your historical rental data with charts
    - **Settings**: Customize fuel costs, mileage charges, and more
+   - **Records Management**: Add, view, edit, and delete rental records
+
+## Record Management Features
+
+Both versions of the application allow you to manage your rental records:
+
+### Command Line Version
+- View all rental records in a tabular format
+- Add new rental records with detailed information
+- Modify existing records (update any field)
+- Delete records you no longer need
+
+### GUI Version
+- Visual table display of all rental records
+- Form-based interface for adding and editing records
+- Detailed view of all record fields
+- One-click record deletion with confirmation
+- Changes are automatically saved to the CSV file
 
 ## Data Format
 
@@ -89,4 +105,5 @@ The system expects a CSV file with the following columns:
 
 - For Tribecar (Econ/Stand) rentals, the system estimates fuel costs based on the assumption that $20 worth of RON 95 fuel at Esso provides approximately 110km of distance.
 - The recommendations are sorted by estimated total cost, with the most economical options listed first.
-- The GUI version provides visual comparisons of costs and additional data analysis features. 
+- The GUI version provides visual comparisons of costs and additional data analysis features.
+- When adding new records, only a few fields are required (car model, provider, distance, duration, and total cost). Other fields can be left blank. 
