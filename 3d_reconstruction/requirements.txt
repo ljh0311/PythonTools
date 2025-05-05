@@ -1,0 +1,19 @@
+# Core dependencies
+numpy>=1.21.0
+opencv-python>=4.5.0
+open3d>=0.13.0  # For 3D processing and visualization
+pytorch3d>=0.7.0  # For 3D deep learning (optional)
+scipy>=1.7.0
+pillow>=8.0.0
+
+# Structure from Motion (SfM) dependencies
+colmap>=3.7  # For feature detection and matching
+pycolmap>=0.3.0  # Python bindings for COLMAP
+
+# Point cloud processing
+pyntcloud>=0.3.0
+plyfile>=0.7.4
+
+# Utilities
+tqdm>=4.62.0
+matplotlib>=3.4.0 
