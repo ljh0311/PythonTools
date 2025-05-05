@@ -1,124 +1,107 @@
-# Image Feature Merger - Web Edition
+# Image Feature Merger - Web Version
 
-A web-based application for merging images using computer vision techniques, built with Flask and OpenCV. This is the web version of the original desktop application, providing similar functionality through a browser interface.
+A Flask web application for merging multiple images into panoramas based on feature detection, matching, and blending.
 
 ## Features
 
-- **Multiple Merge Methods**:
-  - Feature-based panorama merging (SIFT/ORB detection)
-  - Side-by-side merging with blended transitions
-  - Feature-aligned blending with transparency control
-  
-- **Visual Analysis Tools**:
-  - View feature matches between images
-  - See preprocessed images for better understanding of feature detection
-  - Toggle between SIFT and ORB detectors (ORB often works better for night images)
-  
-- **Responsive UI**:
-  - Real-time thumbnail previews
-  - Progress indicators
-  - Downloadable results
+- Upload multiple images to create panoramas
+- Two merging modes:
+  - Feature Merge: Uses SIFT/ORB feature detection to align and merge images
+  - Side-by-Side Merge: Places images side by side with blended transitions
+- Adjustable match threshold for feature detection quality
+- Option to toggle between SIFT and ORB feature detectors
+- Show feature matches between images
+- View preprocessed image enhancement for feature detection
+- Download merged results
 
 ## Requirements
 
 - Python 3.8+
 - OpenCV
-- Flask
 - NumPy
-- Werkzeug
-
-All dependencies are listed in `requirements.txt`.
+- Flask
+- Other dependencies listed in `requirements.txt`
 
 ## Installation
 
 1. Clone this repository:
-
 ```
-git clone https://github.com/yourusername/image-feature-merger.git
-cd image-feature-merger
+git clone <repository-url>
+cd image-merger-web
 ```
 
 2. Create a virtual environment (recommended):
-
 ```
 python -m venv venv
 ```
 
 3. Activate the virtual environment:
-
-   - On Windows:
-
-     ```
-     venv\Scripts\activate
-     ```
-
-   - On macOS/Linux:
-
-     ```
-     source venv/bin/activate
-     ```
+   - Windows:
+   ```
+   venv\Scripts\activate
+   ```
+   - Linux/Mac:
+   ```
+   source venv/bin/activate
+   ```
 
 4. Install dependencies:
-
 ```
 pip install -r requirements.txt
 ```
 
 ## Running the Application
 
-1. Start the Flask server:
+### Windows
 
+Just run the `run_flask.bat` file by double-clicking it or from the command line:
 ```
-python app.py
+run_flask.bat
 ```
 
-2. Open your web browser and navigate to:
+### Manual Start
 
+1. Set the Flask application environment variable:
+   - Windows:
+   ```
+   set FLASK_APP=app.py
+   set FLASK_DEBUG=1
+   ```
+   - Linux/Mac:
+   ```
+   export FLASK_APP=app.py
+   export FLASK_DEBUG=1
+   ```
+
+2. Run the Flask development server:
 ```
-http://127.0.0.1:5000
+python -m flask run
+```
+
+3. Open your web browser and navigate to:
+```
+http://localhost:5000
 ```
 
 ## Usage
 
-1. **Upload Images**: Click the "Choose Files" button to select two or more images to merge.
+1. Upload at least two images using the file picker
+2. Select the merge type (Feature Merge or Side-by-Side)
+3. Adjust the threshold slider for feature matching quality
+4. Toggle ORB detector if needed (better for night images)
+5. Click "Process Images" to create the panorama
+6. Use the additional buttons to show feature matches or preprocessed images
+7. Download the result using the download button
 
-2. **Choose Merge Type**:
-   - **Feature Merge**: Advanced panorama creation with feature detection
-   - **Side-by-Side**: Arrange images next to each other with blended transitions
-   - **Blend**: Feature-aligned overlay with transparency control
+## Directory Structure
 
-3. **Adjust Settings**:
-   - Match Threshold: Controls the strictness of feature matching
-   - Blend Transparency: Adjusts the balance between images when blending
-   - Toggle ORB/SIFT detector: Try ORB for better results with night images
-
-4. **Process**: Click "Process Images" to generate the merged result.
-
-5. **Additional Features**:
-   - "Show Feature Matches": Visualize how features are matched between images
-   - "Show Preprocessed Image": See how the image is enhanced for feature detection
-
-6. **Save Results**: Use the "Download Result" button to save the merged image.
-
-## Technical Details
-
-This application uses OpenCV's feature detection and image processing capabilities:
-
-- SIFT (Scale-Invariant Feature Transform) for detecting robust image features
-- ORB (Oriented FAST and Rotated BRIEF) as an alternative feature detector
-- Homography estimation for alignment of images
-- Various blending techniques for seamless transitions
-
-## Troubleshooting
-
-- **Memory Issues**: Large images are automatically resized to improve performance
-- **Poor Merging Results**: Try adjusting the threshold or changing the detector type
-- **Error Messages**: Check the console for detailed error messages if merges fail
-
-## License
-
-[MIT License](LICENSE)
+- `app.py`: The main Flask application
+- `static/`: Static assets (CSS, JS, and temporary images)
+  - `uploads/`: Temporary storage for uploaded images
+  - `results/`: Storage for processed images and results
+- `templates/`: HTML templates
+  - `index.html`: Main application page
 
 ## Credits
 
-This application is a web conversion of the original desktop application built with PyQt.
+Based on the desktop version of Image Feature Merger, converted to a web application using Flask.
