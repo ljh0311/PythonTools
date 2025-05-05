@@ -1,0 +1,35 @@
+{
+    "preferred_role": null,
+    "remember_role_preference": false,
+    "skip_role_selection": false,
+    "experience_level": "beginner",
+    "aircraft_type": "single_engine",
+    "voice_enabled": true,
+    "voice_rate": 150,
+    "phraseology_region": "US",
+    "auto_save_notes": true,
+    "notes_directory": "atc_notes",
+    "ui_theme": "light",
+    "font_size": 12,
+    "atc_role": "ground",
+    "airport_icao": "KXYZ",
+    "airport_name": "Example Airport",
+    "runways": [
+        "27",
+        "09",
+        "36",
+        "18"
+    ],
+    "active_runways": [
+        "27",
+        "36"
+    ],
+    "default_altimeter": "2992",
+    "controller_callsign": "Example Ground",
+    "frequencies": {
+        "ground": "121.9",
+        "tower": "118.7",
+        "approach": "119.1",
+        "departure": "125.5"
+    }
+}

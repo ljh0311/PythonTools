@@ -1,0 +1,11 @@
+{
+    "experience_level": "advanced",
+    "aircraft_type": "jet",
+    "voice_enabled": true,
+    "voice_rate": 150,
+    "phraseology_region": "US",
+    "auto_save_notes": true,
+    "notes_directory": "atc_notes",
+    "ui_theme": "light",
+    "font_size": 12
+}

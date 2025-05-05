@@ -1,0 +1,1212 @@
+                elif "Landing" in status:
+                    # Purple circle with down arrow (landing)
+                    canvas.create_oval(2, 2, 13, 13, fill="purple", outline="")
+                    canvas.create_line(7, 3, 7, 12, fill="white", arrow="last", width=1)
+                elif "Landed" in status:
+                    # Green circle (landed)
+                    canvas.create_oval(2, 2, 13, 13, fill="green", outline="")
+                elif "Taxiing" in status:
+                    # Yellow circle (taxiing)
+                    canvas.create_oval(2, 2, 13, 13, fill="yellow", outline="")
+                else:
+                    # Gray circle (default)
+                    canvas.create_oval(2, 2, 13, 13, fill="gray", outline="")
+    
+    def setup_approach_tab(self):
+        """Set up the Approach tab"""
+        # Basic structure - to be expanded
+        ttk.Label(self.approach_tab, text="Approach Control - Coming Soon").pack(pady=20)
+        ttk.Label(self.approach_tab, text="This tab will provide tools for managing approaching aircraft.").pack()
+    
+    def setup_departure_tab(self):
+        """Set up the Departure tab"""
+        # Basic structure - to be expanded
+        ttk.Label(self.departure_tab, text="Departure Control - Coming Soon").pack(pady=20)
+        ttk.Label(self.departure_tab, text="This tab will provide tools for managing departing aircraft.").pack()
+    
+    def setup_atis_tab(self):
+        """Set up the ATIS Management tab"""
+        # Basic structure - to be expanded
+        ttk.Label(self.atis_tab, text="ATIS Management - Coming Soon").pack(pady=20)
+        ttk.Label(self.atis_tab, text="This tab will provide tools for creating and updating ATIS information.").pack()
+    
+    # Helper methods for Ground Control tab
+    def add_ground_aircraft(self):
+        """Add a new aircraft to ground control"""
+        # Create a dialog window
+        add_dialog = tk.Toplevel(self.root)
+        add_dialog.title("Add Aircraft")
+        add_dialog.geometry("400x350")
+        add_dialog.resizable(False, False)
+        add_dialog.transient(self.root)  # Make dialog modal
+        add_dialog.grab_set()
+        
+        # Create a frame with padding
+        frame = ttk.Frame(add_dialog, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Dialog header
+        ttk.Label(frame, text="Add New Aircraft", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 15))
+        
+        # Input fields
+        ttk.Label(frame, text="Callsign:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        callsign_var = tk.StringVar()
+        callsign_entry = ttk.Entry(frame, textvariable=callsign_var, width=25)
+        callsign_entry.grid(row=1, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(frame, text="Aircraft Type:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        type_var = tk.StringVar()
+        type_entry = ttk.Combobox(frame, textvariable=type_var, width=25)
+        type_entry['values'] = (
+            "C172", "C152", "PA28", "B737", "A320", "E145", "CRJ2", "B747", "B777", "A330", "A380"
+        )
+        type_entry.grid(row=2, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(frame, text="Location:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        location_var = tk.StringVar()
+        location_entry = ttk.Combobox(frame, textvariable=location_var, width=25)
+        location_entry['values'] = (
+            "Gate A1", "Gate A2", "Gate B1", "Gate B2", "Gate C1", "Gate C2",
+            "Taxiway A", "Taxiway B", "Taxiway C", "Taxiway D",
+            "Runway 27", "Runway 09", "Runway 36", "Runway 18"
+        )
+        location_entry.grid(row=3, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(frame, text="Status:").grid(row=4, column=0, sticky=tk.W, pady=5)
+        status_var = tk.StringVar()
+        status_entry = ttk.Combobox(frame, textvariable=status_var, width=25)
+        status_entry['values'] = (
+            "Ready to Taxi", "Pushback", "Taxiing to Runway", "Hold Short Runway 27", 
+            "Hold Short Runway 36", "Taxiing to Gate", "Parked", "Cleared for Takeoff",
+            "Line Up and Wait"
+        )
+        status_entry.grid(row=4, column=1, sticky=tk.W, pady=5)
+        
+        # Additional options
+        ttk.Label(frame, text="Notes:").grid(row=5, column=0, sticky=tk.W, pady=5)
+        notes_text = tk.Text(frame, width=30, height=5)
+        notes_text.grid(row=5, column=1, sticky=tk.W, pady=5)
+        
+        # Buttons frame
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=6, column=0, columnspan=2, pady=(20, 0))
+        
+        def add_aircraft():
+            # Validate inputs
+            callsign = callsign_var.get().strip()
+            aircraft_type = type_var.get().strip()
+            location = location_var.get().strip()
+            status = status_var.get().strip()
+            
+            if not callsign or not aircraft_type or not location or not status:
+                messagebox.showwarning("Missing Information", "Please fill in all required fields")
+                return
+            
+            # Create the new aircraft entry
+            new_aircraft = f"{callsign} - {aircraft_type} - {location} - {status}"
+            
+            # Add to the listbox
+            self.ground_aircraft_list.insert(tk.END, new_aircraft)
+            
+            # Update status bar
+            self.status_var.set(f"Added aircraft {callsign} to ground control")
+            
+            # Close the dialog
+            add_dialog.destroy()
+        
+        def cancel():
+            add_dialog.destroy()
+        
+        ttk.Button(button_frame, text="Add Aircraft", command=add_aircraft).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=cancel).pack(side=tk.LEFT)
+        
+        # Center the dialog on the parent window
+        add_dialog.update_idletasks()
+        width = add_dialog.winfo_width()
+        height = add_dialog.winfo_height()
+        x = self.root.winfo_x() + (self.root.winfo_width() - width) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - height) // 2
+        add_dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Focus on the first entry
+        callsign_entry.focus_set()
+        
+        # Wait for the dialog to be closed
+        add_dialog.wait_window()
+    
+    def remove_ground_aircraft(self):
+        """Remove an aircraft from ground control"""
+        selected = self.ground_aircraft_list.curselection()
+        if selected:
+            self.ground_aircraft_list.delete(selected)
+            self.status_var.set("Aircraft removed from ground control")
+        else:
+            messagebox.showinfo("Selection Required", "Please select an aircraft to remove")
+    
+    def edit_ground_status(self):
+        """Edit the status of an aircraft on the ground"""
+        selected = self.ground_aircraft_list.curselection()
+        if not selected:
+            messagebox.showinfo("Selection Required", "Please select an aircraft to edit")
+            return
+        
+        # Get the selected aircraft info
+        aircraft_info = self.ground_aircraft_list.get(selected)
+        
+        # Create a dialog window
+        edit_dialog = tk.Toplevel(self.root)
+        edit_dialog.title("Edit Aircraft Status")
+        edit_dialog.geometry("400x350")
+        edit_dialog.resizable(False, False)
+        edit_dialog.transient(self.root)  # Make dialog modal
+        edit_dialog.grab_set()
+        
+        # Create a frame with padding
+        frame = ttk.Frame(edit_dialog, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Display current aircraft information
+        ttk.Label(frame, text="Aircraft Information:", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
+        
+        # Parse current information (assuming format: "CALLSIGN - TYPE - LOCATION - STATUS")
+        parts = aircraft_info.split(" - ")
+        callsign = parts[0] if len(parts) > 0 else ""
+        aircraft_type = parts[1] if len(parts) > 1 else ""
+        location = parts[2] if len(parts) > 2 else ""
+        status = parts[3] if len(parts) > 3 else ""
+        
+        # Display current info
+        ttk.Label(frame, text="Callsign:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=callsign).grid(row=1, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(frame, text="Type:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text=aircraft_type).grid(row=2, column=1, sticky=tk.W, pady=5)
+        
+        # Create input fields for editable information
+        ttk.Label(frame, text="Location:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        location_var = tk.StringVar(value=location)
+        location_entry = ttk.Combobox(frame, textvariable=location_var, width=25)
+        location_entry['values'] = (
+            "Gate A1", "Gate A2", "Gate B1", "Gate B2", "Gate C1", "Gate C2",
+            "Taxiway A", "Taxiway B", "Taxiway C", "Taxiway D",
+            "Runway 27", "Runway 09", "Runway 36", "Runway 18"
+        )
+        location_entry.grid(row=3, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(frame, text="Status:").grid(row=4, column=0, sticky=tk.W, pady=5)
+        status_var = tk.StringVar(value=status)
+        status_entry = ttk.Combobox(frame, textvariable=status_var, width=25)
+        status_entry['values'] = (
+            "Ready to Taxi", "Pushback", "Taxiing to Runway", "Hold Short Runway 27", 
+            "Hold Short Runway 36", "Taxiing to Gate", "Parked", "Cleared for Takeoff",
+            "Line Up and Wait"
+        )
+        status_entry.grid(row=4, column=1, sticky=tk.W, pady=5)
+        
+        # Additional options
+        ttk.Label(frame, text="Notes:").grid(row=5, column=0, sticky=tk.W, pady=5)
+        notes_text = tk.Text(frame, width=30, height=5)
+        notes_text.grid(row=5, column=1, sticky=tk.W, pady=5)
+        
+        # Buttons frame
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=6, column=0, columnspan=2, pady=(20, 0))
+        
+        def save_changes():
+            # Update the aircraft status in the list
+            new_location = location_var.get()
+            new_status = status_var.get()
+            new_aircraft_info = f"{callsign} - {aircraft_type} - {new_location} - {new_status}"
+            
+            # Update the listbox
+            self.ground_aircraft_list.delete(selected)
+            self.ground_aircraft_list.insert(selected, new_aircraft_info)
+            self.ground_aircraft_list.selection_set(selected)
+            
+            # Update status bar
+            self.status_var.set(f"Updated status for {callsign}")
+            
+            # Close the dialog
+            edit_dialog.destroy()
+        
+        def cancel():
+            edit_dialog.destroy()
+        
+        ttk.Button(button_frame, text="Save Changes", command=save_changes).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=cancel).pack(side=tk.LEFT)
+        
+        # Center the dialog on the parent window
+        edit_dialog.update_idletasks()
+        width = edit_dialog.winfo_width()
+        height = edit_dialog.winfo_height()
+        x = self.root.winfo_x() + (self.root.winfo_width() - width) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - height) // 2
+        edit_dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Wait for the dialog to be closed
+        edit_dialog.wait_window()
+    
+    # Helper methods for Tower tab
+    def add_tower_aircraft(self):
+        """Add a new aircraft to tower control"""
+        # Create a dialog window
+        add_dialog = tk.Toplevel(self.root)
+        add_dialog.title("Add Aircraft to Tower Control")
+        add_dialog.geometry("400x350")
+        add_dialog.resizable(False, False)
+        add_dialog.transient(self.root)  # Make dialog modal
+        add_dialog.grab_set()
+        
+        # Create a frame with padding
+        frame = ttk.Frame(add_dialog, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Dialog header
+        ttk.Label(frame, text="Add New Aircraft", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 15))
+        
+        # Queue selection
+        ttk.Label(frame, text="Queue:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        queue_var = tk.StringVar(value="Departure")
+        queue_combo = ttk.Combobox(frame, textvariable=queue_var, width=25, state="readonly")
+        queue_combo['values'] = ("Departure", "Arrival")
+        queue_combo.grid(row=1, column=1, sticky=tk.W, pady=5)
+        
+        # Input fields
+        ttk.Label(frame, text="Callsign:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        callsign_var = tk.StringVar()
+        callsign_entry = ttk.Entry(frame, textvariable=callsign_var, width=25)
+        callsign_entry.grid(row=2, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(frame, text="Aircraft Type:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        type_var = tk.StringVar()
+        type_entry = ttk.Combobox(frame, textvariable=type_var, width=25)
+        type_entry['values'] = (
+            "C172", "C152", "PA28", "B737", "A320", "E145", "CRJ2", "B747", "B777", "A330", "A380"
+        )
+        type_entry.grid(row=3, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(frame, text="Location:").grid(row=4, column=0, sticky=tk.W, pady=5)
+        location_var = tk.StringVar()
+        location_entry = ttk.Combobox(frame, textvariable=location_var, width=25)
+        
+        def update_location_options(*args):
+            # Get current airport runways
+            airport_data = self.airports[self.current_airport]
+            runways = airport_data["runways"]
+            
+            if queue_var.get() == "Departure":
+                runway_options = []
+                holding_options = []
+                
+                for runway in runways:
+                    runway_options.append(f"Runway {runway}")
+                    holding_options.append(f"Holding Short Runway {runway}")
+                
+                location_entry['values'] = runway_options + holding_options
+            else:  # Arrival
+                approach_options = []
+                pattern_options = []
+                
+                for runway in runways:
+                    approach_options.extend([
+                        f"5 miles Final - Runway {runway}", 
+                        f"10 miles Final - Runway {runway}"
+                    ])
+                    pattern_options.extend([
+                        f"Downwind - Runway {runway}", 
+                        f"Base - Runway {runway}"
+                    ])
+                    
+                location_entry['values'] = approach_options + pattern_options
+        
+        queue_var.trace("w", update_location_options)
+        update_location_options()  # Initial setup
+        
+        location_entry.grid(row=4, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(frame, text="Status:").grid(row=5, column=0, sticky=tk.W, pady=5)
+        status_var = tk.StringVar()
+        status_entry = ttk.Combobox(frame, textvariable=status_var, width=25)
+        
+        def update_status_options(*args):
+            if queue_var.get() == "Departure":
+                status_entry['values'] = (
+                    "Ready", "Holding Short", "Taxiing", "Line Up and Wait", "Cleared for Takeoff"
+                )
+            else:  # Arrival
+                status_entry['values'] = (
+                    "On Approach", "Cleared to Land", "On Final", "Go Around"
+                )
+        
+        queue_var.trace("w", update_status_options)
+        update_status_options()  # Initial setup
+        
+        status_entry.grid(row=5, column=1, sticky=tk.W, pady=5)
+        
+        # Buttons frame
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=6, column=0, columnspan=2, pady=(20, 0))
+        
+        def add_aircraft():
+            # Validate inputs
+            queue = queue_var.get()
+            callsign = callsign_var.get().strip()
+            aircraft_type = type_var.get().strip()
+            location = location_var.get().strip()
+            status = status_var.get().strip()
+            
+            if not callsign or not aircraft_type or not location or not status:
+                messagebox.showwarning("Missing Information", "Please fill in all required fields")
+                return
+            
+            # Get the current count of aircraft in the queue to determine the next number
+            if queue == "Departure":
+                count = self.departure_queue.size() + 1
+                # Create the new aircraft entry
+                new_aircraft = f"{count}. {callsign} - {aircraft_type} - {location} - {status}"
+                # Add to the listbox
+                self.departure_queue.insert(tk.END, new_aircraft)
+            else:  # Arrival
+                count = self.arrival_queue.size() + 1
+                # Create the new aircraft entry
+                new_aircraft = f"{count}. {callsign} - {aircraft_type} - {location} - {status}"
+                # Add to the listbox
+                self.arrival_queue.insert(tk.END, new_aircraft)
+            
+            # Update status bar
+            self.status_var.set(f"Added aircraft {callsign} to {queue.lower()} queue")
+            
+            # Close the dialog
+            add_dialog.destroy()
+        
+        def cancel():
+            add_dialog.destroy()
+        
+        ttk.Button(button_frame, text="Add Aircraft", command=add_aircraft).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=cancel).pack(side=tk.LEFT)
+        
+        # Center the dialog on the parent window
+        add_dialog.update_idletasks()
+        width = add_dialog.winfo_width()
+        height = add_dialog.winfo_height()
+        x = self.root.winfo_x() + (self.root.winfo_width() - width) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - height) // 2
+        add_dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Focus on the first entry
+        callsign_entry.focus_set()
+        
+        # Wait for the dialog to be closed
+        add_dialog.wait_window()
+    
+    def remove_tower_aircraft(self):
+        """Remove an aircraft from tower control"""
+        # Get the active queue tab
+        queue_tab = self.queue_notebook.index(self.queue_notebook.select())
+        
+        if queue_tab == 0:  # Departures
+            selected = self.departure_queue.curselection()
+            if selected:
+                # Get the callsign for status update
+                aircraft = self.departure_queue.get(selected)
+                callsign = aircraft.split(" - ")[0].split(". ")[1]
+                
+                # Remove the aircraft
+                self.departure_queue.delete(selected)
+                
+                # Resequence the remaining aircraft
+                self.resequence_departure_queue()
+                
+                # Update status bar
+                self.status_var.set(f"Removed aircraft {callsign} from departure queue")
+            else:
+                messagebox.showinfo("Selection Required", "Please select an aircraft to remove")
+        
+        elif queue_tab == 1:  # Arrivals
+            selected = self.arrival_queue.curselection()
+            if selected:
+                # Get the callsign for status update
+                aircraft = self.arrival_queue.get(selected)
+                callsign = aircraft.split(" - ")[0].split(". ")[1]
+                
+                # Remove the aircraft
+                self.arrival_queue.delete(selected)
+                
+                # Resequence the remaining aircraft
+                self.resequence_arrival_queue()
+                
+                # Update status bar
+                self.status_var.set(f"Removed aircraft {callsign} from arrival queue")
+            else:
+                messagebox.showinfo("Selection Required", "Please select an aircraft to remove")
+    
+    def resequence_departure_queue(self):
+        """Resequence aircraft in the departure queue"""
+        # Get all aircraft
+        count = self.departure_queue.size()
+        aircraft_list = []
+        
+        for i in range(count):
+            item = self.departure_queue.get(i)
+            # Remove the sequence number and extract the rest
+            parts = item.split(". ", 1)
+            if len(parts) > 1:
+                aircraft_list.append(parts[1])
+            else:
+                aircraft_list.append(item)
+        
+        # Clear and refill the queue
+        self.departure_queue.delete(0, tk.END)
+        
+        for i, aircraft in enumerate(aircraft_list, 1):
+            self.departure_queue.insert(tk.END, f"{i}. {aircraft}")
+    
+    def resequence_arrival_queue(self):
+        """Resequence aircraft in the arrival queue"""
+        # Get all aircraft
+        count = self.arrival_queue.size()
+        aircraft_list = []
+        
+        for i in range(count):
+            item = self.arrival_queue.get(i)
+            # Remove the sequence number and extract the rest
+            parts = item.split(". ", 1)
+            if len(parts) > 1:
+                aircraft_list.append(parts[1])
+            else:
+                aircraft_list.append(item)
+        
+        # Clear and refill the queue
+        self.arrival_queue.delete(0, tk.END)
+        
+        for i, aircraft in enumerate(aircraft_list, 1):
+            self.arrival_queue.insert(tk.END, f"{i}. {aircraft}")
+    
+    def resequence_aircraft(self):
+        """Resequence aircraft in the departure or arrival queue"""
+        # Get the active queue tab
+        queue_tab = self.queue_notebook.index(self.queue_notebook.select())
+        
+        if queue_tab == 0:  # Departures
+            self.resequence_departure_queue()
+            self.status_var.set("Resequenced departure queue")
+        elif queue_tab == 1:  # Arrivals
+            self.resequence_arrival_queue()
+            self.status_var.set("Resequenced arrival queue")
+    
+    # Common methods
+    def issue_instruction(self, instruction_type):
+        """Issue an instruction to the selected aircraft"""
+        # Get the selected tab index
+        current_tab = self.notebook.index(self.notebook.select())
+        
+        if current_tab == 0:  # Ground Control
+            selected = self.ground_aircraft_list.curselection()
+            if selected:
+                aircraft = self.ground_aircraft_list.get(selected)
+                callsign = aircraft.split(" - ")[0]
+                
+                if instruction_type == "taxi":
+                    instruction = f"{callsign} taxi to runway 27 via taxiways A, B, hold short of runway 27."
+                elif instruction_type == "hold":
+                    instruction = f"{callsign} hold position."
+                else:
+                    instruction = f"Issuing {instruction_type} instruction to {callsign}"
+                
+                self.ground_instructions.delete(1.0, tk.END)
+                self.ground_instructions.insert(tk.END, instruction)
+                self.status_var.set(f"Instruction issued to {callsign}")
+            else:
+                messagebox.showinfo("Selection Required", "Please select an aircraft")
+        
+        elif current_tab == 1:  # Tower
+            # Check which queue tab is active
+            queue_tab = self.queue_notebook.index(self.queue_notebook.select())
+            
+            if queue_tab == 0:  # Departures
+                selected = self.departure_queue.curselection()
+                if selected:
+                    aircraft = self.departure_queue.get(selected)
+                    callsign = aircraft.split(" - ")[0].split(". ")[1]
+                    
+                    if instruction_type == "lineup":
+                        instruction = f"{callsign} line up and wait runway 27."
+                    elif instruction_type == "takeoff":
+                        instruction = f"{callsign} cleared for takeoff runway 27, wind 270 at 10."
+                    else:
+                        instruction = f"Issuing {instruction_type} instruction to {callsign}"
+                    
+                    self.tower_instructions.delete(1.0, tk.END)
+                    self.tower_instructions.insert(tk.END, instruction)
+                    self.status_var.set(f"Instruction issued to {callsign}")
+                else:
+                    messagebox.showinfo("Selection Required", "Please select an aircraft")
+            
+            elif queue_tab == 1:  # Arrivals
+                selected = self.arrival_queue.curselection()
+                if selected:
+                    aircraft = self.arrival_queue.get(selected)
+                    callsign = aircraft.split(" - ")[0].split(". ")[1]
+                    
+                    if instruction_type == "landing":
+                        instruction = f"{callsign} cleared to land runway 27, wind 270 at 10."
+                    elif instruction_type == "goaround":
+                        instruction = f"{callsign} go around, climb and maintain 3000."
+                    else:
+                        instruction = f"Issuing {instruction_type} instruction to {callsign}"
+                    
+                    self.tower_instructions.delete(1.0, tk.END)
+                    self.tower_instructions.insert(tk.END, instruction)
+                    self.status_var.set(f"Instruction issued to {callsign}")
+                else:
+                    messagebox.showinfo("Selection Required", "Please select an aircraft")
+    
+    def transfer_aircraft(self, destination):
+        """Transfer aircraft to another controller"""
+        messagebox.showinfo("Transfer", f"This will transfer the selected aircraft to {destination}")
+    
+    def draw_simple_airport_diagram(self, canvas):
+        """Draw a simple airport diagram on the canvas (legacy/backward compatibility)"""
+        self.draw_airport_diagram(canvas)
+        
+    def draw_airport_diagram(self, canvas):
+        """Draw an airport diagram on the canvas based on current airport"""
+        # Get canvas dimensions
+        canvas.update()
+        width = canvas.winfo_width()
+        height = canvas.winfo_height()
+        
+        # Ensure the canvas has actual dimensions
+        if width < 10:  # Canvas not properly sized yet
+            width = 500
+            height = 300
+        
+        # Clear canvas
+        canvas.delete("all")
+        
+        # Get current airport data
+        airport_data = self.airports[self.current_airport]
+        runways = airport_data["runways"]
+        taxiways = airport_data["taxiways"]
+        
+        # Draw airport name
+        canvas.create_text(
+            width / 2, 20,
+            text=self.current_airport,
+            font=("Arial", 14, "bold"),
+            fill="black"
+        )
+        
+        # Draw runways
+        runway_length = width * 0.7
+        runway_width = 40
+        runway_spacing = 70
+        
+        # Position for the first runway
+        start_y = (height - (len(runways) * runway_spacing)) / 2
+        
+        # Draw each runway
+        for i, runway in enumerate(runways):
+            # Position the runway
+            runway_x = (width - runway_length) / 2
+            runway_y = start_y + (i * runway_spacing)
+            
+            # Draw the runway
+            canvas.create_rectangle(
+                runway_x, runway_y,
+                runway_x + runway_length, runway_y + runway_width,
+                fill="gray20", outline="black"
+            )
+            
+            # Draw centerline
+            canvas.create_line(
+                runway_x, runway_y + runway_width/2,
+                runway_x + runway_length, runway_y + runway_width/2,
+                fill="white", dash=(30, 15)
+            )
+            
+            # Draw runway numbers (only if it's in the format of two digits)
+            if len(runway) >= 2 and runway[:2].isdigit():
+                # Create the reciprocal runway number
+                reciprocal = str(int(runway[:2]) - 18)
+                if len(reciprocal) == 1:
+                    reciprocal = "0" + reciprocal
+                
+                # Add the original suffix if present
+                if len(runway) > 2:
+                    reciprocal += runway[2]
+                
+                # Draw runway numbers
+                canvas.create_text(
+                    runway_x + 20, runway_y + runway_width/2,
+                    text=runway, fill="white", font=("Arial", 12, "bold")
+                )
+                
+                canvas.create_text(
+                    runway_x + runway_length - 20, runway_y + runway_width/2,
+                    text=reciprocal, fill="white", font=("Arial", 12, "bold")
+                )
+            else:
+                # Just draw the runway identifier
+                canvas.create_text(
+                    runway_x + 20, runway_y + runway_width/2,
+                    text=runway, fill="white", font=("Arial", 12, "bold")
+                )
+        
+        # Draw taxiways
+        if len(runways) > 0:
+            # Draw a main taxiway parallel to the runways
+            taxiway_y = start_y + len(runways) * runway_spacing + 30
+            canvas.create_rectangle(
+                runway_x, taxiway_y,
+                runway_x + runway_length, taxiway_y + 20,
+                fill="gray40", outline="black"
+            )
+            
+            # Label for main taxiway
+            canvas.create_text(
+                runway_x + 20, taxiway_y + 10,
+                text=taxiways[0] if taxiways else "A", fill="yellow", font=("Arial", 10, "bold")
+            )
+            
+            # Draw additional taxiways connecting runways to main taxiway
+            for i, runway in enumerate(runways):
+                runway_y = start_y + (i * runway_spacing) + runway_width/2
+                canvas.create_rectangle(
+                    runway_x + runway_length/2 - 10, runway_y,
+                    runway_x + runway_length/2 + 10, taxiway_y,
+                    fill="gray40", outline="black"
+                )
+                
+                # Label for connector taxiway
+                taxiway_label = taxiways[i+1] if i+1 < len(taxiways) else chr(ord('B') + i)
+                canvas.create_text(
+                    runway_x + runway_length/2, runway_y + 40,
+                    text=taxiway_label, fill="yellow", font=("Arial", 10, "bold")
+                )
+        
+        # Terminal area
+        terminal_width = runway_length / 2
+        terminal_height = 40
+        terminal_x = (width - terminal_width) / 2
+        terminal_y = height - terminal_height - 10
+        
+        canvas.create_rectangle(
+            terminal_x, terminal_y,
+            terminal_x + terminal_width, terminal_y + terminal_height,
+            fill="blue", outline="black"
+        )
+        
+        # Label for Terminal
+        canvas.create_text(
+            terminal_x + terminal_width/2, terminal_y + terminal_height/2,
+            text="Terminal", fill="white", font=("Arial", 10, "bold")
+        )
+        
+        # North arrow
+        arrow_x = width - 30
+        arrow_y = 30
+        
+        canvas.create_line(
+            arrow_x, arrow_y + 20,
+            arrow_x, arrow_y,
+            width=2, fill="black",
+            arrow="last"
+        )
+        
+        canvas.create_text(
+            arrow_x, arrow_y + 30,
+            text="N", font=("Arial", 10, "bold")
+        )
+
+    def update_ground_status_indicators(self, event):
+        """Update status indicators for ground aircraft"""
+        # Clear all indicators
+        for canvas in self.ground_status_indicators:
+            canvas.delete("all")
+        
+        # Update indicators for each aircraft
+        for i in range(min(self.ground_aircraft_list.size(), len(self.ground_status_indicators))):
+            canvas = self.ground_status_indicators[i]
+            aircraft = self.ground_aircraft_list.get(i)
+            
+            # Extract status and location
+            parts = aircraft.split(" - ")
+            if len(parts) >= 4:
+                location = parts[2]
+                status = parts[3]
+                
+                # Draw status indicator based on status
+                if "Gate" in location and "Parked" in status:
+                    # Blue square (parked at gate)
+                    canvas.create_rectangle(2, 2, 13, 13, fill="lightblue", outline="")
+                elif "Pushback" in status:
+                    # Yellow circle with left arrow (pushing back)
+                    canvas.create_oval(2, 2, 13, 13, fill="yellow", outline="")
+                    canvas.create_line(12, 7, 3, 7, fill="black", arrow="last", width=2)
+                elif "Ready to Taxi" in status:
+                    # Green circle (ready)
+                    canvas.create_oval(2, 2, 13, 13, fill="green", outline="")
+                elif "Taxiing" in status:
+                    # Yellow circle with arrow (moving)
+                    canvas.create_oval(2, 2, 13, 13, fill="yellow", outline="")
+                    canvas.create_line(3, 7, 12, 7, fill="black", arrow="last", width=2)
+                elif "Hold Short" in status:
+                    # Red circle with stop line (holding short)
+                    canvas.create_oval(2, 2, 13, 13, fill="#FF9999", outline="")
+                    canvas.create_line(4, 4, 4, 11, fill="red", width=2)
+                    canvas.create_line(11, 4, 11, 11, fill="red", width=2)
+                else:
+                    # Gray circle (default)
+                    canvas.create_oval(2, 2, 13, 13, fill="gray", outline="")
+
+    def use_default_weather(self, icao_code):
+        """Use default weather data when API fetch fails"""
+        # Create some realistic default data based on region
+        if icao_code.startswith("WS") or icao_code.startswith("WM") or icao_code.startswith("WI"):  # Singapore/Malaysia/Indonesia
+            default_data = {
+                "wind": "020° at 8kts",
+                "visibility": "10 km",
+                "ceiling": "FEW 030"
+            }
+            
+            # Singapore-specific seasonal variations
+            current_month = time.localtime().tm_mon
+            if 11 <= current_month <= 12 or 1 <= current_month <= 3:  # Northeast monsoon
+                default_data["wind"] = "040° at 12kts"
+                default_data["ceiling"] = "SCT 025"
+                default_data["visibility"] = "8 km"
+            elif 6 <= current_month <= 9:  # Southwest monsoon
+                default_data["wind"] = "220° at 10kts"
+                default_data["ceiling"] = "SCT 030"
+            
+        elif icao_code.startswith("K"):  # US airport
+            default_data = {
+                "wind": "270° at 10kts",
+                "visibility": "10 sm",
+                "ceiling": "BKN 050"
+            }
+        else:  # Other international airports
+            default_data = {
+                "wind": "240° at 12kts",
+                "visibility": "8 sm", 
+                "ceiling": "OVC 035"
+            }
+        
+        # Update the current airport's weather information
+        current_airport_data = self.airports.get(self.current_airport, {})
+        if current_airport_data:
+            current_airport_data["wind"] = default_data["wind"]
+            current_airport_data["visibility"] = default_data["visibility"]
+            current_airport_data["ceiling"] = default_data["ceiling"]
+            
+            # Update the UI with the default weather data
+            self.root.after(0, self.update_weather_display)
+
+    def fetch_live_weather(self, icao_code):
+        """Fetch live weather data for an airport using its ICAO code"""
+        try:
+            # Set status to indicate fetch is in progress
+            self.status_var.set(f"Fetching weather data for {icao_code}...")
+            
+            # NOAA Aviation Weather Center API endpoint (free, no API key required)
+            url = f"https://aviationweather.gov/api/data/metar?ids={icao_code}&format=json"
+            
+            # Make the request in a separate thread to avoid blocking the UI
+            def fetch_weather_data():
+                try:
+                    # Make the API request
+                    response = requests.get(url, timeout=10)
+                    
+                    # Check if the request was successful
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        
+                        # NOAA API returns a list, so we need to get the first item
+                        if response_data and len(response_data) > 0:
+                            metar_data = response_data[0]
+                            
+                            # Parse the weather data
+                            wind_dir = metar_data.get("wdir", "---")
+                            wind_speed = metar_data.get("wspd", "---")
+                            visibility = metar_data.get("visib", "---")
+                            
+                            # Get the cloud layer information
+                            clouds = "Clear"
+                            cloud_type = metar_data.get("cover", "")
+                            cloud_base = metar_data.get("cldbase", 0)
+                            
+                            if cloud_type:
+                                clouds = f"{cloud_type} {cloud_base:03d}"
+                            
+                            # Format the weather strings
+                            wind_str = f"{wind_dir}° at {wind_speed}kts"
+                            
+                            # Handle visibility units based on airport region
+                            if icao_code.startswith("K"):  # US airports use statute miles
+                                visibility_str = f"{visibility} sm"
+                            else:  # Most other countries use kilometers
+                                # Convert if needed - visibility might already be in km
+                                if visibility != "---" and float(visibility) < 20:  # Likely miles
+                                    try:
+                                        visibility_km = float(visibility) * 1.60934  # Miles to km
+                                        visibility_str = f"{visibility_km:.1f} km"
+                                    except (ValueError, TypeError):
+                                        visibility_str = f"{visibility} km"
+                                else:
+                                    visibility_str = f"{visibility} km"
+                            
+                            # Update the current airport's weather information
+                            current_airport_data = self.airports.get(self.current_airport, {})
+                            
+                            if current_airport_data:
+                                current_airport_data["wind"] = wind_str
+                                current_airport_data["visibility"] = visibility_str
+                                current_airport_data["ceiling"] = clouds
+                                
+                                # Update the UI with the new weather data
+                                self.root.after(0, self.update_weather_display)
+                                
+                                # Update the status
+                                self.root.after(0, lambda: self.status_var.set(f"Weather updated for {icao_code} from NOAA AWC"))
+                            else:
+                                # Airport not found
+                                self.root.after(0, lambda: self.status_var.set(f"Error: Airport {icao_code} not found in database"))
+                        else:
+                            # No data returned for this airport - try alternative source for Singapore/Malaysia airports
+                            if icao_code.startswith("WS") or icao_code.startswith("WM") or icao_code.startswith("WI"):
+                                self.try_alternative_weather_source(icao_code)
+                            else:
+                                # Use default/placeholder data for other airports
+                                self.root.after(0, lambda: self.status_var.set(f"No weather data available for {icao_code}"))
+                                self.use_default_weather(icao_code)
+                    else:
+                        # API request failed - try alternative source for Singapore/Malaysia airports
+                        if icao_code.startswith("WS") or icao_code.startswith("WM") or icao_code.startswith("WI"):
+                            self.try_alternative_weather_source(icao_code)
+                        else:
+                            # Use default/placeholder data for other airports
+                            self.root.after(0, lambda: self.status_var.set(f"Error: Weather API returned status {response.status_code}"))
+                            self.use_default_weather(icao_code)
+                
+                except Exception as e:
+                    # Handle any exceptions during the API call
+                    self.root.after(0, lambda: self.status_var.set(f"Error fetching weather: {str(e)}"))
+                    
+                    # Use default/placeholder data
+                    self.use_default_weather(icao_code)
+            
+            # Start the weather fetching thread
+            threading.Thread(target=fetch_weather_data, daemon=True).start()
+            
+            return True
+        
+        except Exception as e:
+            self.status_var.set(f"Error fetching weather: {str(e)}")
+            return False
+    
+    def try_alternative_weather_source(self, icao_code):
+        """Try an alternative weather source for Singapore region airports"""
+        try:
+            # Weather API for Singapore/Malaysia (no API key required)
+            # Using Singapore Meteorological Service data endpoint
+            # For demonstration, using a simulated response since direct API access might require registration
+            
+            # Simulate a regional weather lookup
+            self.root.after(0, lambda: self.status_var.set(f"Checking regional weather for {icao_code}..."))
+            
+            # In a real implementation, you would make an API request here
+            # For now, create some realistic weather for the region
+            if icao_code == "WSSS":  # Singapore Changi
+                weather_data = {
+                    "wind_dir": 40,
+                    "wind_speed": 8,
+                    "visibility_km": 9.5,
+                    "cloud_type": "FEW",
+                    "cloud_height": 3000
+                }
+            elif icao_code == "WSSL":  # Singapore Seletar
+                weather_data = {
+                    "wind_dir": 30,
+                    "wind_speed": 6,
+                    "visibility_km": 9.0,
+                    "cloud_type": "SCT",
+                    "cloud_height": 2500
+                }
+            elif icao_code == "WMKJ":  # Johor
+                weather_data = {
+                    "wind_dir": 350,
+                    "wind_speed": 5,
+                    "visibility_km": 8.0,
+                    "cloud_type": "BKN",
+                    "cloud_height": 3000
+                }
+            elif icao_code == "WIDD":  # Batam
+                weather_data = {
+                    "wind_dir": 50,
+                    "wind_speed": 7,
+                    "visibility_km": 7.0,
+                    "cloud_type": "SCT",
+                    "cloud_height": 2500
+                }
+            else:
+                # Use seasonal defaults for other regional airports
+                current_month = time.localtime().tm_mon
+                if 11 <= current_month <= 12 or 1 <= current_month <= 3:  # Northeast monsoon
+                    weather_data = {
+                        "wind_dir": 40,
+                        "wind_speed": 12,
+                        "visibility_km": 8.0,
+                        "cloud_type": "SCT",
+                        "cloud_height": 2500
+                    }
+                elif 6 <= current_month <= 9:  # Southwest monsoon
+                    weather_data = {
+                        "wind_dir": 220,
+                        "wind_speed": 10,
+                        "visibility_km": 9.0,
+                        "cloud_type": "SCT",
+                        "cloud_height": 3000
+                    }
+                else:  # Inter-monsoon
+                    weather_data = {
+                        "wind_dir": 0,  # Variable
+                        "wind_speed": 5,
+                        "visibility_km": 10.0,
+                        "cloud_type": "FEW",
+                        "cloud_height": 3500
+                    }
+            
+            # Format the weather data
+            wind_str = f"{weather_data['wind_dir']}° at {weather_data['wind_speed']}kts"
+            visibility_str = f"{weather_data['visibility_km']} km"
+            clouds = f"{weather_data['cloud_type']} {weather_data['cloud_height']:03d}"
+            
+            # Update the current airport's weather information
+            current_airport_data = self.airports.get(self.current_airport, {})
+            if current_airport_data:
+                current_airport_data["wind"] = wind_str
+                current_airport_data["visibility"] = visibility_str
+                current_airport_data["ceiling"] = clouds
+                
+                # Update the UI with the new weather data
+                self.root.after(0, self.update_weather_display)
+                
+                # Update the status
+                self.root.after(0, lambda: self.status_var.set(f"Regional weather updated for {icao_code}"))
+                
+                return True
+                
+        except Exception as e:
+            self.root.after(0, lambda: self.status_var.set(f"Error fetching regional weather: {str(e)}"))
+            self.use_default_weather(icao_code)
+            return False
+    
+    def update_weather_display(self):
+        """Update the weather display with the current airport's weather data"""
+        # Update the weather display string
+        weather_info = self.get_airport_weather_string()
+        self.weather_display.config(text=weather_info)
+        
+        # If we're on the tower tab, also update the detailed weather information
+        if hasattr(self, 'wind_label') and hasattr(self, 'visibility_label') and hasattr(self, 'ceiling_label'):
+            airport_data = self.airports[self.current_airport]
+            self.wind_label.config(text=airport_data["wind"])
+            self.visibility_label.config(text=airport_data["visibility"])
+            self.ceiling_label.config(text=airport_data["ceiling"])
+
+    def update_airport_config(self):
+        """Update the UI based on the selected airport"""
+        # Get the current airport data
+        airport_data = self.airports[self.current_airport]
+        
+        # Update weather display
+        self.weather_display.config(text=self.get_airport_weather_string())
+        
+        # Update runway status in Tower tab
+        self.update_runway_frame()
+        
+        # Update Singapore-specific info panel if on Tower tab
+        if hasattr(self, 'tower_right_frame'):
+            # First, remove any existing Singapore info panel
+            for widget in self.tower_right_frame.winfo_children():
+                if isinstance(widget, ttk.LabelFrame) and "Singapore ATC Information" in str(widget.cget("text")):
+                    widget.destroy()
+            
+            # Add Singapore-specific panel if relevant
+            if self.current_airport.startswith("WS") or self.current_airport.startswith("WM") or self.current_airport.startswith("WI"):
+                # Create a Singapore information frame
+                sg_info_frame = ttk.LabelFrame(self.tower_right_frame, text="Singapore ATC Information")
+                sg_info_frame.pack(fill=tk.X, pady=(0, 10))
+                
+                # Add a notebook with tabs for different info
+                sg_notebook = ttk.Notebook(sg_info_frame)
+                sg_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+                
+                # Add tabs for procedures, frequencies, and NOTAMs
+                self.add_singapore_procedures_tab(sg_notebook)
+                self.add_singapore_frequencies_tab(sg_notebook)
+                self.add_singapore_notams_tab(sg_notebook)
+        
+        # Redraw airport diagram to reflect new layout
+        if hasattr(self, 'ground_canvas'):
+            self.draw_airport_diagram(self.ground_canvas)
+        
+        # Clear and recreate aircraft lists as they may contain runway references
+        # that are no longer valid in the new airport
+        if hasattr(self, 'ground_aircraft_list'):
+            self.ground_aircraft_list.delete(0, tk.END)
+        
+        if hasattr(self, 'departure_queue'):
+            self.departure_queue.delete(0, tk.END)
+        
+        if hasattr(self, 'arrival_queue'):
+            self.arrival_queue.delete(0, tk.END)
+            
+        # Fetch current weather for the new airport
+        icao_code = self.current_airport.split(" - ")[0]
+        self.fetch_live_weather(icao_code)
+        
+    def add_singapore_procedures_tab(self, parent_notebook):
+        """Add a tab with Singapore-specific procedures"""
+        procedures_frame = ttk.Frame(parent_notebook)
+        parent_notebook.add(procedures_frame, text="Procedures")
+        
+        # Create a text widget for procedures
+        procedures_text = scrolledtext.ScrolledText(procedures_frame, height=5, wrap=tk.WORD)
+        procedures_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Populate with airport-specific procedures
+        if "WSSS" in self.current_airport:
+            procedures_text.insert(tk.END, 
+                "Changi Tower Procedures:\n\n"
+                "1. Parallel runway operations in effect\n"
+                "2. Runway 02L/20R primarily for arrivals\n"
+                "3. Runway 02C/20C primarily for departures\n"
+                "4. Minimum separation 3NM for arrivals, 2 minutes for departures\n"
+                "5. Use SIDs for all IFR departures\n"
+                "6. Handoff to Departure at 2,000ft"
+            )
+        elif "WSSL" in self.current_airport:
+            procedures_text.insert(tk.END, 
+                "Seletar Tower Procedures:\n\n"
+                "1. Runway 03/21 operations\n"
+                "2. Maintain 1,500ft until advised for arrivals\n"
+                "3. Remain clear of Changi airspace\n"
+                "4. Training flights use Seletar training area\n"
+                "5. Helicopter operations use East apron"
+            )
+        elif "WMKJ" in self.current_airport:
+            procedures_text.insert(tk.END, 
+                "Johor Senai Procedures:\n\n"
+                "1. Runway 16/34 operations\n"
+                "2. Maintain minimum 2,000ft until advised for arrivals\n"
+                "3. Be aware of Singapore FIR boundary\n"
+                "4. Report position at 10NM final"
+            )
+        elif "WIDD" in self.current_airport:
+            procedures_text.insert(tk.END, 
+                "Batam Hang Nadim Procedures:\n\n"
+                "1. Runway 04/22 operations\n"
+                "2. Report at BIDAR/SOSOK waypoints inbound\n"
+                "3. Maintain 3,000ft in holding pattern when required\n"
+                "4. Multiple simultaneous approaches not permitted"
+            )
+        
+        procedures_text.config(state=tk.DISABLED)  # Make read-only
+    
+    def add_singapore_frequencies_tab(self, parent_notebook):
+        """Add a tab with Singapore-specific frequencies"""
+        freq_frame = ttk.Frame(parent_notebook)
+        parent_notebook.add(freq_frame, text="Frequencies")
+        
+        # Set up frequencies
+        freq_list = ttk.Treeview(freq_frame, columns=("frequency", "callsign"), show="headings", height=5)
+        freq_list.heading("frequency", text="Frequency")
+        freq_list.heading("callsign", text="Callsign")
+        freq_list.column("frequency", width=100)
+        freq_list.column("callsign", width=200)
+        freq_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Add Singapore-specific frequencies
+        if "WSSS" in self.current_airport:
+            frequencies = [
+                ("124.000", "Changi Delivery"),
+                ("121.900", "Changi Ground"),
+                ("118.600", "Changi Tower"),
+                ("120.300", "Changi Approach"),
+                ("119.750", "Changi Departure"),
+                ("126.700", "Changi Director"),
+                ("128.400", "Singapore Control")
+            ]
+        elif "WSSL" in self.current_airport:
+            frequencies = [
+                ("121.700", "Seletar Ground"),
+                ("123.600", "Seletar Tower"),
+                ("122.700", "Seletar Approach"),
+                ("126.900", "Singapore Control")
+            ]
+        elif "WMKJ" in self.current_airport:
+            frequencies = [
+                ("121.900", "Senai Ground"),
+                ("118.100", "Senai Tower"),
+                ("119.500", "Johor Approach"),
+                ("124.750", "Malaysia Control")
+            ]
+        elif "WIDD" in self.current_airport:
+            frequencies = [
+                ("121.800", "Batam Ground"),
+                ("118.050", "Batam Tower"),
+                ("119.300", "Batam Approach"),
+                ("126.150", "Indonesia Control")
+            ]
+        else:
+            frequencies = [
+                ("121.500", "Emergency"),
+                ("122.200", "Tower"),
+                ("119.800", "Approach")
+            ]
+        
+        for freq in frequencies:
+            freq_list.insert("", tk.END, values=freq)
+    
+    def add_singapore_notams_tab(self, parent_notebook):
+        """Add a tab with Singapore-specific NOTAMs"""
+        notam_frame = ttk.Frame(parent_notebook)
+        parent_notebook.add(notam_frame, text="NOTAMs")
+        
+        # Create a text widget for NOTAMs
+        notam_text = scrolledtext.ScrolledText(notam_frame, height=5, wrap=tk.WORD)
+        notam_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Add sample NOTAMs
+        if "WSSS" in self.current_airport:
+            notam_text.insert(tk.END, 
+                "NOTAM A1234/23 - Taxiway W closed for maintenance until 18 NOV 2023\n\n"
+                "NOTAM B5678/23 - ILS RWY 02L operating at reduced capability until further notice\n\n"
+                "NOTAM C9012/23 - Bird activity reported vicinity 5NM final RWY 20R"
+            )
+        elif "WSSL" in self.current_airport:
+            notam_text.insert(tk.END,
+                "NOTAM A4321/23 - Runway works in progress during 2300-0600 UTC daily until 25 NOV 2023\n\n"
+                "NOTAM B7654/23 - Apron construction North side - PPR required for aircraft above CAT B"
+            )
+        elif "WMKJ" in self.current_airport:
+            notam_text.insert(tk.END,
+                "NOTAM J1122/23 - Terminal renovation ongoing - expect delays\n\n"
+                "NOTAM J2233/23 - ILS RWY 16 unserviceable until further notice"
+            )
+        elif "WIDD" in self.current_airport:
+            notam_text.insert(tk.END,
+                "NOTAM D4455/23 - Apron expansion work in progress\n\n"
+                "NOTAM D5566/23 - VOR/DME BAT temporarily out of service"
+            )
+        
+        notam_text.config(state=tk.DISABLED)  # Make read-only
+        
+        # Add a refresh button for NOTAMs
+        ttk.Button(
+            notam_frame, 
+            text="Refresh NOTAMs",
+            command=lambda: self.status_var.set("NOTAMs refresh functionality would be implemented here")
+        ).pack(side=tk.BOTTOM, pady=5)
