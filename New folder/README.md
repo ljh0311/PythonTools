@@ -1,136 +1,124 @@
-# Image Feature Merger Web Application
+# Image Feature Merger - Web Edition
 
-A web-based tool that automatically merges multiple images based on their common features. The application uses computer vision techniques to detect, match, and align image features, making it perfect for creating panoramas or combining overlapping images.
+A web-based application for merging images using computer vision techniques, built with Flask and OpenCV. This is the web version of the original desktop application, providing similar functionality through a browser interface.
 
 ## Features
 
-- 🌐 Web-based interface accessible from any device
-- 📱 Responsive design that works on desktop and mobile
-- 🔄 Automatic feature detection and matching using SIFT algorithm
-- 📐 Automatic scaling, rotation, and perspective correction
-- 🎚️ Adjustable matching threshold for fine-tuning results
-- 🖼️ Support for multiple image formats (PNG, JPG, JPEG, BMP)
-- 💾 Easy download of merged results
-- 🔒 Secure file handling and processing
+- **Multiple Merge Methods**:
+  - Feature-based panorama merging (SIFT/ORB detection)
+  - Side-by-side merging with blended transitions
+  - Feature-aligned blending with transparency control
+  
+- **Visual Analysis Tools**:
+  - View feature matches between images
+  - See preprocessed images for better understanding of feature detection
+  - Toggle between SIFT and ORB detectors (ORB often works better for night images)
+  
+- **Responsive UI**:
+  - Real-time thumbnail previews
+  - Progress indicators
+  - Downloadable results
 
-## Technical Details
+## Requirements
 
-- Backend: Python Flask
-- Image Processing: OpenCV with SIFT feature detection
-- Frontend: HTML5, Bootstrap 5, JavaScript
-- File Processing: Supports files up to 16MB
-- Security: Implements secure filename handling and file type validation
+- Python 3.8+
+- OpenCV
+- Flask
+- NumPy
+- Werkzeug
 
-## Prerequisites
-
-- Python 3.7 or higher
-- pip (Python package installer)
+All dependencies are listed in `requirements.txt`.
 
 ## Installation
 
-1. Clone the repository or download the source code:
-```bash
-git clone <repository-url>
+1. Clone this repository:
+
+```
+git clone https://github.com/yourusername/image-feature-merger.git
 cd image-feature-merger
 ```
 
 2. Create a virtual environment (recommended):
-```bash
-# On Windows
-python -m venv venv
-venv\Scripts\activate
 
-# On macOS/Linux
+```
 python -m venv venv
-source venv/bin/activate
 ```
 
-3. Install the required dependencies:
-```bash
+3. Activate the virtual environment:
+
+   - On Windows:
+
+     ```
+     venv\Scripts\activate
+     ```
+
+   - On macOS/Linux:
+
+     ```
+     source venv/bin/activate
+     ```
+
+4. Install dependencies:
+
+```
 pip install -r requirements.txt
+```
+
+## Running the Application
+
+1. Start the Flask server:
+
+```
+python app.py
+```
+
+2. Open your web browser and navigate to:
+
+```
+http://127.0.0.1:5000
 ```
 
 ## Usage
 
-1. Start the Flask server:
-```bash
-python app.py
-```
+1. **Upload Images**: Click the "Choose Files" button to select two or more images to merge.
 
-2. Access the application:
-   - Local access: Open `http://localhost:5000` in your web browser
-   - Network access: Open `http://<your-ip-address>:5000` in any device on your network
+2. **Choose Merge Type**:
+   - **Feature Merge**: Advanced panorama creation with feature detection
+   - **Side-by-Side**: Arrange images next to each other with blended transitions
+   - **Blend**: Feature-aligned overlay with transparency control
 
-3. Using the application:
-   - Click "Choose Files" to select 2 or more images
-   - Adjust the matching threshold if needed:
-     - Higher values (closer to 0.9) = stricter matching, better accuracy but might miss some matches
-     - Lower values (closer to 0.1) = more lenient matching, might include incorrect matches
-   - Click "Merge Images" to start the process
-   - Once complete, the merged image will be displayed
-   - Use the "Download Merged Image" button to save the result
+3. **Adjust Settings**:
+   - Match Threshold: Controls the strictness of feature matching
+   - Blend Transparency: Adjusts the balance between images when blending
+   - Toggle ORB/SIFT detector: Try ORB for better results with night images
 
-## Best Practices for Image Merging
+4. **Process**: Click "Process Images" to generate the merged result.
 
-1. Image Selection:
-   - Use images with sufficient overlap (30-50% recommended)
-   - Ensure images have distinct features or patterns
-   - Maintain consistent lighting conditions between images
-   - Avoid excessive motion blur
+5. **Additional Features**:
+   - "Show Feature Matches": Visualize how features are matched between images
+   - "Show Preprocessed Image": See how the image is enhanced for feature detection
 
-2. Performance Tips:
-   - Keep image sizes reasonable (extremely large images may take longer to process)
-   - Start with a threshold value of 0.7 and adjust as needed
-   - Ensure images are in focus and well-lit
+6. **Save Results**: Use the "Download Result" button to save the merged image.
+
+## Technical Details
+
+This application uses OpenCV's feature detection and image processing capabilities:
+
+- SIFT (Scale-Invariant Feature Transform) for detecting robust image features
+- ORB (Oriented FAST and Rotated BRIEF) as an alternative feature detector
+- Homography estimation for alignment of images
+- Various blending techniques for seamless transitions
 
 ## Troubleshooting
 
-1. "Not enough matches found":
-   - Try decreasing the threshold value
-   - Ensure images have overlapping areas
-   - Check if images have sufficient distinct features
-
-2. "Failed to merge images":
-   - Verify that images have common areas
-   - Try different combinations of images
-   - Ensure images are not corrupted
-
-3. Performance issues:
-   - Reduce image sizes if processing is slow
-   - Close other resource-intensive applications
-   - Check available system memory
-
-## Technical Implementation
-
-The application uses several key technologies:
-
-- **SIFT (Scale-Invariant Feature Transform)**: For robust feature detection that works regardless of image scale and rotation
-- **RANSAC**: For finding the optimal homography matrix between images
-- **Perspective Transformation**: For aligning and warping images into a common coordinate system
-- **Alpha Blending**: For smooth transitions in overlapping areas
-
-## Security Features
-
-- File type validation
-- Secure filename handling
-- Automatic cleanup of temporary files
-- Maximum file size limits
-- Input sanitization
+- **Memory Issues**: Large images are automatically resized to improve performance
+- **Poor Merging Results**: Try adjusting the threshold or changing the detector type
+- **Error Messages**: Check the console for detailed error messages if merges fail
 
 ## License
 
-[Your License Here]
+[MIT License](LICENSE)
 
-## Contributing
+## Credits
 
-[Your Contributing Guidelines Here]
-
-## Authors
-
-[Your Name/Organization]
-
-## Acknowledgments
-
-- OpenCV for computer vision capabilities
-- Flask for the web framework
-- Bootstrap for the UI components 
+This application is a web conversion of the original desktop application built with PyQt.
