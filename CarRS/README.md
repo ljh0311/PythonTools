@@ -1,109 +1,65 @@
 # Car Rental Recommendation System
 
-This system helps you choose the most cost-effective car rental option based on your travel needs.
+This application helps users find the best car rental option based on their trip details such as distance and duration.
 
-## Overview
+## Files Overview
 
-The recommendation system analyzes historical rental data to provide suggestions for which car rental service and car model would be most economical for your planned trip.
+### Main Files (Use These)
 
-The system considers:
-- Distance to travel
-- Duration of rental
-- Whether it's a weekend or weekday
-- Different pricing models from various providers:
-  - Getgo: $0.39/km + hourly rate
-  - Car Club: $0.33/km + hourly rate
-  - Tribecar (Econ/Stand): Only hourly rate (fuel not included)
+- **CarRentalApp.bat** - The main launcher for the enhanced application (RECOMMENDED)
+- **fixed_car_loader.py** - The enhanced loader script that fixes data issues and adds features
 
-## Requirements
+### Original Files
 
-- Python 3.6+
-- pandas
-- numpy
-- matplotlib (for GUI version)
-- tkinter (typically included with Python)
+- **car_rental_recommender_gui.py** - The original GUI application
+- **car_rental_recommender.py** - The original CLI application
+- **22 - Sheet1.csv** - The data file with rental records
 
-## Installation
+### Support Files (For Developers)
 
-1. Ensure Python 3.6+ is installed on your system
-2. Install required packages:
-   ```
-   pip install pandas numpy matplotlib
-   ```
+- **requirements.txt** - Lists all required Python packages
 
-## Usage
+### Backup/Testing Files (Not Needed for Normal Use)
 
-### Command Line Version
+- **load_and_run.py** - Older script that attempted to load data
+- **direct_load.py** - Older script that attempted to directly load data
+- **run_gui.bat** - Original GUI launcher
+- **run_recommender.bat** - Original CLI launcher
+- **run_with_data.bat** - Testing launcher
+- **run_fixed_app.bat** - Testing launcher
+- **run_direct_load.bat** - Testing launcher
 
-1. Make sure your rental data CSV file is in the same directory as the script
-2. Run the script:
-   ```
-   python car_rental_recommender.py
-   ```
-   Or simply double-click on `run_recommender.bat` on Windows.
-3. Choose from the main menu:
-   - **Get Rental Recommendations**: Enter trip details and get cost comparisons
-   - **Manage Rental Records**: Add, view, modify, or delete rental records
-   - **Exit**: Close the application
+## How to Use
 
-### GUI Version
+1. Double-click on **CarRentalApp.bat** to start the application
+2. Enter your trip details:
+   - Distance in kilometers
+   - Duration in hours
+   - Check "Weekend Trip" if applicable
+3. Click "Get Recommendations" to see rental options
 
-For a more user-friendly experience, you can use the GUI version:
+## Features
 
-1. Make sure your rental data CSV file is in the same directory as the script
-2. Run the GUI script:
-   ```
-   python car_rental_recommender_gui.py
-   ```
-   Or simply double-click on `run_gui.bat` on Windows.
+- Rental recommendations based on trip details
+- Cost analysis and comparison between providers
+- Records management for tracking past rentals
+- Data analysis with charts and statistics
 
-3. The application has four tabs:
-   - **Recommendations**: Enter trip details and get recommendations with cost breakdown
-   - **Data Analysis**: Analyze your historical rental data with charts
-   - **Settings**: Customize fuel costs, mileage charges, and more
-   - **Records Management**: Add, view, edit, and delete rental records
+## Troubleshooting
 
-## Record Management Features
+If you encounter any issues:
 
-Both versions of the application allow you to manage your rental records:
+1. Make sure **22 - Sheet1.csv** is in the same folder as the application
+2. Check that all required Python packages are installed
+3. Ensure you have Python 3.6 or newer installed
 
-### Command Line Version
-- View all rental records in a tabular format
-- Add new rental records with detailed information
-- Modify existing records (update any field)
-- Delete records you no longer need
+## Cleaning Up (Optional)
 
-### GUI Version
-- Visual table display of all rental records
-- Form-based interface for adding and editing records
-- Detailed view of all record fields
-- One-click record deletion with confirmation
-- Changes are automatically saved to the CSV file
-
-## Data Format
-
-The system expects a CSV file with the following columns:
-- Car model
-- Distance (KM)
-- Fuel pumped
-- Estimated fuel usage
-- Consumption (KM/L)
-- Fuel cost
-- Pumped fuel cost
-- Mileage cost ($0.39)
-- Cost per KM
-- Duration cost
-- Total
-- Date
-- Est original fuel savings
-- Weekday/weekend
-- Rental hour
-- Car Cat
-- Cost/HR
-
-## Notes
-
-- For Tribecar (Econ/Stand) rentals, the system estimates fuel costs based on the assumption that $20 worth of RON 95 fuel at Esso provides approximately 110km of distance.
-- The recommendations are sorted by estimated total cost, with the most economical options listed first.
-- The GUI version provides visual comparisons of costs and additional data analysis features.
-- When adding new records, only a few fields are required (car model, provider, distance, duration, and total cost). Other fields can be left blank. 
+If you want to clean up unused files, you can safely delete these files:
+- load_and_run.py
+- direct_load.py
+- run_gui.bat
+- run_recommender.bat
+- run_with_data.bat
+- run_fixed_app.bat
+- run_direct_load.bat 
