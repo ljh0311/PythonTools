@@ -1,114 +1,1065 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Feature Merger</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Feature Merger - Web Edition</title>
+    <link rel="icon" href="/static/img/favicon.ico" type="image/x-icon" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
     <style>
-        .preview-container {
-            max-width: 100%;
-            overflow: auto;
-            margin: 20px 0;
-        }
-        .preview-image {
-            max-width: 100%;
-            height: auto;
-        }
-        .loading {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
-        }
+      body {
+        background-color: #f8f9fa;
+      }
+      .container {
+        max-width: 1400px;
+      }
+      .card {
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      .card-header {
+        background-color: #f1f5f9;
+        font-weight: bold;
+      }
+      .preview-container {
+        max-width: 100%;
+        overflow: auto;
+        margin: 20px 0;
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.1);
+      }
+      .preview-image {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        margin: 0 auto;
+      }
+      .loading {
+        display: none;
+        text-align: center;
+        margin: 20px 0;
+      }
+      .image-thumbnail {
+        width: 150px;
+        height: 150px;
+        object-fit: cover;
+        border: 1px solid #ddd;
+        margin-right: 10px;
+        border-radius: 5px;
+      }
+      .thumbnail-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        margin: 20px 0;
+      }
+      .thumbnail-item {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .remove-image {
+        position: absolute;
+        top: -10px;
+        right: -10px;
+        background-color: red;
+        color: white;
+        border-radius: 50%;
+        width: 25px;
+        height: 25px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      .features-container {
+        border-top: 1px solid #dee2e6;
+        padding-top: 20px;
+        margin-top: 20px;
+      }
+      /* Custom styling for sliders */
+      .custom-range {
+        width: 100%;
+        height: 10px;
+        padding: 0;
+        border-radius: 5px;
+      }
+      .custom-range::-webkit-slider-thumb {
+        height: 20px;
+        width: 20px;
+      }
+      .alert {
+        margin-top: 20px;
+      }
+      .btn-group {
+        margin-bottom: 15px;
+      }
+      .btn-secondary.active {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+      }
+      .point-marker {
+        cursor: pointer;
+        box-shadow: 0 0 0 2px white;
+      }
+      .point-marker:hover {
+        transform: scale(1.5);
+      }
+      /* Styles for manual feature matching */
+      .point-marker {
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        border: 2px solid white;
+        cursor: pointer;
+        z-index: 5;
+      }
+      .point-marker.img1 {
+        background-color: #ff3333;
+      }
+      .point-marker.img2 {
+        background-color: #3333ff;
+      }
+      .point-label {
+        position: absolute;
+        color: white;
+        font-size: 10px;
+        font-weight: bold;
+        text-shadow: 1px 1px 1px black;
+        transform: translate(-50%, -50%);
+        z-index: 6;
+      }
     </style>
-</head>
-<body>
-    <div class="container mt-5">
-        <h1 class="mb-4">Image Feature Merger</h1>
-        
-        <div class="card">
-            <div class="card-body">
-                <form id="uploadForm" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label for="images" class="form-label">Select Images (2 or more)</label>
-                        <input type="file" class="form-control" id="images" name="images" multiple accept="image/*" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="threshold" class="form-label">Match Threshold: <span id="thresholdValue">0.7</span></label>
-                        <input type="range" class="form-range" id="threshold" name="threshold" min="0.1" max="0.9" step="0.1" value="0.7">
-                    </div>
-
-                    <button type="submit" class="btn btn-primary">Merge Images</button>
-                </form>
-
-                <div id="loading" class="loading">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Processing images... This may take a few moments.</p>
-                </div>
-
-                <div id="result" class="preview-container">
-                    <!-- Merged image will be displayed here -->
-                </div>
-
-                <div id="downloadContainer" style="display: none;">
-                    <a id="downloadLink" class="btn btn-success" download="merged_image.png">
-                        Download Merged Image
-                    </a>
-                </div>
-            </div>
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+      <div class="container">
+        <a class="navbar-brand" href="#">
+          Image Feature Merger <small class="badge bg-light text-primary ms-2">Beta v1.0.0</small>
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarContent">
+          <ul class="navbar-nav ms-auto">
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="featuresDropdown" role="button" data-bs-toggle="dropdown">
+                Features
+              </a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#"><i class="bi bi-image me-2"></i>Panorama Stitching</a></li>
+                <li><a class="dropdown-item" href="#"><i class="bi bi-layers me-2"></i>Image Blending</a></li>
+                <li><a class="dropdown-item" href="#"><i class="bi bi-camera me-2"></i>SIFT/ORB Detection</a></li>
+                <li><a class="dropdown-item" href="#"><i class="bi bi-sliders me-2"></i>Real-time Controls</a></li>
+              </ul>
+            </li>
+          </ul>
         </div>
+      </div>
+    </nav>
+
+      <div class="row">
+        <!-- Left panel: Controls -->
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-header">Upload & Settings</div>
+            <div class="card-body">
+              <form id="uploadForm" enctype="multipart/form-data">
+                <div class="mb-3">
+                  <label for="images" class="form-label">Select Images (2 or more)</label>
+                  <input type="file" class="form-control" id="images" name="images" multiple accept="image/jpeg,image/png,image/bmp,image/svg+xml" required />
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label">Merge Type</label>
+                  <div class="btn-group w-100" role="group">
+                    <input type="radio" class="btn-check" name="merge_type" id="side_by_side" value="side_by_side" />
+                    <label class="btn btn-outline-primary" for="side_by_side">Side-by-Side</label>
+
+                    <input type="radio" class="btn-check" name="merge_type" id="feature_aligned_blend" value="feature_aligned_blend" />
+                    <label class="btn btn-outline-primary" for="feature_aligned_blend">Blend</label>
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label for="threshold" class="form-label">Match Threshold: <span id="thresholdValue">0.7</span></label>
+                  <input type="range" class="form-range custom-range" id="threshold" name="threshold" min="0.1" max="0.9" step="0.1" value="0.7" />
+                  <small class="text-muted">Lower values = more strict matching, higher values = more matches</small>
+                </div>
+
+                <div class="mb-3" id="alphaContainer">
+                  <label for="alpha" class="form-label">Blend Transparency: <span id="alphaValue">0.5</span></label>
+                  <input type="range" class="form-range custom-range" id="alpha" name="alpha" min="0.1" max="0.9" step="0.1" value="0.5" />
+                  <small class="text-muted">Balance between first image (0.0) and second image (1.0)</small>
+                </div>
+
+                <div class="form-check mb-3">
+                  <input class="form-check-input" type="checkbox" id="useOrb" name="use_orb" />
+                  <label class="form-check-label" for="useOrb">Use ORB Detector (better for some night images)</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-magic"></i> Process Images</button>
+              </form>
+
+              <div class="features-container">
+                <h5>Additional Features</h5>
+                <div class="d-grid gap-2">
+                  <button class="btn btn-outline-secondary" id="showMatchesBtn" disabled>
+                    <i class="bi bi-link-45deg"></i> Show Feature Matches
+                  </button>
+                  <button class="btn btn-outline-secondary" id="showPreprocessedBtn" disabled>
+                    <i class="bi bi-image-alt"></i> Show Preprocessed Image
+                  </button>
+                  <button class="btn btn-outline-secondary" id="manualMatchBtn" disabled>
+                    <i class="bi bi-pencil"></i> Manual Feature Matching
+                  </button>
+                  <button class="btn btn-outline-secondary" id="enhancePanoramaBtn" disabled>
+                    <i class="bi bi-magic"></i> Enhance Panorama
+                  </button>
+                </div>
+
+                <div class="mt-4">
+                  <h5>Transform & Alignment Hints</h5>
+                  <div class="alert alert-info small">
+                    <p>
+                      <strong>For better panoramas:</strong>
+                    </p>
+                    <ul class="mb-0">
+                      <li>Use images with at least 30% overlap</li>
+                      <li>Try ORB detector for night images</li>
+                      <li>Use 'Side-by-Side' for images that don't align well</li>
+                      <li>Use 'Enhance Panorama' to fix crooked horizons</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right panel: Results -->
+        <div class="col-md-8">
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">Results Preview</h5>
+              <div class="btn-group">
+                <button id="downloadBtn" class="btn btn-sm btn-success" style="display: none;">
+                  <i class="bi bi-download"></i> Download Result
+                </button>
+                <button id="shareBtn" class="btn btn-sm btn-outline-primary" style="display: none;">
+                  <i class="bi bi-share"></i> Share
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="thumbnailsContainer" class="thumbnail-container mb-4">
+                <div class="text-center text-muted p-4 bg-light rounded">
+                  <i class="bi bi-images fs-2"></i>
+                  <p class="mt-2">Upload 2 or more images to create a panorama</p>
+                </div>
+              </div>
+
+              <div id="loading" class="loading text-center p-5">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="lead mb-0">Processing your panorama...</p>
+                <p class="text-muted small">This may take a few moments depending on image size</p>
+              </div>
+
+              <div id="result" class="preview-container text-center" style="display: none;">
+                <div class="position-relative">
+                  <img id="previewImage" class="img-fluid rounded shadow-sm" alt="Panorama result">
+                  <div class="overlay-controls position-absolute top-0 end-0 p-2">
+                    <button class="btn btn-sm btn-light" id="zoomInBtn">
+                      <i class="bi bi-zoom-in"></i>
+                    </button>
+                    <button class="btn btn-sm btn-light" id="zoomOutBtn">
+                      <i class="bi bi-zoom-out"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="errorContainer" class="alert alert-danger alert-dismissible fade show" style="display: none;" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                <span class="error-message"></span>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
+    <!-- Manual Feature Matching UI -->
+    <div class="modal fade" id="manualMatchModal" tabindex="-1" aria-labelledby="manualMatchModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="manualMatchModalLabel">Manual Feature Matching</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <h6>Image 1 - Click to select points</h6>
+                <div class="position-relative">
+                  <img id="manualImg1" src="" class="img-fluid border" style="max-height: 400px;">
+                  <div id="points1Container"></div>
+                </div>
+              </div>
+              <div class="col-md-6 mb-3">
+                <h6>Image 2 - Click to select matching points</h6>
+                <div class="position-relative">
+                  <img id="manualImg2" src="" class="img-fluid border" style="max-height: 400px;">
+                  <div id="points2Container"></div>
+                </div>
+              </div>
+            </div>
+            <div class="row mt-2">
+              <div class="col-12">
+                <div class="alert alert-info">
+                  <p><strong>Instructions:</strong></p>
+                  <ol>
+                    <li>Click a point on Image 1</li>
+                    <li>Click the corresponding point on Image 2</li>
+                    <li>Repeat to create at least 4 matching pairs</li>
+                  </ol>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>Point pairs: <span id="pairCounter">0</span> <small class="text-muted">(minimum 4 required)</small></div>
+                  <button id="clearPointsBtn" class="btn btn-outline-danger btn-sm">Clear Points</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="processManualBtn" disabled>Process Images</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add standalone button for manual feature matching -->
+    <div class="text-center mt-3 mb-3">
+      <button id="manualMatchStandaloneBtn" class="btn btn-outline-primary">
+        <i class="bi bi-pencil"></i> Manual Feature Matching
+      </button>
+    </div>
+
+    <!-- Make sure Bootstrap Bundle JS is included -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
     <script>
-        document.getElementById('threshold').addEventListener('input', function(e) {
-            document.getElementById('thresholdValue').textContent = e.target.value;
-        });
-
-        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
+      // Global variables
+      let uploadedFiles = []
+      let resultImageUrl = null
+      
+      // UI References
+      const uploadForm = document.getElementById('uploadForm')
+      const imagesInput = document.getElementById('images')
+      const thresholdSlider = document.getElementById('threshold')
+      const thresholdValue = document.getElementById('thresholdValue')
+      const alphaSlider = document.getElementById('alpha')
+      const alphaValue = document.getElementById('alphaValue')
+      const alphaContainer = document.getElementById('alphaContainer')
+      const thumbnailsContainer = document.getElementById('thumbnailsContainer')
+      const loading = document.getElementById('loading')
+      const result = document.getElementById('result')
+      const errorContainer = document.getElementById('errorContainer')
+      const downloadBtn = document.getElementById('downloadBtn')
+      const showMatchesBtn = document.getElementById('showMatchesBtn')
+      const showPreprocessedBtn = document.getElementById('showPreprocessedBtn')
+      const enhancePanoramaBtn = document.getElementById('enhancePanoramaBtn')
+      const mergeTypeRadios = document.querySelectorAll('input[name="merge_type"]')
+      const manualMatchBtn = document.getElementById('manualMatchBtn')
+      const manualImg1 = document.getElementById('manualImg1')
+      const manualImg2 = document.getElementById('manualImg2')
+      const points1Container = document.getElementById('points1Container')
+      const points2Container = document.getElementById('points2Container')
+      const pairCount = document.getElementById('pairCount')
+      const clearPointsBtn = document.getElementById('clearPointsBtn')
+      const processManualBtn = document.getElementById('processManualBtn')
+      
+      // Update threshold display when slider changes
+      thresholdSlider.addEventListener('input', function (e) {
+        thresholdValue.textContent = e.target.value
+      })
+      
+      // Update alpha display when slider changes
+      alphaSlider.addEventListener('input', function (e) {
+        alphaValue.textContent = e.target.value
+      })
+      
+      // Show/hide alpha slider based on merge type
+      mergeTypeRadios.forEach((radio) => {
+        radio.addEventListener('change', function () {
+          if (this.value === 'feature_aligned_blend') {
+            alphaContainer.style.display = 'block'
+          } else {
+            alphaContainer.style.display = 'none'
+          }
+        })
+      })
+      
+      // Initial state - hide alpha slider if not blend
+      if (!document.getElementById('feature_aligned_blend').checked) {
+        alphaContainer.style.display = 'none'
+      }
+      
+      // Handle image selection for thumbnails
+      imagesInput.addEventListener('change', function(e) {
+        const files = this.files;
+        let invalidFiles = [];
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const fileType = file.type;
             
-            const formData = new FormData(this);
-            const loading = document.getElementById('loading');
-            const result = document.getElementById('result');
-            const downloadContainer = document.getElementById('downloadContainer');
-            
-            loading.style.display = 'block';
-            result.innerHTML = '';
-            downloadContainer.style.display = 'none';
-
-            try {
-                const response = await fetch('/merge', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    const img = document.createElement('img');
-                    img.src = data.result_image;
-                    img.className = 'preview-image';
-                    result.appendChild(img);
-
-                    const downloadLink = document.getElementById('downloadLink');
-                    downloadLink.href = data.result_image;
-                    downloadContainer.style.display = 'block';
-                } else {
-                    result.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-                }
-            } catch (error) {
-                result.innerHTML = `<div class="alert alert-danger">Error processing images: ${error.message}</div>`;
-            } finally {
-                loading.style.display = 'none';
+            // Check if file type is allowed
+            if (!['image/jpeg', 'image/png', 'image/bmp', 'image/svg+xml'].includes(fileType)) {
+                invalidFiles.push(file.name);
             }
+        }
+        
+        if (invalidFiles.length > 0) {
+            showError(`The following files are not supported: ${invalidFiles.join(', ')}. 
+                      Please use only JPG, PNG, BMP, or SVG files.`);
+            // Clear the input
+            this.value = '';
+            return;
+        }
+        
+        // Continue with your existing code for valid files
+        updateThumbnails(files);
+        
+        // Enable buttons if files are selected
+        if (files.length > 0) {
+            showPreprocessedBtn.disabled = false;
+            if (files.length >= 2) {
+                showMatchesBtn.disabled = false;
+                manualMatchBtn.disabled = false;
+            }
+        }
+      })
+      
+      // Function to update thumbnails
+      function updateThumbnails(files) {
+        thumbnailsContainer.innerHTML = ''
+        uploadedFiles = files
+      
+        if (files.length === 0) {
+          thumbnailsContainer.innerHTML = '<div class="text-center text-muted">Upload images to see thumbnails here</div>'
+          return
+        }
+      
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          const reader = new FileReader()
+      
+          reader.onload = function (e) {
+            const thumbnailItem = document.createElement('div')
+            thumbnailItem.className = 'thumbnail-item'
+      
+            const thumbnail = document.createElement('img')
+            thumbnail.src = e.target.result
+            thumbnail.className = 'image-thumbnail'
+            thumbnail.alt = `Image ${i + 1}`
+      
+            const label = document.createElement('small')
+            label.textContent = file.name.length > 15 ? file.name.substring(0, 12) + '...' : file.name
+            label.className = 'mt-1'
+      
+            thumbnailItem.appendChild(thumbnail)
+            thumbnailItem.appendChild(label)
+            thumbnailsContainer.appendChild(thumbnailItem)
+          }
+      
+          reader.readAsDataURL(file)
+        }
+      }
+      
+      // Handle form submission
+      uploadForm.addEventListener('submit', async function (e) {
+        e.preventDefault()
+      
+        const formData = new FormData(this)
+      
+        // Add use_orb as string
+        formData.set('use_orb', document.getElementById('useOrb').checked ? 'true' : 'false')
+      
+        // Reset UI
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        result.innerHTML = ''
+        errorContainer.style.display = 'none'
+        downloadBtn.style.display = 'none'
+      
+        try {
+          const response = await fetch('/merge', {
+            method: 'POST',
+            body: formData
+          })
+      
+          if (!response.ok) {
+            throw new Error('Network response was not ok')
+          }
+      
+          const data = await response.json()
+      
+          if (data.success) {
+            console.log('Response data:', data) // Add debug logging
+            const img = document.createElement('img')
+            // Check both possible field names for the result image path
+            const resultPath = data.result_image || data.result
+            if (!resultPath) {
+              throw new Error('No result image path in response')
+            }
+            img.src = resultPath
+            img.className = 'preview-image'
+            img.alt = 'Merged Result'
+            result.appendChild(img)
+            result.style.display = 'block'
+      
+            // Set download button
+            downloadBtn.style.display = 'block'
+            downloadBtn.onclick = function () {
+              const a = document.createElement('a')
+              a.href = resultPath
+              a.download = 'merged_image.png'
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+            }
+      
+            // Store the result URL
+            resultImageUrl = resultPath
+      
+            // Enable the enhance panorama button
+            enhancePanoramaBtn.disabled = false
+          } else {
+            showError(data.error || data.message || 'Unknown error occurred')
+          }
+        } catch (error) {
+          showError(`Error processing images: ${error.message}`)
+          console.error('Full error:', error) // Add detailed error logging
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+      
+      // Show feature matches
+      showMatchesBtn.addEventListener('click', async function () {
+        if (imagesInput.files.length < 2) {
+          showError('Need at least 2 images to show matches')
+          return
+        }
+      
+        const formData = new FormData()
+      
+        // Add the first two images
+        formData.append('images', imagesInput.files[0])
+        formData.append('images', imagesInput.files[1])
+        formData.append('threshold', thresholdSlider.value)
+        formData.append('use_orb', document.getElementById('useOrb').checked ? 'true' : 'false')
+      
+        // Reset UI
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        result.innerHTML = ''
+        errorContainer.style.display = 'none'
+        downloadBtn.style.display = 'none'
+      
+        try {
+          const response = await fetch('/feature_matches', {
+            method: 'POST',
+            body: formData
+          })
+      
+          if (!response.ok) {
+            throw new Error('Network response was not ok')
+          }
+      
+          const data = await response.json()
+      
+          if (data.success) {
+            const img = document.createElement('img')
+            img.src = data.result_image
+            img.className = 'preview-image'
+            img.alt = 'Feature Matches'
+            result.appendChild(img)
+      
+            const infoText = document.createElement('p')
+            infoText.className = 'text-center mt-2'
+            infoText.innerHTML = `<strong>Found ${data.match_count} matches</strong> between the first two images`
+            result.appendChild(infoText)
+      
+            result.style.display = 'block'
+      
+            // Set download button
+            downloadBtn.style.display = 'block'
+            downloadBtn.onclick = function () {
+              const a = document.createElement('a')
+              a.href = data.result_image
+              a.download = 'feature_matches.png'
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+            }
+          } else {
+            showError(data.error)
+          }
+        } catch (error) {
+          showError(`Error showing feature matches: ${error.message}`)
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+      
+      // Show preprocessed image
+      showPreprocessedBtn.addEventListener('click', async function () {
+        if (imagesInput.files.length < 1) {
+          showError('Upload at least one image')
+          return
+        }
+      
+        const formData = new FormData()
+        formData.append('image', imagesInput.files[0])
+      
+        // Reset UI
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        result.innerHTML = ''
+        errorContainer.style.display = 'none'
+        downloadBtn.style.display = 'none'
+      
+        try {
+          const response = await fetch('/show_preprocessed', {
+            method: 'POST',
+            body: formData
+          })
+      
+          if (!response.ok) {
+            throw new Error('Network response was not ok')
+          }
+      
+          const data = await response.json()
+      
+          if (data.success) {
+            const img = document.createElement('img')
+            img.src = data.result_image
+            img.className = 'preview-image'
+            img.alt = 'Preprocessed Image'
+            result.appendChild(img)
+      
+            const infoText = document.createElement('p')
+            infoText.className = 'text-center mt-2'
+            infoText.innerHTML = '<strong>Original vs. Preprocessed Image</strong> (for better feature detection)'
+            result.appendChild(infoText)
+      
+            result.style.display = 'block'
+      
+            // Set download button
+            downloadBtn.style.display = 'block'
+            downloadBtn.onclick = function () {
+              const a = document.createElement('a')
+              a.href = data.result_image
+              a.download = 'preprocessed_image.png'
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+            }
+          } else {
+            showError(data.error)
+          }
+        } catch (error) {
+          showError(`Error showing preprocessed image: ${error.message}`)
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+      
+      // Enable enhance button when a panorama is created
+      function enableEnhancePanorama() {
+        if (resultImageUrl) {
+          enhancePanoramaBtn.disabled = false
+        }
+      }
+      
+      // Enhance panorama functionality
+      enhancePanoramaBtn.addEventListener('click', async function () {
+        if (!resultImageUrl) {
+          showError('Create a panorama first before enhancing')
+          return
+        }
+      
+        // Show processing indicator
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        result.innerHTML = ''
+        errorContainer.style.display = 'none'
+        downloadBtn.style.display = 'none'
+      
+        try {
+          // Fetch the current result image
+          const response = await fetch(resultImageUrl)
+          const blob = await response.blob()
+      
+          // Create a File object from the blob
+          const file = new File([blob], 'panorama.png', { type: 'image/png' })
+      
+          // Create form data
+          const formData = new FormData()
+          formData.append('image', file)
+      
+          // Send to enhancement endpoint
+          const enhanceResponse = await fetch('/enhance_panorama', {
+            method: 'POST',
+            body: formData
+          })
+      
+          if (!enhanceResponse.ok) {
+            throw new Error('Network response was not ok')
+          }
+      
+          const data = await enhanceResponse.json()
+      
+          if (data.success) {
+            const img = document.createElement('img')
+            img.src = data.result_image
+            img.className = 'preview-image'
+            img.alt = 'Enhanced Panorama'
+            result.appendChild(img)
+      
+            const infoText = document.createElement('p')
+            infoText.className = 'text-center mt-2'
+            infoText.innerHTML = '<strong>Enhanced Panorama</strong> with improved colors, sharpness, and horizon alignment'
+            result.appendChild(infoText)
+      
+            result.style.display = 'block'
+      
+            // Update result URL
+            resultImageUrl = data.result_image
+      
+            // Set download button
+            downloadBtn.style.display = 'block'
+            downloadBtn.onclick = function () {
+              const a = document.createElement('a')
+              a.href = data.result_image
+              a.download = 'enhanced_panorama.png'
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+            }
+          } else {
+            showError(data.error)
+          }
+        } catch (error) {
+          showError(`Error enhancing panorama: ${error.message}`)
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+      
+      // Helper function to display errors
+      function showError(message) {
+        errorContainer.textContent = message
+        errorContainer.style.display = 'block'
+      }
+
+      // Manual feature matching functionality
+      document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded, initializing manual feature matching...');
+        
+        // UI Elements
+        const manualMatchBtn = document.getElementById('manualMatchBtn');
+        const manualMatchStandaloneBtn = document.getElementById('manualMatchStandaloneBtn');
+        const manualImg1 = document.getElementById('manualImg1');
+        const manualImg2 = document.getElementById('manualImg2');
+        const points1Container = document.getElementById('points1Container');
+        const points2Container = document.getElementById('points2Container');
+        const pairCounter = document.getElementById('pairCounter');
+        const clearPointsBtn = document.getElementById('clearPointsBtn');
+        const processManualBtn = document.getElementById('processManualBtn');
+        
+        // Check if all elements exist
+        if (!manualImg1 || !manualImg2 || !points1Container || !points2Container || 
+            !pairCounter || !clearPointsBtn || !processManualBtn) {
+          console.error('One or more manual feature matching elements not found!');
+          if (!manualImg1) console.error('manualImg1 not found');
+          if (!manualImg2) console.error('manualImg2 not found');
+          if (!points1Container) console.error('points1Container not found');
+          if (!points2Container) console.error('points2Container not found');
+          if (!pairCounter) console.error('pairCounter not found');
+          if (!clearPointsBtn) console.error('clearPointsBtn not found');
+          if (!processManualBtn) console.error('processManualBtn not found');
+          return;
+        }
+        
+        // Manual matching state
+        let pointPairs = [];
+        let waitingForSecondClick = false;
+        let tempPoint = null;
+        
+        // Enable both buttons to open the modal
+        if (manualMatchBtn) {
+          manualMatchBtn.addEventListener('click', openManualMatchModal);
+        }
+        
+        manualMatchStandaloneBtn.addEventListener('click', openManualMatchModal);
+        
+        function openManualMatchModal() {
+          console.log('Opening manual match modal');
+          
+          // Check if at least 2 images are selected
+          if (imagesInput.files.length < 2) {
+            showError('Please upload at least 2 images first');
+            return;
+          }
+          
+          // Reset the state
+          resetManualMatchState();
+          
+          // Load the images into the modal
+          loadImagePreviews();
+          
+          // Show the modal
+          const modalElement = document.getElementById('manualMatchModal');
+          if (!modalElement) {
+            console.error('Modal element not found!');
+            return;
+          }
+          
+          try {
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+          } catch (error) {
+            console.error('Error showing modal:', error);
+            alert('Error showing modal. Please check console for details.');
+          }
+        }
+        
+        function resetManualMatchState() {
+          pointPairs = [];
+          waitingForSecondClick = false;
+          tempPoint = null;
+          points1Container.innerHTML = '';
+          points2Container.innerHTML = '';
+          pairCounter.textContent = '0';
+          processManualBtn.disabled = true;
+        }
+        
+        function loadImagePreviews() {
+          if (imagesInput.files.length < 2) return;
+          
+          const file1 = imagesInput.files[0];
+          const file2 = imagesInput.files[1];
+          
+          const reader1 = new FileReader();
+          reader1.onload = function(e) {
+            manualImg1.src = e.target.result;
+          };
+          reader1.readAsDataURL(file1);
+          
+          const reader2 = new FileReader();
+          reader2.onload = function(e) {
+            manualImg2.src = e.target.result;
+          };
+          reader2.readAsDataURL(file2);
+        }
+        
+        // Handle clicking on the images
+        manualImg1.addEventListener('click', function(e) {
+          if (waitingForSecondClick) return;
+          
+          // Get click coordinates relative to the image
+          const rect = this.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width;
+          const y = (e.clientY - rect.top) / rect.height;
+          
+          // Store the point (normalized coordinates 0-1)
+          tempPoint = {x, y};
+          waitingForSecondClick = true;
+          
+          // Add visual marker
+          addPointMarker(points1Container, x, y, pointPairs.length + 1, 'img1');
+          
+          // Show instruction
+          showMessage('Now click the corresponding point in Image 2');
         });
+        
+        manualImg2.addEventListener('click', function(e) {
+          if (!waitingForSecondClick) return;
+          
+          // Get click coordinates relative to the image
+          const rect = this.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width;
+          const y = (e.clientY - rect.top) / rect.height;
+          
+          // Add visual marker
+          addPointMarker(points2Container, x, y, pointPairs.length + 1, 'img2');
+          
+          // Add the point pair
+          pointPairs.push({
+            img1: tempPoint,
+            img2: {x, y}
+          });
+          
+          // Reset state for next pair
+          waitingForSecondClick = false;
+          tempPoint = null;
+          
+          // Update counter
+          pairCounter.textContent = pointPairs.length.toString();
+          
+          // Enable processing button if we have enough pairs
+          processManualBtn.disabled = pointPairs.length < 4;
+        });
+        
+        function addPointMarker(container, x, y, number, imgClass) {
+          // Create point marker
+          const marker = document.createElement('div');
+          marker.className = `point-marker ${imgClass}`;
+          marker.style.left = `${x * 100}%`;
+          marker.style.top = `${y * 100}%`;
+          
+          // Create number label
+          const label = document.createElement('div');
+          label.className = 'point-label';
+          label.textContent = number;
+          label.style.left = `${x * 100}%`;
+          label.style.top = `${y * 100}%`;
+          
+          container.appendChild(marker);
+          container.appendChild(label);
+        }
+        
+        // Clear points button
+        clearPointsBtn.addEventListener('click', function() {
+          resetManualMatchState();
+        });
+        
+        // Process manual match button
+        processManualBtn.addEventListener('click', function() {
+          if (pointPairs.length < 4) {
+            showError('Please select at least 4 point pairs');
+            return;
+          }
+          
+          // Convert to the format expected by the backend
+          // The backend expects [[x1,y1], [x2,y2]], but we have normalized coordinates
+          const formattedPairs = pointPairs.map(pair => {
+            const img1 = manualImg1.naturalWidth && manualImg1.naturalHeight ?
+              [pair.img1.x * manualImg1.naturalWidth, pair.img1.y * manualImg1.naturalHeight] :
+              [pair.img1.x * 100, pair.img1.y * 100];
+              
+            const img2 = manualImg2.naturalWidth && manualImg2.naturalHeight ?
+              [pair.img2.x * manualImg2.naturalWidth, pair.img2.y * manualImg2.naturalHeight] :
+              [pair.img2.x * 100, pair.img2.y * 100];
+              
+            return [img1, img2];
+          });
+          
+          // Hide the modal
+          bootstrap.Modal.getInstance(document.getElementById('manualMatchModal')).hide();
+          
+          // Show loading indicator
+          const loadingElement = document.getElementById('loading');
+          if (loadingElement) loadingElement.style.display = 'block';
+          
+          // Actually process images with manual points
+          processImagesWithManualPoints(formattedPairs);
+        });
+        
+        function processImagesWithManualPoints(pointPairs) {
+          console.log('Processing with manual points:', pointPairs);
+          
+          // Create FormData with the images
+          const formData = new FormData();
+          formData.append('image1', imagesInput.files[0]);
+          formData.append('image2', imagesInput.files[1]);
+          formData.append('point_pairs', JSON.stringify(pointPairs));
+          
+          // Make API request
+          fetch('/process_manual_points', {
+            method: 'POST',
+            body: formData
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error('Network response was not ok');
+            }
+            return response.json();
+          })
+          .then(data => {
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) loadingElement.style.display = 'none';
+            
+            if (data.success) {
+              // Display the result
+              displayResult(data.result_image);
+            } else {
+              showError(data.message || 'Unknown error occurred');
+            }
+          })
+          .catch(error => {
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) loadingElement.style.display = 'none';
+            
+            showError('Error processing manual points: ' + error.message);
+            console.error('Error:', error);
+          });
+        }
+        
+        function displayResult(imagePath) {
+          const resultElement = document.getElementById('result');
+          if (!resultElement) {
+            console.error('Result element not found');
+            return;
+          }
+          
+          // Clear previous results
+          resultElement.innerHTML = '';
+          
+          // Create and add image
+          const img = document.createElement('img');
+          img.src = imagePath;
+          img.className = 'preview-image';
+          img.alt = 'Manual Matched Result';
+          resultElement.appendChild(img);
+          resultElement.style.display = 'block';
+          
+          // Enable download button
+          const downloadBtn = document.getElementById('downloadBtn');
+          if (downloadBtn) {
+            downloadBtn.style.display = 'block';
+            downloadBtn.onclick = function() {
+              const a = document.createElement('a');
+              a.href = imagePath;
+              a.download = 'manual_match_result.jpg';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            };
+          }
+        }
+        
+        function showMessage(message) {
+          console.log(message);
+          // You could add a toast or other notification here
+        }
+      });
     </script>
-</body>
-</html> 
+
+    
+  </body>
+</html>
