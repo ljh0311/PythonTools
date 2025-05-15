@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Browser - Image Feature Merger</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        .file-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .file-item {
+            transition: background-color 0.2s;
+        }
+        .file-item:hover {
+            background-color: #f8f9fa;
+        }
+        .file-item.selected {
+            background-color: #e3f2fd;
+        }
+        .preview-image {
+            max-width: 100px;
+            max-height: 100px;
+            object-fit: cover;
+        }
+        .file-actions {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .file-item:hover .file-actions {
+            opacity: 1;
+        }
+        .temp-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            font-size: 0.7rem;
+            padding: 2px 5px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-arrow-left me-2"></i>Back to Image Merger
+            </a>
+            <span class="navbar-text">
+                File Browser
+            </span>
+            <div class="ms-auto">
+                <button id="deleteSelectedBtn" class="btn btn-danger" disabled>
+                    <i class="bi bi-trash me-1"></i>Delete Selected (<span id="selectedCount">0</span>)
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <!-- Uploads Section -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-upload me-2"></i>Uploads
+                            <button class="btn btn-sm btn-outline-primary ms-2 select-all-btn" data-section="uploads">
+                                <i class="bi bi-check-all"></i>
+                            </button>
+                        </h5>
+                        <span class="badge bg-primary">{{ uploads|length }} files</span>
+                    </div>
+                    <div class="card-body file-list">
+                        {% if uploads %}
+                            {% for file in uploads %}
+                                <div class="file-item p-2 border-bottom" data-path="{{ file.path }}">
+                                    <div class="d-flex align-items-center position-relative">
+                                        <div class="form-check me-2">
+                                            <input class="form-check-input file-checkbox" type="checkbox">
+                                        </div>
+                                        {% if file.name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')) %}
+                                            <div class="position-relative">
+                                                <img src="{{ file.path }}" class="preview-image me-3" alt="{{ file.name }}">
+                                                {% if 'temp' in file.path.lower() %}
+                                                    <span class="badge bg-warning temp-badge">Temp</span>
+                                                {% endif %}
+                                            </div>
+                                        {% else %}
+                                            <i class="bi bi-file-earmark-image fs-1 me-3"></i>
+                                        {% endif %}
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-0">{{ file.name }}</h6>
+                                            <small class="text-muted">
+                                                Size: {{ "%.2f"|format(file.size / 1024) }} KB
+                                                <br>
+                                                Modified: {{ file.modified|timestamp_to_datetime }}
+                                            </small>
+                                        </div>
+                                        <div class="file-actions">
+                                            <a href="{{ file.path }}" class="btn btn-sm btn-outline-primary me-1" target="_blank">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted p-4">
+                                <i class="bi bi-inbox fs-1"></i>
+                                <p class="mt-2">No files in uploads folder</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-images me-2"></i>Results
+                            <button class="btn btn-sm btn-outline-primary ms-2 select-all-btn" data-section="results">
+                                <i class="bi bi-check-all"></i>
+                            </button>
+                        </h5>
+                        <span class="badge bg-primary">{{ results|length }} files</span>
+                    </div>
+                    <div class="card-body file-list">
+                        {% if results %}
+                            {% for file in results %}
+                                <div class="file-item p-2 border-bottom" data-path="{{ file.path }}">
+                                    <div class="d-flex align-items-center position-relative">
+                                        <div class="form-check me-2">
+                                            <input class="form-check-input file-checkbox" type="checkbox">
+                                        </div>
+                                        {% if file.name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')) %}
+                                            <div class="position-relative">
+                                                <img src="{{ file.path }}" class="preview-image me-3" alt="{{ file.name }}">
+                                                {% if 'temp' in file.path.lower() %}
+                                                    <span class="badge bg-warning temp-badge">Temp</span>
+                                                {% endif %}
+                                            </div>
+                                        {% else %}
+                                            <i class="bi bi-file-earmark-image fs-1 me-3"></i>
+                                        {% endif %}
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-0">{{ file.name }}</h6>
+                                            <small class="text-muted">
+                                                Size: {{ "%.2f"|format(file.size / 1024) }} KB
+                                                <br>
+                                                Modified: {{ file.modified|timestamp_to_datetime }}
+                                            </small>
+                                        </div>
+                                        <div class="file-actions">
+                                            <a href="{{ file.path }}" class="btn btn-sm btn-outline-primary me-1" target="_blank">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted p-4">
+                                <i class="bi bi-inbox fs-1"></i>
+                                <p class="mt-2">No files in results folder</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+        const selectedCount = document.getElementById('selectedCount');
+        
+        // Handle checkbox changes
+        document.querySelectorAll('.file-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const fileItem = this.closest('.file-item');
+                fileItem.classList.toggle('selected', this.checked);
+                updateSelectedCount();
+            });
+        });
+        
+        // Handle select all buttons
+        document.querySelectorAll('.select-all-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const section = this.dataset.section;
+                const container = this.closest('.card').querySelector('.file-list');
+                const checkboxes = container.querySelectorAll('.file-checkbox');
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                
+                checkboxes.forEach(cb => {
+                    cb.checked = !allChecked;
+                    cb.closest('.file-item').classList.toggle('selected', !allChecked);
+                });
+                
+                updateSelectedCount();
+            });
+        });
+        
+        // Update selected count and button state
+        function updateSelectedCount() {
+            const count = document.querySelectorAll('.file-checkbox:checked').length;
+            selectedCount.textContent = count;
+            deleteSelectedBtn.disabled = count === 0;
+        }
+        
+        // Handle batch deletion
+        deleteSelectedBtn.addEventListener('click', async function() {
+            const selectedItems = document.querySelectorAll('.file-checkbox:checked');
+            if (!selectedItems.length) return;
+            
+            if (!confirm(`Are you sure you want to delete ${selectedItems.length} file(s)?`)) return;
+            
+            const paths = Array.from(selectedItems).map(cb => 
+                cb.closest('.file-item').dataset.path
+            );
+            
+            try {
+                const response = await fetch('/delete_files', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ file_paths: paths })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    // Remove deleted items from UI
+                    data.deleted.forEach(path => {
+                        const item = document.querySelector(`.file-item[data-path="${path}"]`);
+                        if (item) item.remove();
+                    });
+                    
+                    // Show any failures
+                    if (data.failed.length) {
+                        alert(`Failed to delete ${data.failed.length} file(s):\n` +
+                              data.failed.map(f => `${f.path}: ${f.error}`).join('\n'));
+                    }
+                    
+                    // Refresh the page to update counts
+                    location.reload();
+                } else {
+                    alert(data.message || 'Failed to delete files');
+                }
+            } catch (error) {
+                alert('Error deleting files: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html> 

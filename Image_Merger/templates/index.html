@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Feature Merger - Web Edition</title>
+    <link rel="icon" href="/static/img/favicon.ico" type="image/x-icon" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" />
+    <style>
+      :root {
+        --primary-color: #4361ee;
+        --primary-dark: #3046c1;
+        --secondary-color: #2d3748;
+        --accent-color: #00b4d8;
+        --success-color: #06d6a0;
+        --danger-color: #ef476f;
+        --background-color: #f8fafc;
+        --card-bg: #ffffff;
+        --text-primary: #2d3748;
+        --text-secondary: #64748b;
+        --border-radius: 1rem;
+        --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --transition: all 0.3s ease;
+      }
+
+      [data-theme="dark"] {
+        --background-color: #1a1b1e;
+        --card-bg: #2d2e32;
+        --text-primary: #e2e8f0;
+        --text-secondary: #a0aec0;
+      }
+
+      /* Update existing styles with better contrast */
+      .text-muted {
+        color: var(--text-secondary) !important;
+      }
+
+      .form-check-label {
+        color: var(--text-primary);
+      }
+
+      .btn-outline-primary {
+        color: var(--primary-color);
+      }
+
+      .btn-outline-primary:hover {
+        color: #ffffff;
+      }
+
+      /* Dark mode toggle button */
+      .theme-toggle {
+        background: transparent;
+        border: 2px solid var(--primary-color);
+        color: var(--primary-color);
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        cursor: pointer;
+        transition: var(--transition);
+        margin-left: 1rem;
+      }
+
+      .theme-toggle:hover {
+        background: var(--primary-color);
+        color: white;
+        transform: translateY(-2px);
+      }
+
+      [data-theme="dark"] .theme-toggle {
+        border-color: var(--text-primary);
+        color: var(--text-primary);
+      }
+
+      [data-theme="dark"] .theme-toggle:hover {
+        background: var(--text-primary);
+        color: var(--card-bg);
+      }
+
+      /* Update loading styles for better contrast */
+      .loading {
+        background: var(--card-bg);
+        color: var(--text-primary);
+      }
+
+      /* Update alert styles for better contrast */
+      .alert-info {
+        color: var(--primary-color);
+      }
+
+      [data-theme="dark"] .alert-info {
+        color: #90cdf4;
+      }
+
+      .alert-danger {
+        background: rgba(239, 71, 111, 0.1);
+        color: var(--danger-color);
+      }
+
+      [data-theme="dark"] .alert-danger {
+        background: rgba(239, 71, 111, 0.2);
+        color: #ff8ba7;
+      }
+
+      body {
+        background-color: var(--background-color);
+        color: var(--text-primary);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        min-height: 100vh;
+      }
+
+      .navbar {
+        background: var(--card-bg);
+        box-shadow: var(--box-shadow);
+        padding: 1rem 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      }
+
+      .navbar-brand {
+        color: var(--primary-color) !important;
+        font-weight: 700;
+        font-size: 1.5rem;
+        display: flex;
+        align-items: center;
+      }
+
+      .navbar-brand .badge {
+        background: var(--primary-color);
+        color: white;
+        font-size: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        font-weight: 500;
+      }
+
+      .navbar .nav-link {
+        color: var(--text-secondary) !important;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        transition: var(--transition);
+      }
+
+      .navbar .nav-link:hover {
+        color: var(--primary-color) !important;
+        background: rgba(67, 97, 238, 0.05);
+      }
+
+      .navbar-toggler {
+        border: none;
+        padding: 0.5rem;
+        color: var(--text-primary);
+      }
+
+      .navbar-toggler:focus {
+        box-shadow: none;
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+      }
+
+      .container {
+        max-width: 1400px;
+        padding: 2rem;
+      }
+
+      .card {
+        background: var(--card-bg);
+        border: none;
+        border-radius: var(--border-radius);
+        box-shadow: var(--box-shadow);
+        margin-bottom: 2rem;
+        overflow: hidden;
+      }
+
+      .card-header {
+        background: var(--card-bg);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        padding: 1.5rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        font-size: 1.1rem;
+      }
+
+      .card-body {
+        padding: 1.5rem;
+      }
+
+      .form-label {
+        color: var(--text-primary);
+        font-weight: 500;
+        margin-bottom: 0.75rem;
+      }
+
+      .form-control {
+        border: 2px solid #e2e8f0;
+        border-radius: 0.75rem;
+        padding: 0.75rem 1rem;
+        transition: var(--transition);
+        background: #f8fafc;
+      }
+
+      .form-control:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+      }
+
+      .btn {
+        border-radius: 0.75rem;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        transition: var(--transition);
+      }
+
+      .btn-primary {
+        background: var(--primary-color);
+        border: none;
+      }
+
+      .btn-primary:hover {
+        background: var(--primary-dark);
+        transform: translateY(-2px);
+      }
+
+      .btn-outline-primary {
+        border: 2px solid var(--primary-color);
+        color: var(--primary-color);
+      }
+
+      .btn-outline-primary:hover {
+        background: var(--primary-color);
+        transform: translateY(-2px);
+      }
+
+      .thumbnail-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 1.5rem;
+        padding: 1.5rem;
+        background: #f8fafc;
+        border-radius: var(--border-radius);
+      }
+
+      .thumbnail-item {
+        background: var(--card-bg);
+        padding: 1rem;
+        border-radius: 0.75rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        transition: var(--transition);
+      }
+
+      .thumbnail-item:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      }
+
+      .image-thumbnail {
+        width: 100%;
+        height: 160px;
+        object-fit: cover;
+        border-radius: 0.5rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .custom-range {
+        height: 6px;
+        border-radius: 3px;
+        background: #e2e8f0;
+      }
+
+      .custom-range::-webkit-slider-thumb {
+        width: 20px;
+        height: 20px;
+        background: var(--primary-color);
+        border: 3px solid #fff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        transition: var(--transition);
+      }
+
+      .custom-range::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+      }
+
+      .features-container {
+        background: #f8fafc;
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+        margin-top: 2rem;
+      }
+
+      .features-container h5 {
+        color: var(--text-primary);
+        font-weight: 600;
+        margin-bottom: 1rem;
+      }
+
+      .alert-info {
+        background: rgba(67, 97, 238, 0.1);
+        border: none;
+        border-radius: var(--border-radius);
+        color: var(--primary-color);
+      }
+
+      .preview-container {
+        background: #f8fafc;
+        border-radius: var(--border-radius);
+        padding: 2rem;
+        margin: 1.5rem 0;
+        text-align: center;
+      }
+
+      .preview-image {
+        max-width: 100%;
+        border-radius: 0.75rem;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .loading {
+        padding: 3rem;
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(8px);
+        border-radius: var(--border-radius);
+        box-shadow: var(--box-shadow);
+      }
+
+      .loading .spinner-border {
+        width: 3rem;
+        height: 3rem;
+        color: var(--primary-color);
+      }
+
+      .badge {
+        padding: 0.5rem 1rem;
+        border-radius: 2rem;
+        font-weight: 500;
+        background: rgba(67, 97, 238, 0.1);
+        color: var(--primary-color);
+      }
+
+      /* Add these additional styles */
+      .card {
+        height: 100%;
+        margin-bottom: 0;
+      }
+
+      .features-container {
+        background: transparent;
+        padding: 0;
+        margin-top: 0;
+      }
+
+      .alert-info {
+        background: rgba(67, 97, 238, 0.05);
+      }
+
+      .alert-info ul {
+        padding-left: 1.2rem;
+      }
+
+      .thumbnail-container {
+        background: transparent;
+        padding: 0;
+        margin: 0;
+      }
+
+      .preview-container {
+        background: transparent;
+        padding: 0;
+        margin: 0;
+      }
+
+      @media (max-width: 991.98px) {
+        .col-lg-3, .col-lg-6 {
+          margin-bottom: 1.5rem;
+        }
+      }
+
+      /* Add styles for manual feature matching */
+      .point-marker {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        background: rgba(255, 0, 0, 0.7);
+        border: 2px solid white;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+
+      .point-label {
+        position: absolute;
+        color: white;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-size: 12px;
+        transform: translate(-50%, -150%);
+        pointer-events: none;
+      }
+
+      .image-container {
+        position: relative;
+        display: inline-block;
+        cursor: crosshair;
+      }
+
+      .image-container img {
+        max-width: 100%;
+        height: auto;
+      }
+
+      #points1Container, #points2Container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-lg">
+      <div class="container">
+        <a class="navbar-brand" href="#">
+          <i class="bi bi-image-alt me-2"></i>
+          Image Feature Merger 
+          <span class="badge ms-2">Beta v1.0.0</span>
+        </a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarContent">
+          <ul class="navbar-nav ms-auto align-items-center">
+            <li class="nav-item">
+              <a class="nav-link" href="/view_files">
+                <i class="bi bi-folder me-2"></i>File Browser
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="/maintenance">
+                <i class="bi bi-tools me-2"></i>Maintenance
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="https://github.com/yourusername/image-feature-merger" target="_blank">
+                <i class="bi bi-github me-2"></i>GitHub
+              </a>
+            </li>
+            <li class="nav-item">
+              <button class="theme-toggle" id="themeToggle" title="Toggle dark mode">
+                <i class="bi bi-moon-fill"></i>
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container mt-4">
+      <div class="row g-4">
+        <!-- Left panel: Upload & Settings -->
+        <div class="col-lg-3">
+          <div class="card h-100">
+            <div class="card-header d-flex align-items-center">
+              <i class="bi bi-gear-fill me-2"></i>
+              <span>Upload & Settings</span>
+            </div>
+            <div class="card-body">
+              <form id="uploadForm" enctype="multipart/form-data">
+                <div class="mb-3">
+                  <label for="images" class="form-label">Select Images (2 or more)</label>
+                  <input type="file" class="form-control" id="images" name="images" multiple accept="image/jpeg,image/png,image/bmp,image/svg+xml" required />
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label">Merge Type</label>
+                  <div class="btn-group w-100" role="group">
+                    <input type="radio" class="btn-check" name="merge_type" id="side_by_side" value="side_by_side" />
+                    <label class="btn btn-outline-primary" for="side_by_side">Side-by-Side</label>
+                    <input type="radio" class="btn-check" name="merge_type" id="feature_aligned_blend" value="feature_aligned_blend" />
+                    <label class="btn btn-outline-primary" for="feature_aligned_blend">Blend</label>
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label for="threshold" class="form-label d-flex justify-content-between">
+                    <span>Match Threshold</span>
+                    <span class="badge" id="thresholdValue">0.7</span>
+                  </label>
+                  <input type="range" class="form-range" id="threshold" name="threshold" min="0.1" max="0.9" step="0.1" value="0.7" />
+                </div>
+
+                <div class="mb-3" id="alphaContainer">
+                  <label for="alpha" class="form-label d-flex justify-content-between">
+                    <span>Blend Transparency</span>
+                    <span class="badge" id="alphaValue">0.5</span>
+                  </label>
+                  <input type="range" class="form-range" id="alpha" name="alpha" min="0.1" max="0.9" step="0.1" value="0.5" />
+                </div>
+
+                <div class="form-check mb-3">
+                  <input class="form-check-input" type="checkbox" id="useOrb" name="use_orb" />
+                  <label class="form-check-label" for="useOrb">Use ORB Detector</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">
+                  <i class="bi bi-magic me-2"></i>Process Images
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Middle panel: Features & Tips -->
+        <div class="col-lg-3">
+          <div class="card h-100">
+            <div class="card-header d-flex align-items-center">
+              <i class="bi bi-tools me-2"></i>
+              <span>Features & Tips</span>
+            </div>
+            <div class="card-body">
+              <div class="features-container mb-4">
+                <div class="d-grid gap-2">
+                  <button class="btn btn-outline-primary" id="showMatchesBtn" disabled>
+                    <i class="bi bi-link-45deg me-2"></i>Show Feature Matches
+                  </button>
+                  <button class="btn btn-outline-info" id="showPreprocessedBtn" disabled>
+                    <i class="bi bi-image-alt me-2"></i>Show Preprocessed Image
+                  </button>
+                  <button class="btn btn-outline-success" id="manualMatchBtn" disabled>
+                    <i class="bi bi-pencil me-2"></i>Manual Feature Matching
+                  </button>
+                  <button class="btn btn-outline-warning" id="enhancePanoramaBtn" disabled>
+                    <i class="bi bi-magic me-2"></i>Enhance Panorama
+                  </button>
+                </div>
+              </div>
+
+              <div class="alert alert-info mb-0">
+                <h6 class="alert-heading mb-2"><i class="bi bi-lightbulb me-2"></i>Tips for Better Results:</h6>
+                <ul class="mb-0 small">
+                  <li>Use images with at least 30% overlap</li>
+                  <li>Try ORB detector for night images</li>
+                  <li>Use 'Side-by-Side' for images that don't align well</li>
+                  <li>Use 'Enhance Panorama' to fix crooked horizons</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right panel: Results Preview -->
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <div class="d-flex align-items-center">
+                <i class="bi bi-image me-2"></i>
+                <span>Results Preview</span>
+              </div>
+              <div class="btn-group">
+                <button id="downloadBtn" class="btn btn-sm btn-success" style="display: none;">
+                  <i class="bi bi-download me-2"></i>Download
+                </button>
+                <button id="shareBtn" class="btn btn-sm btn-outline-primary" style="display: none;">
+                  <i class="bi bi-share me-2"></i>Share
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="thumbnailsContainer" class="thumbnail-container mb-4">
+                <div class="text-center text-muted p-4">
+                  <i class="bi bi-images fs-2"></i>
+                  <p class="mt-2">Upload 2 or more images to create a panorama</p>
+                </div>
+              </div>
+
+              <div id="loading" class="loading" style="display: none;">
+                <div class="spinner-border mb-3" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="lead mb-0">Processing your panorama...</p>
+                <p class="text-muted small">This may take a few moments depending on image size</p>
+              </div>
+
+              <div id="result" class="preview-container" style="display: none;">
+                <img id="previewImage" class="img-fluid rounded" alt="Panorama result">
+              </div>
+
+              <div id="errorContainer" class="alert alert-danger" style="display: none;" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                <span class="error-message"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Feature Matching UI -->
+    <div class="modal fade" id="manualMatchModal" tabindex="-1" aria-labelledby="manualMatchModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="manualMatchModalLabel">Manual Feature Matching</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <h6>Image 1 - Click to select points</h6>
+                <div class="image-container">
+                  <img id="manualImg1" src="" class="img-fluid border">
+                  <div id="points1Container"></div>
+                </div>
+              </div>
+              <div class="col-md-6 mb-3">
+                <h6>Image 2 - Click to select matching points</h6>
+                <div class="image-container">
+                  <img id="manualImg2" src="" class="img-fluid border">
+                  <div id="points2Container"></div>
+                </div>
+              </div>
+            </div>
+            <div class="row mt-2">
+              <div class="col-12">
+                <div class="alert alert-info">
+                  <p><strong>Instructions:</strong></p>
+                  <ol>
+                    <li>Click a point on Image 1</li>
+                    <li>Click the corresponding point on Image 2</li>
+                    <li>Repeat to create at least 4 matching pairs</li>
+                    <li>Points should be in similar locations in both images</li>
+                  </ol>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>Point pairs: <span id="pairCounter">0</span> <small class="text-muted">(minimum 4 required)</small></div>
+                  <button id="clearPointsBtn" class="btn btn-outline-danger btn-sm">Clear Points</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="processManualBtn" disabled>Process Images</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Make sure Bootstrap Bundle JS is included -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+      // Global variables
+      let uploadedFiles = []
+      let resultImageUrl = null
+      
+      // UI References
+      const uploadForm = document.getElementById('uploadForm')
+      const imagesInput = document.getElementById('images')
+      const thresholdSlider = document.getElementById('threshold')
+      const thresholdValue = document.getElementById('thresholdValue')
+      const alphaSlider = document.getElementById('alpha')
+      const alphaValue = document.getElementById('alphaValue')
+      const alphaContainer = document.getElementById('alphaContainer')
+      const thumbnailsContainer = document.getElementById('thumbnailsContainer')
+      const loading = document.getElementById('loading')
+      const result = document.getElementById('result')
+      const errorContainer = document.getElementById('errorContainer')
+      const downloadBtn = document.getElementById('downloadBtn')
+      const showMatchesBtn = document.getElementById('showMatchesBtn')
+      const showPreprocessedBtn = document.getElementById('showPreprocessedBtn')
+      const enhancePanoramaBtn = document.getElementById('enhancePanoramaBtn')
+      const mergeTypeRadios = document.querySelectorAll('input[name="merge_type"]')
+      const manualMatchBtn = document.getElementById('manualMatchBtn')
+      const manualImg1 = document.getElementById('manualImg1')
+      const manualImg2 = document.getElementById('manualImg2')
+      const points1Container = document.getElementById('points1Container')
+      const points2Container = document.getElementById('points2Container')
+      const pairCount = document.getElementById('pairCount')
+      const clearPointsBtn = document.getElementById('clearPointsBtn')
+      const processManualBtn = document.getElementById('processManualBtn')
+      const manualMatchModal = document.getElementById('manualMatchModal')
+      
+      // Update threshold display when slider changes
+      thresholdSlider.addEventListener('input', function (e) {
+        thresholdValue.textContent = e.target.value
+      })
+      
+      // Update alpha display when slider changes
+      alphaSlider.addEventListener('input', function (e) {
+        alphaValue.textContent = e.target.value
+      })
+      
+      // Show/hide alpha slider based on merge type
+      mergeTypeRadios.forEach((radio) => {
+        radio.addEventListener('change', function () {
+          if (this.value === 'feature_aligned_blend') {
+            alphaContainer.style.display = 'block'
+          } else {
+            alphaContainer.style.display = 'none'
+          }
+        })
+      })
+      
+      // Initial state - hide alpha slider if not blend
+      if (!document.getElementById('feature_aligned_blend').checked) {
+        alphaContainer.style.display = 'none'
+      }
+      
+      // Handle image selection for thumbnails
+      imagesInput.addEventListener('change', function(e) {
+        const files = this.files;
+        let invalidFiles = [];
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const fileType = file.type;
+            
+            // Check if file type is allowed
+            if (!['image/jpeg', 'image/png', 'image/bmp', 'image/svg+xml'].includes(fileType)) {
+                invalidFiles.push(file.name);
+            }
+        }
+        
+        if (invalidFiles.length > 0) {
+            showError(`The following files are not supported: ${invalidFiles.join(', ')}. 
+                      Please use only JPG, PNG, BMP, or SVG files.`);
+            // Clear the input
+            this.value = '';
+            return;
+        }
+        
+        // Continue with your existing code for valid files
+        updateThumbnails(files);
+        
+        // Enable buttons if files are selected
+        if (files.length > 0) {
+            showPreprocessedBtn.disabled = false;
+            if (files.length >= 2) {
+                showMatchesBtn.disabled = false;
+                manualMatchBtn.disabled = false;
+            }
+        }
+      })
+      
+      // Function to update thumbnails
+      function updateThumbnails(files) {
+        thumbnailsContainer.innerHTML = ''
+        uploadedFiles = files
+      
+        if (files.length === 0) {
+          thumbnailsContainer.innerHTML = '<div class="text-center text-muted">Upload images to see thumbnails here</div>'
+          return
+        }
+      
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          const reader = new FileReader()
+      
+          reader.onload = function (e) {
+            const thumbnailItem = document.createElement('div')
+            thumbnailItem.className = 'thumbnail-item'
+      
+            const thumbnail = document.createElement('img')
+            thumbnail.src = e.target.result
+            thumbnail.className = 'image-thumbnail'
+            thumbnail.alt = `Image ${i + 1}`
+      
+            const label = document.createElement('small')
+            label.textContent = file.name.length > 15 ? file.name.substring(0, 12) + '...' : file.name
+            label.className = 'mt-1'
+
+            // Add delete button for thumbnail
+            const deleteBtn = document.createElement('button')
+            deleteBtn.className = 'btn btn-sm btn-danger delete-thumbnail position-absolute top-0 end-0 m-1'
+            deleteBtn.innerHTML = '<i class="bi bi-trash"></i>'
+            deleteBtn.title = 'Delete Image'
+            deleteBtn.onclick = function() {
+              thumbnailItem.remove()
+              // Remove from FileList
+              const dt = new DataTransfer()
+              const input = document.getElementById('images')
+              const { files } = input
+              
+              for (let i = 0; i < files.length; i++) {
+                const file = files[i]
+                if (file !== files[i]) {
+                  dt.items.add(file)
+                }
+              }
+              
+              input.files = dt.files
+              
+              // Update button states
+              if (input.files.length < 2) {
+                showMatchesBtn.disabled = true
+                manualMatchBtn.disabled = true
+              }
+              if (input.files.length === 0) {
+                showPreprocessedBtn.disabled = true
+              }
+            }
+      
+            thumbnailItem.appendChild(thumbnail)
+            thumbnailItem.appendChild(label)
+            thumbnailItem.appendChild(deleteBtn)
+            thumbnailsContainer.appendChild(thumbnailItem)
+          }
+      
+          reader.readAsDataURL(file)
+        }
+      }
+      
+      // Handle form submission
+      uploadForm.addEventListener('submit', async function (e) {
+        e.preventDefault()
+      
+        const formData = new FormData(this)
+      
+        // Add use_orb as string
+        formData.set('use_orb', document.getElementById('useOrb').checked ? 'true' : 'false')
+      
+        // Reset UI
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        result.innerHTML = ''
+        errorContainer.style.display = 'none'
+        downloadBtn.style.display = 'none'
+      
+        try {
+          const response = await fetch('/merge', {
+            method: 'POST',
+            body: formData
+          })
+      
+          if (!response.ok) {
+            throw new Error('Network response was not ok')
+          }
+      
+          const data = await response.json()
+      
+          if (data.success) {
+            console.log('Response data:', data) // Add debug logging
+            const img = document.createElement('img')
+            // Check both possible field names for the result image path
+            const resultPath = data.result_image || data.result
+            if (!resultPath) {
+              throw new Error('No result image path in response')
+            }
+            img.src = resultPath
+            img.className = 'preview-image'
+            img.alt = 'Merged Result'
+            result.appendChild(img)
+            result.style.display = 'block'
+      
+            // Set download button
+            downloadBtn.style.display = 'block'
+            downloadBtn.onclick = function () {
+              const a = document.createElement('a')
+              a.href = resultPath
+              a.download = 'merged_image.png'
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+            }
+      
+            // Store the result URL
+            resultImageUrl = resultPath
+      
+            // Enable the enhance panorama button
+            enhancePanoramaBtn.disabled = false
+          } else {
+            showError(data.error || data.message || 'Unknown error occurred')
+          }
+        } catch (error) {
+          showError(`Error processing images: ${error.message}`)
+          console.error('Full error:', error) // Add detailed error logging
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+      
+      // Show feature matches
+      showMatchesBtn.addEventListener('click', async function () {
+        if (imagesInput.files.length < 2) {
+          showError('Need at least 2 images to show matches')
+          return
+        }
+      
+        const formData = new FormData()
+      
+        // Add the first two images
+        formData.append('images', imagesInput.files[0])
+        formData.append('images', imagesInput.files[1])
+        formData.append('threshold', thresholdSlider.value)
+        formData.append('use_orb', document.getElementById('useOrb').checked ? 'true' : 'false')
+      
+        // Reset UI
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        result.innerHTML = ''
+        errorContainer.style.display = 'none'
+        downloadBtn.style.display = 'none'
+      
+        try {
+          const response = await fetch('/feature_matches', {
+            method: 'POST',
+            body: formData
+          })
+      
+          if (!response.ok) {
+            throw new Error('Network response was not ok')
+          }
+      
+          const data = await response.json()
+      
+          if (data.success) {
+            const img = document.createElement('img')
+            img.src = data.result_image
+            img.className = 'preview-image'
+            img.alt = 'Feature Matches'
+            result.appendChild(img)
+      
+            const infoText = document.createElement('p')
+            infoText.className = 'text-center mt-2'
+            infoText.innerHTML = `<strong>Found ${data.match_count} matches</strong> between the first two images`
+            result.appendChild(infoText)
+      
+            result.style.display = 'block'
+      
+            // Set download button
+            downloadBtn.style.display = 'block'
+            downloadBtn.onclick = function () {
+              const a = document.createElement('a')
+              a.href = data.result_image
+              a.download = 'feature_matches.png'
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+            }
+          } else {
+            showError(data.error)
+          }
+        } catch (error) {
+          showError(`Error showing feature matches: ${error.message}`)
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+      
+      // Show preprocessed image
+      showPreprocessedBtn.addEventListener('click', async function () {
+        if (imagesInput.files.length < 1) {
+          showError('Upload at least one image')
+          return
+        }
+      
+        const formData = new FormData()
+        formData.append('image', imagesInput.files[0])
+      
+        // Reset UI
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        result.innerHTML = ''
+        errorContainer.style.display = 'none'
+        downloadBtn.style.display = 'none'
+      
+        try {
+          const response = await fetch('/show_preprocessed', {
+            method: 'POST',
+            body: formData
+          })
+      
+          if (!response.ok) {
+            throw new Error('Network response was not ok')
+          }
+      
+          const data = await response.json()
+      
+          if (data.success) {
+            const img = document.createElement('img')
+            img.src = data.result_image
+            img.className = 'preview-image'
+            img.alt = 'Preprocessed Image'
+            result.appendChild(img)
+      
+            const infoText = document.createElement('p')
+            infoText.className = 'text-center mt-2'
+            infoText.innerHTML = '<strong>Original vs. Preprocessed Image</strong> (for better feature detection)'
+            result.appendChild(infoText)
+      
+            result.style.display = 'block'
+      
+            // Set download button
+            downloadBtn.style.display = 'block'
+            downloadBtn.onclick = function () {
+              const a = document.createElement('a')
+              a.href = data.result_image
+              a.download = 'preprocessed_image.png'
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+            }
+          } else {
+            showError(data.error)
+          }
+        } catch (error) {
+          showError(`Error showing preprocessed image: ${error.message}`)
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+      
+      // Enable enhance button when a panorama is created
+      function enableEnhancePanorama() {
+        if (resultImageUrl) {
+          enhancePanoramaBtn.disabled = false
+        }
+      }
+      
+      // Enhance panorama functionality
+      enhancePanoramaBtn.addEventListener('click', async function () {
+        if (!resultImageUrl) {
+          showError('Create a panorama first before enhancing')
+          return
+        }
+      
+        // Show processing indicator
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        result.innerHTML = ''
+        errorContainer.style.display = 'none'
+        downloadBtn.style.display = 'none'
+      
+        try {
+          // Fetch the current result image
+          const response = await fetch(resultImageUrl)
+          const blob = await response.blob()
+      
+          // Create a File object from the blob
+          const file = new File([blob], 'panorama.png', { type: 'image/png' })
+      
+          // Create form data
+          const formData = new FormData()
+          formData.append('image', file)
+      
+          // Send to enhancement endpoint
+          const enhanceResponse = await fetch('/enhance_panorama', {
+            method: 'POST',
+            body: formData
+          })
+      
+          if (!enhanceResponse.ok) {
+            throw new Error('Network response was not ok')
+          }
+      
+          const data = await enhanceResponse.json()
+      
+          if (data.success) {
+            const img = document.createElement('img')
+            img.src = data.result_image
+            img.className = 'preview-image'
+            img.alt = 'Enhanced Panorama'
+            result.appendChild(img)
+      
+            const infoText = document.createElement('p')
+            infoText.className = 'text-center mt-2'
+            infoText.innerHTML = '<strong>Enhanced Panorama</strong> with improved colors, sharpness, and horizon alignment'
+            result.appendChild(infoText)
+      
+            result.style.display = 'block'
+      
+            // Update result URL
+            resultImageUrl = data.result_image
+      
+            // Set download button
+            downloadBtn.style.display = 'block'
+            downloadBtn.onclick = function () {
+              const a = document.createElement('a')
+              a.href = data.result_image
+              a.download = 'enhanced_panorama.png'
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+            }
+          } else {
+            showError(data.error)
+          }
+        } catch (error) {
+          showError(`Error enhancing panorama: ${error.message}`)
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+      
+      // Helper function to display errors
+      function showError(message) {
+        errorContainer.textContent = message
+        errorContainer.style.display = 'block'
+      }
+
+      // Manual feature matching functionality
+      document.addEventListener('DOMContentLoaded', function() {
+        const manualMatchBtn = document.getElementById('manualMatchBtn');
+        const manualImg1 = document.getElementById('manualImg1');
+        const manualImg2 = document.getElementById('manualImg2');
+        const points1Container = document.getElementById('points1Container');
+        const points2Container = document.getElementById('points2Container');
+        const pairCounter = document.getElementById('pairCounter');
+        const clearPointsBtn = document.getElementById('clearPointsBtn');
+        const processManualBtn = document.getElementById('processManualBtn');
+        const manualMatchModal = document.getElementById('manualMatchModal');
+
+        let pointPairs = [];
+        let waitingForSecondClick = false;
+        let tempPoint = null;
+
+        // Initialize the modal
+        const modal = new bootstrap.Modal(manualMatchModal);
+
+        manualMatchBtn.addEventListener('click', function() {
+          if (imagesInput.files.length < 2) {
+            showError('Please upload at least 2 images first');
+            return;
+          }
+
+          // Reset state
+          resetManualMatchState();
+          
+          // Load images into the modal
+          const reader1 = new FileReader();
+          reader1.onload = function(e) {
+            manualImg1.src = e.target.result;
+          };
+          reader1.readAsDataURL(imagesInput.files[0]);
+
+          const reader2 = new FileReader();
+          reader2.onload = function(e) {
+            manualImg2.src = e.target.result;
+          };
+          reader2.readAsDataURL(imagesInput.files[1]);
+
+          // Show the modal
+          modal.show();
+        });
+
+        function resetManualMatchState() {
+          pointPairs = [];
+          waitingForSecondClick = false;
+          tempPoint = null;
+          points1Container.innerHTML = '';
+          points2Container.innerHTML = '';
+          pairCounter.textContent = '0';
+          processManualBtn.disabled = true;
+        }
+
+        // Handle clicking on images
+        manualImg1.parentElement.addEventListener('click', function(e) {
+          if (waitingForSecondClick) return;
+
+          const rect = manualImg1.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width;
+          const y = (e.clientY - rect.top) / rect.height;
+
+          tempPoint = {x, y};
+          waitingForSecondClick = true;
+
+          // Add visual marker
+          addPointMarker(points1Container, x, y, pointPairs.length + 1);
+        });
+
+        manualImg2.parentElement.addEventListener('click', function(e) {
+          if (!waitingForSecondClick) return;
+
+          const rect = manualImg2.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width;
+          const y = (e.clientY - rect.top) / rect.height;
+
+          // Add visual marker
+          addPointMarker(points2Container, x, y, pointPairs.length + 1);
+
+          // Add the point pair
+          pointPairs.push({
+            img1: tempPoint,
+            img2: {x, y}
+          });
+
+          // Reset state for next pair
+          waitingForSecondClick = false;
+          tempPoint = null;
+
+          // Update counter and button state
+          pairCounter.textContent = pointPairs.length.toString();
+          processManualBtn.disabled = pointPairs.length < 4;
+        });
+
+        function addPointMarker(container, x, y, number) {
+          const marker = document.createElement('div');
+          marker.className = 'point-marker';
+          marker.style.left = `${x * 100}%`;
+          marker.style.top = `${y * 100}%`;
+
+          const label = document.createElement('div');
+          label.className = 'point-label';
+          label.textContent = number;
+          label.style.left = `${x * 100}%`;
+          label.style.top = `${y * 100}%`;
+
+          container.appendChild(marker);
+          container.appendChild(label);
+        }
+
+        // Clear points button
+        clearPointsBtn.addEventListener('click', resetManualMatchState);
+
+        // Process manual points button
+        processManualBtn.addEventListener('click', function() {
+          if (pointPairs.length < 4) {
+            showError('Please select at least 4 point pairs');
+            return;
+          }
+
+          // Hide the modal
+          modal.hide();
+
+          // Show loading indicator
+          loading.style.display = 'block';
+          result.style.display = 'none';
+          errorContainer.style.display = 'none';
+
+          // Create FormData with the images and point pairs
+          const formData = new FormData();
+          formData.append('image1', imagesInput.files[0]);
+          formData.append('image2', imagesInput.files[1]);
+          formData.append('point_pairs', JSON.stringify(pointPairs));
+
+          // Send to server
+          fetch('/process_manual_points', {
+            method: 'POST',
+            body: formData
+          })
+          .then(response => response.json())
+          .then(data => {
+            loading.style.display = 'none';
+
+            if (data.success) {
+              // Display the result
+              const img = document.createElement('img');
+              img.src = data.result_image;
+              img.className = 'preview-image';
+              img.alt = 'Manual Match Result';
+              result.innerHTML = '';
+              result.appendChild(img);
+              result.style.display = 'block';
+
+              // Enable download button
+              downloadBtn.style.display = 'block';
+              downloadBtn.onclick = function() {
+                const a = document.createElement('a');
+                a.href = data.result_image;
+                a.download = 'manual_match_result.jpg';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              };
+            } else {
+              showError(data.message || 'Failed to process manual points');
+            }
+          })
+          .catch(error => {
+            loading.style.display = 'none';
+            showError('Error processing manual points: ' + error.message);
+          });
+        });
+      });
+
+      // Add CSS for delete buttons
+      const style = document.createElement('style')
+      style.textContent = `
+        .thumbnail-item {
+          position: relative;
+        }
+        .delete-thumbnail {
+          display: none;
+          z-index: 10;
+        }
+        .thumbnail-item:hover .delete-thumbnail {
+          display: block;
+        }
+        .delete-result {
+          opacity: 0;
+          transition: opacity 0.2s;
+        }
+        .preview-container:hover .delete-result {
+          opacity: 1;
+        }
+      `
+      document.head.appendChild(style)
+
+      // Handle result image deletion
+      document.querySelector('.delete-result').addEventListener('click', async function() {
+        if (!resultImageUrl) return
+        
+        try {
+          const response = await fetch('/delete_file', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              file_path: resultImageUrl
+            })
+          })
+          
+          const data = await response.json()
+          if (data.success) {
+            // Clear the result container
+            result.style.display = 'none'
+            result.innerHTML = ''
+            resultImageUrl = null
+            downloadBtn.style.display = 'none'
+            enhancePanoramaBtn.disabled = true
+          } else {
+            showError(data.message || 'Failed to delete file')
+          }
+        } catch (error) {
+          showError('Error deleting file: ' + error.message)
+        }
+      })
+
+      // Theme toggle functionality
+      const themeToggle = document.getElementById('themeToggle');
+      const themeIcon = themeToggle.querySelector('i');
+      
+      // Check for saved theme preference or default to light
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      updateThemeIcon(savedTheme);
+      
+      themeToggle.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        updateThemeIcon(newTheme);
+      });
+      
+      function updateThemeIcon(theme) {
+        themeIcon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+      }
+    </script>
+
+    
+  </body>
+</html>
