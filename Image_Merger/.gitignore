@@ -41,6 +41,8 @@ results/
 *.png
 !static/**/*.jpg
 !static/**/*.png
+*.json
+
 
 # Ignore database files
 *.db
