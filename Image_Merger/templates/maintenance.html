@@ -166,8 +166,37 @@
                         </button>
                     </div>
                     <div class="card-body">
-                        <div id="testResults">
-                            <!-- Test results will be populated here -->
+                        <div id="testResults" class="test-results">
+                            <div class="test-summary mb-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="test-status">
+                                        <i class="bi bi-circle-fill me-2"></i>
+                                        <span id="testStatus">Not Run</span>
+                                    </span>
+                                    <span class="test-count">
+                                        <span id="passedCount" class="text-success">0</span> passed,
+                                        <span id="failedCount" class="text-danger">0</span> failed
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div class="test-list">
+                                <div class="test-item template d-none">
+                                    <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+                                        <div class="test-info">
+                                            <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                            <span class="test-name">Test Name</span>
+                                        </div>
+                                        <div class="test-duration">
+                                            <span class="badge bg-secondary">0ms</span>
+                                        </div>
+                                    </div>
+                                    <div class="test-details p-2">
+                                        <div class="test-description text-muted small"></div>
+                                        <div class="test-error text-danger small d-none"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
