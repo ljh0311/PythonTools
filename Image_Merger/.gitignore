@@ -37,6 +37,10 @@ wheels/
 # Ignore uploaded files and results
 uploads/
 results/
+*.jpg
+*.png
+!static/**/*.jpg
+!static/**/*.png
 
 # Ignore database files
 *.db
