@@ -244,16 +244,35 @@
       }
 
       .thumbnail-item {
-        background: var(--card-bg);
-        padding: 1rem;
-        border-radius: 0.75rem;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        transition: var(--transition);
+        position: relative;
       }
-
-      .thumbnail-item:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      .delete-thumbnail {
+        display: none;
+        z-index: 10;
+      }
+      .thumbnail-item:hover .delete-thumbnail {
+        display: block;
+      }
+      .delete-result {
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .preview-container:hover .delete-result {
+        opacity: 1;
+      }
+      .image-info {
+        font-size: 0.85rem;
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 0.5rem;
+      }
+      .image-info .badge {
+        font-size: 0.75rem;
+        margin-right: 0.25rem;
+      }
+      [data-theme="dark"] .image-info {
+        background: rgba(255, 255, 255, 0.05);
       }
 
       .image-thumbnail {
@@ -447,7 +466,7 @@
               </a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="https://github.com/yourusername/image-feature-merger" target="_blank">
+              <a class="nav-link" href="https://github.com/ljh0311/PythonTools/tree/main/Image_Merger" target="_blank">
                 <i class="bi bi-github me-2"></i>GitHub
               </a>
             </li>
@@ -480,8 +499,8 @@
                 <div class="mb-3">
                   <label class="form-label">Merge Type</label>
                   <div class="btn-group w-100" role="group">
-                    <input type="radio" class="btn-check" name="merge_type" id="side_by_side" value="side_by_side" />
-                    <label class="btn btn-outline-primary" for="side_by_side">Side-by-Side</label>
+                    <input type="radio" class="btn-check" name="merge_type" id="feature_merge" value="feature_merge" checked />
+                    <label class="btn btn-outline-primary" for="feature_merge">Feature Merge</label>
                     <input type="radio" class="btn-check" name="merge_type" id="feature_aligned_blend" value="feature_aligned_blend" />
                     <label class="btn btn-outline-primary" for="feature_aligned_blend">Blend</label>
                   </div>
@@ -538,6 +557,48 @@
                   <button class="btn btn-outline-warning" id="enhancePanoramaBtn" disabled>
                     <i class="bi bi-magic me-2"></i>Enhance Panorama
                   </button>
+                  <button class="btn btn-outline-secondary" id="tuneParamsBtn" disabled>
+                    <i class="bi bi-sliders me-2"></i>Tune Parameters
+                  </button>
+                </div>
+              </div>
+
+              <!-- Parameter Tuning Modal -->
+              <div class="modal fade" id="tuneParamsModal" tabindex="-1">
+                <div class="modal-dialog">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h5 class="modal-title">Tune Preprocessing Parameters</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                      <div class="mb-3">
+                        <label for="nightThreshold" class="form-label d-flex justify-content-between">
+                          <span>Night Threshold</span>
+                          <span class="badge" id="nightThresholdValue">25</span>
+                        </label>
+                        <input type="range" class="form-range" id="nightThreshold" min="10" max="50" step="1" value="25" />
+                      </div>
+                      <div class="mb-3">
+                        <label for="nightClaheLimit" class="form-label d-flex justify-content-between">
+                          <span>Night CLAHE Limit</span>
+                          <span class="badge" id="nightClaheLimitValue">2.0</span>
+                        </label>
+                        <input type="range" class="form-range" id="nightClaheLimit" min="1.0" max="4.0" step="0.1" value="2.0" />
+                      </div>
+                      <div class="mb-3">
+                        <label for="normalClaheLimit" class="form-label d-flex justify-content-between">
+                          <span>Normal CLAHE Limit</span>
+                          <span class="badge" id="normalClaheLimitValue">1.5</span>
+                        </label>
+                        <input type="range" class="form-range" id="normalClaheLimit" min="1.0" max="3.0" step="0.1" value="1.5" />
+                      </div>
+                    </div>
+                    <div class="modal-footer">
+                      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                      <button type="button" class="btn btn-primary" id="applyTuningBtn">Apply & Process</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -546,7 +607,7 @@
                 <ul class="mb-0 small">
                   <li>Use images with at least 30% overlap</li>
                   <li>Try ORB detector for night images</li>
-                  <li>Use 'Side-by-Side' for images that don't align well</li>
+                  <li>Use 'Blend' mode for smoother transitions</li>
                   <li>Use 'Enhance Panorama' to fix crooked horizons</li>
                 </ul>
               </div>
@@ -686,422 +747,293 @@
       const clearPointsBtn = document.getElementById('clearPointsBtn')
       const processManualBtn = document.getElementById('processManualBtn')
       const manualMatchModal = document.getElementById('manualMatchModal')
-      
-      // Update threshold display when slider changes
-      thresholdSlider.addEventListener('input', function (e) {
+      const tuneParamsBtn = document.getElementById('tuneParamsBtn')
+      const tuneParamsModal = document.getElementById('tuneParamsModal')
+      const nightThresholdSlider = document.getElementById('nightThreshold')
+      const nightThresholdValue = document.getElementById('nightThresholdValue')
+      const nightClaheLimitSlider = document.getElementById('nightClaheLimit')
+      const nightClaheLimitValue = document.getElementById('nightClaheLimitValue')
+      const normalClaheLimitSlider = document.getElementById('normalClaheLimit')
+      const normalClaheLimitValue = document.getElementById('normalClaheLimitValue')
+      const applyTuningBtn = document.getElementById('applyTuningBtn')
+
+      // Add event listeners for parameter sliders
+      thresholdSlider.addEventListener('input', function(e) {
         thresholdValue.textContent = e.target.value
       })
-      
-      // Update alpha display when slider changes
-      alphaSlider.addEventListener('input', function (e) {
+
+      alphaSlider.addEventListener('input', function(e) {
         alphaValue.textContent = e.target.value
       })
-      
-      // Show/hide alpha slider based on merge type
-      mergeTypeRadios.forEach((radio) => {
-        radio.addEventListener('change', function () {
-          if (this.value === 'feature_aligned_blend') {
-            alphaContainer.style.display = 'block'
-          } else {
-            alphaContainer.style.display = 'none'
-          }
+
+      // Handle merge type change
+      mergeTypeRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+          alphaContainer.style.display = this.value === 'feature_aligned_blend' ? 'block' : 'none'
         })
       })
-      
-      // Initial state - hide alpha slider if not blend
-      if (!document.getElementById('feature_aligned_blend').checked) {
-        alphaContainer.style.display = 'none'
-      }
-      
-      // Handle image selection for thumbnails
-      imagesInput.addEventListener('change', function(e) {
-        const files = this.files;
-        let invalidFiles = [];
-        
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            const fileType = file.type;
-            
-            // Check if file type is allowed
-            if (!['image/jpeg', 'image/png', 'image/bmp', 'image/svg+xml'].includes(fileType)) {
-                invalidFiles.push(file.name);
-            }
-        }
-        
-        if (invalidFiles.length > 0) {
-            showError(`The following files are not supported: ${invalidFiles.join(', ')}. 
-                      Please use only JPG, PNG, BMP, or SVG files.`);
-            // Clear the input
-            this.value = '';
-            return;
-        }
-        
-        // Continue with your existing code for valid files
-        updateThumbnails(files);
-        
-        // Enable buttons if files are selected
-        if (files.length > 0) {
-            showPreprocessedBtn.disabled = false;
-            if (files.length >= 2) {
-                showMatchesBtn.disabled = false;
-                manualMatchBtn.disabled = false;
-            }
-        }
-      })
-      
-      // Function to update thumbnails
-      function updateThumbnails(files) {
-        thumbnailsContainer.innerHTML = ''
-        uploadedFiles = files
-      
-        if (files.length === 0) {
-          thumbnailsContainer.innerHTML = '<div class="text-center text-muted">Upload images to see thumbnails here</div>'
-          return
-        }
-      
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i]
-          const reader = new FileReader()
-      
-          reader.onload = function (e) {
-            const thumbnailItem = document.createElement('div')
-            thumbnailItem.className = 'thumbnail-item'
-      
-            const thumbnail = document.createElement('img')
-            thumbnail.src = e.target.result
-            thumbnail.className = 'image-thumbnail'
-            thumbnail.alt = `Image ${i + 1}`
-      
-            const label = document.createElement('small')
-            label.textContent = file.name.length > 15 ? file.name.substring(0, 12) + '...' : file.name
-            label.className = 'mt-1'
 
-            // Add delete button for thumbnail
-            const deleteBtn = document.createElement('button')
-            deleteBtn.className = 'btn btn-sm btn-danger delete-thumbnail position-absolute top-0 end-0 m-1'
-            deleteBtn.innerHTML = '<i class="bi bi-trash"></i>'
-            deleteBtn.title = 'Delete Image'
-            deleteBtn.onclick = function() {
-              thumbnailItem.remove()
-              // Remove from FileList
-              const dt = new DataTransfer()
-              const input = document.getElementById('images')
-              const { files } = input
-              
-              for (let i = 0; i < files.length; i++) {
-                const file = files[i]
-                if (file !== files[i]) {
-                  dt.items.add(file)
-                }
-              }
-              
-              input.files = dt.files
-              
-              // Update button states
-              if (input.files.length < 2) {
-                showMatchesBtn.disabled = true
-                manualMatchBtn.disabled = true
-              }
-              if (input.files.length === 0) {
-                showPreprocessedBtn.disabled = true
-              }
-            }
-      
-            thumbnailItem.appendChild(thumbnail)
-            thumbnailItem.appendChild(label)
-            thumbnailItem.appendChild(deleteBtn)
-            thumbnailsContainer.appendChild(thumbnailItem)
-          }
-      
-          reader.readAsDataURL(file)
-        }
-      }
-      
-      // Handle form submission
-      uploadForm.addEventListener('submit', async function (e) {
-        e.preventDefault()
-      
-        const formData = new FormData(this)
-      
-        // Add use_orb as string
-        formData.set('use_orb', document.getElementById('useOrb').checked ? 'true' : 'false')
-      
-        // Reset UI
-        loading.style.display = 'block'
-        result.style.display = 'none'
-        result.innerHTML = ''
-        errorContainer.style.display = 'none'
-        downloadBtn.style.display = 'none'
-      
-        try {
-          const response = await fetch('/merge', {
-            method: 'POST',
-            body: formData
-          })
-      
-          if (!response.ok) {
-            throw new Error('Network response was not ok')
-          }
-      
-          const data = await response.json()
-      
-          if (data.success) {
-            console.log('Response data:', data) // Add debug logging
-            const img = document.createElement('img')
-            // Check both possible field names for the result image path
-            const resultPath = data.result_image || data.result
-            if (!resultPath) {
-              throw new Error('No result image path in response')
-            }
-            img.src = resultPath
-            img.className = 'preview-image'
-            img.alt = 'Merged Result'
-            result.appendChild(img)
-            result.style.display = 'block'
-      
-            // Set download button
-            downloadBtn.style.display = 'block'
-            downloadBtn.onclick = function () {
-              const a = document.createElement('a')
-              a.href = resultPath
-              a.download = 'merged_image.png'
-              document.body.appendChild(a)
-              a.click()
-              document.body.removeChild(a)
-            }
-      
-            // Store the result URL
-            resultImageUrl = resultPath
-      
-            // Enable the enhance panorama button
-            enhancePanoramaBtn.disabled = false
-          } else {
-            showError(data.error || data.message || 'Unknown error occurred')
-          }
-        } catch (error) {
-          showError(`Error processing images: ${error.message}`)
-          console.error('Full error:', error) // Add detailed error logging
-        } finally {
-          loading.style.display = 'none'
-        }
-      })
-      
-      // Show feature matches
-      showMatchesBtn.addEventListener('click', async function () {
+      // Feature buttons event handlers
+      showMatchesBtn.addEventListener('click', async function() {
         if (imagesInput.files.length < 2) {
-          showError('Need at least 2 images to show matches')
+          showError('Please upload at least 2 images first')
           return
         }
-      
-        const formData = new FormData()
-      
-        // Add the first two images
-        formData.append('images', imagesInput.files[0])
-        formData.append('images', imagesInput.files[1])
-        formData.append('threshold', thresholdSlider.value)
-        formData.append('use_orb', document.getElementById('useOrb').checked ? 'true' : 'false')
-      
-        // Reset UI
+
         loading.style.display = 'block'
         result.style.display = 'none'
-        result.innerHTML = ''
         errorContainer.style.display = 'none'
-        downloadBtn.style.display = 'none'
-      
+
+        const formData = new FormData()
+        for (let i = 0; i < imagesInput.files.length; i++) {
+          formData.append('images', imagesInput.files[i])
+        }
+        formData.append('threshold', thresholdSlider.value)
+        formData.append('use_orb', document.getElementById('useOrb').checked)
+
         try {
           const response = await fetch('/feature_matches', {
             method: 'POST',
             body: formData
           })
-      
+
           if (!response.ok) {
             throw new Error('Network response was not ok')
           }
-      
+
           const data = await response.json()
-      
+
           if (data.success) {
             const img = document.createElement('img')
             img.src = data.result_image
             img.className = 'preview-image'
             img.alt = 'Feature Matches'
+            result.innerHTML = ''
             result.appendChild(img)
-      
-            const infoText = document.createElement('p')
-            infoText.className = 'text-center mt-2'
-            infoText.innerHTML = `<strong>Found ${data.match_count} matches</strong> between the first two images`
-            result.appendChild(infoText)
-      
             result.style.display = 'block'
-      
-            // Set download button
+          } else {
+            showError(data.message || 'Failed to show feature matches')
+          }
+        } catch (error) {
+          showError('Error showing feature matches: ' + error.message)
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+
+      showPreprocessedBtn.addEventListener('click', async function() {
+        if (imagesInput.files.length < 1) {
+          showError('Please upload at least one image first')
+          return
+        }
+
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        errorContainer.style.display = 'none'
+
+        const formData = new FormData()
+        formData.append('image', imagesInput.files[0])
+
+        try {
+          const response = await fetch('/show_preprocessed', {
+            method: 'POST',
+            body: formData
+          })
+
+          if (!response.ok) {
+            throw new Error('Network response was not ok')
+          }
+
+          const data = await response.json()
+
+          if (data.success) {
+            const img = document.createElement('img')
+            img.src = data.result_image
+            img.className = 'preview-image'
+            img.alt = 'Preprocessed Image'
+            result.innerHTML = ''
+            result.appendChild(img)
+            result.style.display = 'block'
+
+            // Add image analysis info
+            const infoDiv = document.createElement('div')
+            infoDiv.className = 'mt-3 p-3 bg-light rounded'
+            infoDiv.innerHTML = `
+              <h6 class="mb-2">Image Analysis</h6>
+              <p class="mb-1"><strong>Brightness:</strong> ${data.brightness_level}</p>
+              <p class="mb-1"><strong>Contrast:</strong> ${data.contrast_level}</p>
+              <p class="mb-1"><strong>Size:</strong> ${data.width}x${data.height}</p>
+              <p class="mb-1"><strong>Processing Steps:</strong> ${data.processing_steps}</p>
+              ${data.recommendations ? `<p class="mb-0"><strong>Recommendations:</strong> ${data.recommendations}</p>` : ''}
+            `
+            result.appendChild(infoDiv)
+          } else {
+            showError(data.message || 'Failed to show preprocessed image')
+          }
+        } catch (error) {
+          showError('Error showing preprocessed image: ' + error.message)
+        } finally {
+          loading.style.display = 'none'
+        }
+      })
+
+      enhancePanoramaBtn.addEventListener('click', async function() {
+        if (!resultImageUrl) {
+          showError('Please process images first')
+          return
+        }
+
+        loading.style.display = 'block'
+        result.style.display = 'none'
+        errorContainer.style.display = 'none'
+
+        const formData = new FormData()
+        formData.append('image', await fetch(resultImageUrl).then(r => r.blob()))
+
+        try {
+          const response = await fetch('/enhance_panorama', {
+            method: 'POST',
+            body: formData
+          })
+
+          if (!response.ok) {
+            throw new Error('Network response was not ok')
+          }
+
+          const data = await response.json()
+
+          if (data.success) {
+            const img = document.createElement('img')
+            img.src = data.result_image
+            img.className = 'preview-image'
+            img.alt = 'Enhanced Panorama'
+            result.innerHTML = ''
+            result.appendChild(img)
+            result.style.display = 'block'
+            resultImageUrl = data.result_image
+
+            // Enable download button
             downloadBtn.style.display = 'block'
-            downloadBtn.onclick = function () {
+            downloadBtn.onclick = function() {
               const a = document.createElement('a')
               a.href = data.result_image
-              a.download = 'feature_matches.png'
+              a.download = 'enhanced_panorama.jpg'
               document.body.appendChild(a)
               a.click()
               document.body.removeChild(a)
             }
           } else {
-            showError(data.error)
+            showError(data.message || 'Failed to enhance panorama')
           }
         } catch (error) {
-          showError(`Error showing feature matches: ${error.message}`)
+          showError('Error enhancing panorama: ' + error.message)
         } finally {
           loading.style.display = 'none'
         }
       })
-      
-      // Show preprocessed image
-      showPreprocessedBtn.addEventListener('click', async function () {
-        if (imagesInput.files.length < 1) {
-          showError('Upload at least one image')
+
+      tuneParamsBtn.addEventListener('click', function() {
+        const modal = new bootstrap.Modal(tuneParamsModal)
+        modal.show()
+      })
+
+      // Handle form submission
+      uploadForm.addEventListener('submit', async function(e) {
+        e.preventDefault()
+
+        if (imagesInput.files.length < 2) {
+          showError('Please select at least 2 images')
           return
         }
-      
-        const formData = new FormData()
-        formData.append('image', imagesInput.files[0])
-      
+
         // Reset UI
         loading.style.display = 'block'
         result.style.display = 'none'
         result.innerHTML = ''
         errorContainer.style.display = 'none'
         downloadBtn.style.display = 'none'
-      
+        showMatchesBtn.disabled = true
+        showPreprocessedBtn.disabled = true
+        manualMatchBtn.disabled = true
+        enhancePanoramaBtn.disabled = true
+        tuneParamsBtn.disabled = true
+
+        // Create FormData
+        const formData = new FormData()
+        for (let i = 0; i < imagesInput.files.length; i++) {
+          formData.append('images', imagesInput.files[i])
+        }
+        formData.append('merge_type', document.querySelector('input[name="merge_type"]:checked').value)
+        formData.append('threshold', thresholdSlider.value)
+        formData.append('alpha', alphaSlider.value)
+        formData.append('use_orb', document.getElementById('useOrb').checked)
+
         try {
-          const response = await fetch('/show_preprocessed', {
+          const response = await fetch('/merge', {
             method: 'POST',
             body: formData
           })
-      
+
           if (!response.ok) {
             throw new Error('Network response was not ok')
           }
-      
+
           const data = await response.json()
-      
+
           if (data.success) {
+            // Display thumbnails
+            thumbnailsContainer.innerHTML = ''
+            data.thumbnails.forEach(thumb => {
+              const div = document.createElement('div')
+              div.className = 'thumbnail-item'
+              div.innerHTML = `
+                <img src="${thumb.url}" class="image-thumbnail" alt="Thumbnail">
+                <button class="btn btn-sm btn-danger delete-thumbnail" data-index="${thumb.id}">
+                  <i class="bi bi-trash"></i>
+                </button>
+              `
+              thumbnailsContainer.appendChild(div)
+            })
+
+            // Display result
             const img = document.createElement('img')
             img.src = data.result_image
             img.className = 'preview-image'
-            img.alt = 'Preprocessed Image'
+            img.alt = 'Panorama result'
             result.appendChild(img)
-      
-            const infoText = document.createElement('p')
-            infoText.className = 'text-center mt-2'
-            infoText.innerHTML = '<strong>Original vs. Preprocessed Image</strong> (for better feature detection)'
-            result.appendChild(infoText)
-      
             result.style.display = 'block'
-      
-            // Set download button
-            downloadBtn.style.display = 'block'
-            downloadBtn.onclick = function () {
-              const a = document.createElement('a')
-              a.href = data.result_image
-              a.download = 'preprocessed_image.png'
-              document.body.appendChild(a)
-              a.click()
-              document.body.removeChild(a)
-            }
-          } else {
-            showError(data.error)
-          }
-        } catch (error) {
-          showError(`Error showing preprocessed image: ${error.message}`)
-        } finally {
-          loading.style.display = 'none'
-        }
-      })
-      
-      // Enable enhance button when a panorama is created
-      function enableEnhancePanorama() {
-        if (resultImageUrl) {
-          enhancePanoramaBtn.disabled = false
-        }
-      }
-      
-      // Enhance panorama functionality
-      enhancePanoramaBtn.addEventListener('click', async function () {
-        if (!resultImageUrl) {
-          showError('Create a panorama first before enhancing')
-          return
-        }
-      
-        // Show processing indicator
-        loading.style.display = 'block'
-        result.style.display = 'none'
-        result.innerHTML = ''
-        errorContainer.style.display = 'none'
-        downloadBtn.style.display = 'none'
-      
-        try {
-          // Fetch the current result image
-          const response = await fetch(resultImageUrl)
-          const blob = await response.blob()
-      
-          // Create a File object from the blob
-          const file = new File([blob], 'panorama.png', { type: 'image/png' })
-      
-          // Create form data
-          const formData = new FormData()
-          formData.append('image', file)
-      
-          // Send to enhancement endpoint
-          const enhanceResponse = await fetch('/enhance_panorama', {
-            method: 'POST',
-            body: formData
-          })
-      
-          if (!enhanceResponse.ok) {
-            throw new Error('Network response was not ok')
-          }
-      
-          const data = await enhanceResponse.json()
-      
-          if (data.success) {
-            const img = document.createElement('img')
-            img.src = data.result_image
-            img.className = 'preview-image'
-            img.alt = 'Enhanced Panorama'
-            result.appendChild(img)
-      
-            const infoText = document.createElement('p')
-            infoText.className = 'text-center mt-2'
-            infoText.innerHTML = '<strong>Enhanced Panorama</strong> with improved colors, sharpness, and horizon alignment'
-            result.appendChild(infoText)
-      
-            result.style.display = 'block'
-      
-            // Update result URL
             resultImageUrl = data.result_image
-      
-            // Set download button
+
+            // Enable buttons
+            showMatchesBtn.disabled = false
+            showPreprocessedBtn.disabled = false
+            manualMatchBtn.disabled = false
+            enhancePanoramaBtn.disabled = false
+            tuneParamsBtn.disabled = false
+
+            // Show download button
             downloadBtn.style.display = 'block'
-            downloadBtn.onclick = function () {
+            downloadBtn.onclick = function() {
               const a = document.createElement('a')
               a.href = data.result_image
-              a.download = 'enhanced_panorama.png'
+              a.download = 'panorama.jpg'
               document.body.appendChild(a)
               a.click()
               document.body.removeChild(a)
             }
           } else {
-            showError(data.error)
+            showError(data.message || 'Failed to process images')
           }
         } catch (error) {
-          showError(`Error enhancing panorama: ${error.message}`)
+          showError('Error processing images: ' + error.message)
         } finally {
           loading.style.display = 'none'
         }
       })
-      
+
       // Helper function to display errors
       function showError(message) {
-        errorContainer.textContent = message
+        errorContainer.querySelector('.error-message').textContent = message
         errorContainer.style.display = 'block'
       }
 

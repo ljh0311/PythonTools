@@ -59,12 +59,6 @@ def test_image_merging():
         raise Exception("Feature merge failed")
     cv2.imwrite("test_result_feature_merge.jpg", result_feature)
     
-    # Test side-by-side merge
-    result_sidebyside = merger.side_by_side_merge_with_blend()
-    if result_sidebyside is None:
-        raise Exception("Side-by-side merge failed")
-    cv2.imwrite("test_result_sidebyside.jpg", result_sidebyside)
-    
     # Test feature matches visualization
     result_matches = merger.show_feature_matches(0, 1)
     if result_matches is None:

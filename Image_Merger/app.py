@@ -71,22 +71,25 @@ class ImageMerger:
         self.images = []
         self.matches_threshold = 0.7
         self.use_orb = False  # Add a toggle for different detector
+        
+        # Preprocessing parameters
+        self.night_threshold = 100  # Brightness threshold for night image detection
+        self.night_clahe_clip_limit = 4.0  # CLAHE clip limit for night images
+        self.night_clahe_grid_size = (8, 8)  # CLAHE grid size for night images
+        self.normal_clahe_clip_limit = 2.0  # CLAHE clip limit for normal images
+        self.normal_clahe_grid_size = (8, 8)  # CLAHE grid size for normal images
+        self.night_denoise_strength = 10  # Denoising strength for night images
+        self.night_denoise_template_size = 7  # Template size for denoising
+        self.night_denoise_search_size = 21  # Search size for denoising
+        self.night_percentile_low = 5  # Lower percentile for contrast stretching
+        self.night_percentile_high = 95  # Upper percentile for contrast stretching
+        self.night_canny_low = 50  # Lower threshold for Canny edge detection
+        self.night_canny_high = 150  # Upper threshold for Canny edge detection
+        self.night_edge_weight = 0.7  # Weight for edge enhancement
 
     def add_image(self, image_path):
         """Add an image to the merger with size limits for better performance."""
         try:
-            # Check if SVG file
-            if image_path.lower().endswith('.svg'):
-                # For SVG files, you might need to convert them to raster format first
-                # This is a simple example using cairosvg (would need to be installed)
-                # import cairosvg
-                # temp_png_path = image_path.replace('.svg', '.png')
-                # cairosvg.svg2png(url=image_path, write_to=temp_png_path)
-                # img = cv2.imread(temp_png_path)
-                
-                # If you can't use cairosvg, you might want to notify users that SVG is not supported for merging
-                return False
-            
             img = cv2.imread(image_path)
             if img is None:
                 return False
@@ -277,141 +280,202 @@ class ImageMerger:
         
         # Detect if this is a night/dark image by checking average brightness
         avg_brightness = np.mean(gray)
-        is_night_image = avg_brightness < 100  # Threshold for night images
+        is_night_image = avg_brightness < self.night_threshold  # Use configurable threshold
         
         if is_night_image:
             # For night images, use more aggressive preprocessing
-            
-            # Increase contrast with CLAHE
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-            enhanced = clahe.apply(gray)
-            
-            # Additional contrast stretching
-            p5 = np.percentile(enhanced, 5)
-            p95 = np.percentile(enhanced, 95)
-            enhanced = np.clip((enhanced - p5) * 255.0 / (p95 - p5), 0, 255).astype(np.uint8)
-            
-            # Denoise
-            denoised = cv2.fastNlMeansDenoising(enhanced, None, 10, 7, 21)
-            
-            # Edge enhancement
-            edges = cv2.Canny(denoised, 50, 150)
-            enhanced_with_edges = cv2.addWeighted(denoised, 0.7, edges, 0.3, 0)
-            
-            return enhanced_with_edges
+            enhanced = self._enhance_night_image(gray)
+            return enhanced
         else:
             # For normal images, use standard preprocessing
-            # Increase contrast
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-            enhanced = clahe.apply(gray)
-            
-            # Apply slight blur to reduce noise
-            blurred = cv2.GaussianBlur(enhanced, (3,3), 0)
-            
-            return blurred
+            enhanced = self._enhance_normal_image(gray)
+            return enhanced
 
-    def side_by_side_merge_with_blend(self):
-        """Improved side-by-side merge with blending for better visual results"""
-        try:
-            if len(self.images) < 2:
-                return None
-                
-            # Get the maximum height of all images
-            max_height = max(img.shape[0] for img in self.images)
+    def _enhance_night_image(self, gray):
+        """Enhance night/dark images with optimized parameters"""
+        # Increase contrast with CLAHE
+        clahe = cv2.createCLAHE(
+            clipLimit=self.night_clahe_clip_limit,
+            tileGridSize=self.night_clahe_grid_size
+        )
+        enhanced = clahe.apply(gray)
+        
+        # Adaptive contrast stretching
+        p5 = np.percentile(enhanced, self.night_percentile_low)
+        p95 = np.percentile(enhanced, self.night_percentile_high)
+        enhanced = np.clip((enhanced - p5) * 255.0 / (p95 - p5), 0, 255).astype(np.uint8)
+        
+        # Denoise with optimized parameters
+        denoised = cv2.fastNlMeansDenoising(
+            enhanced,
+            None,
+            self.night_denoise_strength,
+            self.night_denoise_template_size,
+            self.night_denoise_search_size
+        )
+        
+        # Edge enhancement with configurable weights
+        edges = cv2.Canny(denoised, self.night_canny_low, self.night_canny_high)
+        enhanced_with_edges = cv2.addWeighted(
+            denoised,
+            self.night_edge_weight,
+            edges,
+            1 - self.night_edge_weight,
+            0
+        )
+        
+        return enhanced_with_edges
+
+    def _enhance_normal_image(self, gray):
+        """Enhance normal/bright images with optimized parameters"""
+        # Increase contrast with CLAHE
+        clahe = cv2.createCLAHE(
+            clipLimit=self.normal_clahe_clip_limit,
+            tileGridSize=self.normal_clahe_grid_size
+        )
+        enhanced = clahe.apply(gray)
+        
+        # Apply adaptive blur based on image size
+        blur_size = self._calculate_adaptive_blur_size(gray.shape)
+        blurred = cv2.GaussianBlur(enhanced, blur_size, 0)
+        
+        return blurred
+
+    def _calculate_adaptive_blur_size(self, shape):
+        """Calculate adaptive blur size based on image dimensions"""
+        min_dim = min(shape)
+        if min_dim < 500:
+            return (3, 3)
+        elif min_dim < 1000:
+            return (5, 5)
+        else:
+            return (7, 7)
+
+    def tune_preprocessing_parameters(self, image_set):
+        """Tune preprocessing parameters based on a set of images.
+        
+        Args:
+            image_set: List of images to analyze for parameter tuning
             
-            # Calculate total width, including overlap
-            overlap = 50  # pixels of overlap between images
-            total_width = sum(img.shape[1] for img in self.images) - (len(self.images) - 1) * overlap
+        Returns:
+            dict: Dictionary containing tuned parameters and recommendations
+        """
+        if not image_set:
+            return {
+                'success': False,
+                'message': 'No images provided for tuning'
+            }
             
-            # Create a new image to hold all the images side by side
-            result = np.zeros((max_height, total_width, 3), dtype=np.uint8)
+        brightness_values = []
+        feature_counts = []
+        contrast_values = []
+        noise_levels = []
+        
+        # Collect statistics from image set
+        for img in image_set:
+            # Convert to grayscale
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
-            # Position to place the next image
-            x_offset = 0
+            # Calculate brightness
+            brightness = np.mean(gray)
+            brightness_values.append(brightness)
             
-            # Add each image to the result with blending
-            for i, img in enumerate(self.images):
-                h, w = img.shape[:2]
-                
-                # Center vertically if shorter than max height
-                y_offset = (max_height - h) // 2
-                
-                # For all images except the first one, create a blended overlap region
-                if i > 0:
-                    # Calculate the overlap region
-                    overlap_left = x_offset
-                    overlap_right = x_offset + w
-                    
-                    # Create alpha mask for smooth transition (linear gradient)
-                    alpha_mask = np.zeros((h, w, 3), dtype=np.float32)
-                    for x in range(overlap):
-                        alpha = x / overlap  # 0.0 to 1.0 from left to right
-                        alpha_mask[:, x, :] = alpha
-                    
-                    # Blend in the overlap region
-                    for y in range(min(h, max_height - y_offset)):
-                        for x in range(overlap):
-                            if x_offset + x < total_width and y_offset + y < max_height:
-                                blend_x = x_offset + x
-                                
-                                # Get current pixel value from result image
-                                current = result[y_offset + y, blend_x].astype(np.float32)
-                                
-                                # Get new pixel value from this image
-                                new_val = img[y, x].astype(np.float32)
-                                
-                                # Blend based on position in overlap region
-                                alpha = alpha_mask[y, x, 0]
-                                blended = (1 - alpha) * current + alpha * new_val
-                                
-                                # Update result
-                                result[y_offset + y, blend_x] = blended.astype(np.uint8)
-                
-                # Copy the non-overlapping part of the image
-                non_overlap_width = w - (overlap if i > 0 else 0)
-                start_x = overlap if i > 0 else 0
-                end_x = w
-                
-                # Copy region
-                non_overlap_region = img[:, start_x:end_x]
-                nh, nw = non_overlap_region.shape[:2]
-                
-                # Make sure we don't copy outside the bounds of result image
-                copy_width = min(nw, total_width - x_offset)
-                copy_height = min(nh, max_height - y_offset)
-                
-                # Copy the non-overlapping part
-                result[y_offset:y_offset+copy_height, x_offset:x_offset+copy_width] = \
-                    non_overlap_region[:copy_height, :copy_width]
-                
-                # Add a subtle vertical line separator
-                if i > 0:
-                    cv2.line(result, (x_offset + 5, 0), (x_offset + 5, max_height), (180, 180, 180), 1, cv2.LINE_AA)
-                
-                # Update the x_offset for the next image (accounting for overlap)
-                x_offset += (w - overlap if i > 0 else w)
+            # Calculate contrast
+            p5 = np.percentile(gray, 5)
+            p95 = np.percentile(gray, 95)
+            contrast = (p95 - p5) / 255.0
+            contrast_values.append(contrast)
             
-            # Add a border and title
-            border_size = 20
-            with_border = cv2.copyMakeBorder(
-                result, 
-                border_size, border_size, border_size, border_size,
-                cv2.BORDER_CONSTANT, 
-                value=[0, 0, 0]
-            )
+            # Estimate noise level using Laplacian variance
+            noise = cv2.Laplacian(gray, cv2.CV_64F).var()
+            noise_levels.append(noise)
             
-            # Add title
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            title = "Side-by-Side Merge"
-            text_size, _ = cv2.getTextSize(title, font, 1, 2)
-            text_x = (with_border.shape[1] - text_size[0]) // 2
-            cv2.putText(with_border, title, (text_x, border_size + 5), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+            # Count features with current parameters
+            processed = self.preprocess_for_feature_detection(img)
+            kp, _ = self.detect_features(processed)
+            feature_counts.append(len(kp))
+        
+        # Calculate statistics
+        avg_brightness = np.mean(brightness_values)
+        avg_contrast = np.mean(contrast_values)
+        avg_noise = np.mean(noise_levels)
+        avg_features = np.mean(feature_counts)
+        
+        # Adjust night threshold based on brightness distribution
+        self.night_threshold = np.percentile(brightness_values, 25)
+        
+        # Adjust CLAHE parameters based on feature detection success and contrast
+        if avg_features < 100:
+            # Increase contrast enhancement for low feature count
+            self.night_clahe_clip_limit *= 1.2
+            self.normal_clahe_clip_limit *= 1.1
+        elif avg_features > 500:
+            # Reduce contrast enhancement for high feature count
+            self.night_clahe_clip_limit *= 0.9
+            self.normal_clahe_clip_limit *= 0.95
             
-            return with_border
-        except Exception as e:
-            logger.error(f"Error in side_by_side_merge_with_blend: {e}")
-            # Fallback to simpler side by side merge
-            return None
+        # Adjust CLAHE grid size based on image dimensions
+        avg_dim = np.mean([min(img.shape[:2]) for img in image_set])
+        if avg_dim < 500:
+            self.night_clahe_grid_size = (4, 4)
+            self.normal_clahe_grid_size = (4, 4)
+        elif avg_dim < 1000:
+            self.night_clahe_grid_size = (8, 8)
+            self.normal_clahe_grid_size = (8, 8)
+        else:
+            self.night_clahe_grid_size = (16, 16)
+            self.normal_clahe_grid_size = (16, 16)
+            
+        # Adjust denoising parameters based on noise level
+        if avg_noise > 100:
+            self.night_denoise_strength = 15
+            self.night_denoise_template_size = 7
+            self.night_denoise_search_size = 21
+        else:
+            self.night_denoise_strength = 10
+            self.night_denoise_template_size = 7
+            self.night_denoise_search_size = 21
+            
+        # Generate recommendations
+        recommendations = []
+        if avg_brightness < 50:
+            recommendations.append("Consider using ORB detector for better feature detection in dark images")
+        if avg_contrast < 0.3:
+            recommendations.append("Images have low contrast - consider increasing CLAHE limits")
+        if avg_noise > 100:
+            recommendations.append("High noise detected - denoising parameters have been increased")
+        if avg_features < 50:
+            recommendations.append("Low feature count detected - consider using manual feature matching")
+            
+        # Log the tuned parameters
+        logger.info(
+            f"Tuned preprocessing parameters:\n"
+            f"  Night threshold: {self.night_threshold:.1f}\n"
+            f"  Night CLAHE: limit={self.night_clahe_clip_limit:.1f}, grid={self.night_clahe_grid_size}\n"
+            f"  Normal CLAHE: limit={self.normal_clahe_clip_limit:.1f}, grid={self.normal_clahe_grid_size}\n"
+            f"  Denoising: strength={self.night_denoise_strength}, template={self.night_denoise_template_size}, search={self.night_denoise_search_size}"
+        )
+        
+        return {
+            'success': True,
+            'parameters': {
+                'night_threshold': self.night_threshold,
+                'night_clahe_clip_limit': self.night_clahe_clip_limit,
+                'normal_clahe_clip_limit': self.normal_clahe_clip_limit,
+                'night_clahe_grid_size': self.night_clahe_grid_size,
+                'normal_clahe_grid_size': self.normal_clahe_grid_size,
+                'night_denoise_strength': self.night_denoise_strength,
+                'night_denoise_template_size': self.night_denoise_template_size,
+                'night_denoise_search_size': self.night_denoise_search_size
+            },
+            'statistics': {
+                'avg_brightness': avg_brightness,
+                'avg_contrast': avg_contrast,
+                'avg_noise': avg_noise,
+                'avg_features': avg_features
+            },
+            'recommendations': recommendations
+        }
 
     def show_feature_matches(self, img1_index=0, img2_index=1, max_matches=50):
         """Display feature matches between two images"""
@@ -814,9 +878,6 @@ def upload():
         if merge_type == 'feature_merge':
             logger.info("Performing feature merge")
             result_img = merger.merge_images()
-        elif merge_type == 'side_by_side':
-            logger.info("Performing side-by-side merge")
-            result_img = merger.side_by_side_merge_with_blend()
         elif merge_type == 'feature_aligned_blend':
             logger.info(f"Performing feature aligned blend with alpha={alpha}")
             result_img = merger.feature_aligned_blend(alpha=alpha)
@@ -1078,7 +1139,7 @@ def show_feature_matches():
 
 @app.route('/show_preprocessed', methods=['POST'])
 def show_preprocessed():
-    """Show preprocessed version of an image"""
+    """Show preprocessed version of an image with analysis information"""
     try:
         logger.info("Starting preprocessed image visualization")
         
@@ -1099,6 +1160,34 @@ def show_preprocessed():
         if not merger.add_image(filepath):
             return jsonify({"success": False, "message": "Failed to process image"})
         
+        # Get the original image
+        img = merger.images[0]
+        height, width = img.shape[:2]
+        
+        # Analyze the image
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        avg_brightness = np.mean(gray)
+        is_night = avg_brightness < 100
+        
+        # Calculate contrast
+        p5 = np.percentile(gray, 5)
+        p95 = np.percentile(gray, 95)
+        contrast = (p95 - p5) / 255.0
+        
+        # Determine processing steps and recommendations
+        processing_steps = []
+        recommendations = []
+        
+        if is_night:
+            processing_steps.append("Night image enhancement")
+            processing_steps.append("CLAHE contrast enhancement")
+            processing_steps.append("Edge enhancement")
+            recommendations.append("Consider using ORB detector for better feature detection")
+        else:
+            processing_steps.append("Standard preprocessing")
+            processing_steps.append("CLAHE contrast enhancement")
+            processing_steps.append("Noise reduction")
+        
         # Generate preprocessed view
         preprocessed_img = merger.get_preprocessed_image(0)
         if preprocessed_img is None:
@@ -1111,7 +1200,14 @@ def show_preprocessed():
         
         return jsonify({
             "success": True,
-            "result_image": f"/{app.config['RESULTS_FOLDER']}/{result_filename}"
+            "result_image": f"/{app.config['RESULTS_FOLDER']}/{result_filename}",
+            "is_night": bool(is_night),
+            "brightness_level": f"{avg_brightness:.1f}",
+            "contrast_level": f"{contrast:.2f}",
+            "width": width,
+            "height": height,
+            "processing_steps": ", ".join(processing_steps),
+            "recommendations": ", ".join(recommendations)
         })
         
     except Exception as e:
@@ -1218,8 +1314,8 @@ def process_manual_points():
             return jsonify({"success": False, "message": "Failed to load images"})
             
         # Prepare source and destination points
-        src_pts = np.float32([pair[0] for pair in point_pairs]).reshape(-1, 1, 2)
-        dst_pts = np.float32([pair[1] for pair in point_pairs]).reshape(-1, 1, 2)
+        src_pts = np.float32([[pair['img1']['x'] * img1.shape[1], pair['img1']['y'] * img1.shape[0]] for pair in point_pairs]).reshape(-1, 1, 2)
+        dst_pts = np.float32([[pair['img2']['x'] * img2.shape[1], pair['img2']['y'] * img2.shape[0]] for pair in point_pairs]).reshape(-1, 1, 2)
         
         # Find homography
         H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
@@ -1279,11 +1375,11 @@ def process_manual_points():
         # Draw the manually selected points on the result
         for i, pair in enumerate(point_pairs):
             # Transform img1 points
-            pt1 = np.array([pair[0]], dtype=np.float32).reshape(-1, 1, 2)
+            pt1 = np.array([[pair['img1']['x'] * img1.shape[1], pair['img1']['y'] * img1.shape[0]]], dtype=np.float32).reshape(-1, 1, 2)
             pt1_transformed = cv2.perspectiveTransform(pt1, T.dot(H))[0][0].astype(int)
             
             # Get img2 points with offset
-            pt2 = (int(pair[1][0] + x_off), int(pair[1][1] + y_off))
+            pt2 = (int(pair['img2']['x'] * img2.shape[1] + x_off), int(pair['img2']['y'] * img2.shape[0] + y_off))
             
             # Draw circles and lines
             color = (0, 0, 255)  # Red for img1
