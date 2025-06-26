@@ -369,25 +369,35 @@ provides recommendations for healthier screen viewing.
         """Control brightness based on screen content."""
         last_update_time = 0
         update_interval = 0.2
-        print("Starting screen-based brightness control")
+        iteration_count = 0
+        print("🖥️ Starting screen-based brightness control")
 
         while self.running and self.active_mode == "screen":
             current_time = time.time()
             if current_time - last_update_time >= update_interval:
                 brightness = self.get_screen_brightness()
-                print(f"Screen content brightness: {brightness}")
+                iteration_count += 1
+                
+                # Only print screen brightness every 25 iterations to reduce spam
+                if iteration_count % 25 == 0:
+                    print(f"🖥️ Screen reading #{iteration_count}: {brightness:.1f}")
+                
                 smoothed_brightness = self.smooth_brightness(brightness)
-                print(f"Smoothed brightness: {smoothed_brightness}")
                 self.controller.adjust_screen_brightness(smoothed_brightness)
                 last_update_time = current_time
             time.sleep(0.05)
 
     def camera_brightness_control(self):
         """Control brightness based on camera input."""
-        print("Starting camera-based brightness control")
+        print("📹 Starting camera-based brightness control")
+        iteration_count = 0
         while self.running and self.active_mode == "camera":
             brightness = self.controller.get_brightness_from_camera()
-            print(f"Camera brightness: {brightness}")
+            iteration_count += 1
+            
+            # Only print camera brightness every 100 iterations to reduce spam
+            if iteration_count % 100 == 0:
+                print(f"📹 Camera reading #{iteration_count}: {brightness:.1f}")
 
             # Store the brightness value for session tracking
             self.camera_brightness_values.append(brightness)

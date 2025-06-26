@@ -104,34 +104,36 @@ class BrightnessController:
         Args:
             brightness: Raw brightness value to adjust to
         """
-        print(f"Raw brightness input: {brightness}")
         self.prev_values.append(brightness)
         if len(self.prev_values) > self.history_size:
             self.prev_values.pop(0)
 
         filtered_brightness = np.median(self.prev_values)
-        print(f"Filtered brightness: {filtered_brightness}")
         new_brightness = np.clip(
             int(filtered_brightness / 255 * 100),
             self.min_brightness,
             self.max_brightness,
         )
-        print(f"Calculated new brightness: {new_brightness}, Current: {self.current_brightness}, Last set: {self.last_set}")
 
         if self.last_set is None:
             self.last_set = new_brightness
         elif abs(new_brightness - self.last_set) <= 3:
-            print("Skipping adjustment - change too small")
+            # Only print when there's significant change or periodically
             return
 
         if abs(new_brightness - self.last_set) > 3:
-            print(f"Transitioning brightness from {self.current_brightness} to {new_brightness}")
+            print(f"🔄 Brightness: {self.current_brightness}% → {new_brightness}% "
+                  f"(Raw: {brightness:.1f}, Filtered: {filtered_brightness:.1f})")
             try:
                 self.smooth_transition(self.current_brightness, new_brightness)
                 self.current_brightness = new_brightness
                 self.last_set = new_brightness
             except Exception as e:
-                print(f"Error setting brightness: {e}")
+                print(f"❌ Error setting brightness: {e}")
+        else:
+            # Print status every 50 iterations or so to show the system is working
+            if len(self.prev_values) % 50 == 0:
+                print(f"📊 Status: {new_brightness}% (Raw: {brightness:.1f}, Filtered: {filtered_brightness:.1f})")
 
     def cleanup(self) -> None:
         """Release camera resources."""
