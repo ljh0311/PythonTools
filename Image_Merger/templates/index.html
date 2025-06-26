@@ -441,12 +441,12 @@
     </style>
   </head>
   <body>
-    <nav class="navbar navbar-expand-lg">
+    <nav class="navbar navbar-expand-sm">
       <div class="container">
-        <a class="navbar-brand" href="#">
+        <a class="navbar-brand" href="/">
           <i class="bi bi-image-alt me-2"></i>
           Image Feature Merger 
-          <span class="badge ms-2">Beta v1.0.0</span>
+          <span class="badge ms-2">Beta v1.0.1</span>
         </a>
 
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
@@ -535,68 +535,103 @@
           </div>
         </div>
 
-        <!-- Middle panel: Features & Tips -->
+        <!-- Middle panel: Features & Tools -->
         <div class="col-lg-3">
           <div class="card h-100">
             <div class="card-header d-flex align-items-center">
               <i class="bi bi-tools me-2"></i>
-              <span>Features & Tips</span>
+              <span>Advanced Tools</span>
             </div>
             <div class="card-body">
               <div class="features-container mb-4">
-                <div class="d-grid gap-2">
+                <div class="d-grid gap-3">
                   <button class="btn btn-outline-primary" id="showMatchesBtn" disabled>
-                    <i class="bi bi-link-45deg me-2"></i>Show Feature Matches
+                    <i class="bi bi-link-45deg me-2"></i>View Feature Matches
+                    <small class="d-block text-muted mt-1">Visualize matching points between images</small>
                   </button>
                   <button class="btn btn-outline-info" id="showPreprocessedBtn" disabled>
-                    <i class="bi bi-image-alt me-2"></i>Show Preprocessed Image
+                    <i class="bi bi-image-alt me-2"></i>View Preprocessing
+                    <small class="d-block text-muted mt-1">See how images are enhanced before merging</small>
                   </button>
                   <button class="btn btn-outline-success" id="manualMatchBtn" disabled>
-                    <i class="bi bi-pencil me-2"></i>Manual Feature Matching
+                    <i class="bi bi-pencil me-2"></i>Manual Matching
+                    <small class="d-block text-muted mt-1">Manually select matching points</small>
                   </button>
                   <button class="btn btn-outline-warning" id="enhancePanoramaBtn" disabled>
-                    <i class="bi bi-magic me-2"></i>Enhance Panorama
+                    <i class="bi bi-magic me-2"></i>Panorama Enhancement
+                    <small class="d-block text-muted mt-1">Fix alignment and improve quality</small>
                   </button>
                   <button class="btn btn-outline-secondary" id="tuneParamsBtn" disabled>
-                    <i class="bi bi-sliders me-2"></i>Tune Parameters
+                    <i class="bi bi-sliders me-2"></i>Advanced Settings
+                    <small class="d-block text-muted mt-1">Fine-tune processing parameters</small>
                   </button>
                 </div>
               </div>
 
-              <!-- Parameter Tuning Modal -->
+              <!-- Advanced Image Settings Modal -->
               <div class="modal fade" id="tuneParamsModal" tabindex="-1">
                 <div class="modal-dialog">
                   <div class="modal-content">
                     <div class="modal-header">
-                      <h5 class="modal-title">Tune Preprocessing Parameters</h5>
+                      <h5 class="modal-title">
+                        <i class="bi bi-sliders me-2"></i>
+                        Advanced Image Settings
+                      </h5>
                       <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                      <div class="mb-3">
-                        <label for="nightThreshold" class="form-label d-flex justify-content-between">
-                          <span>Night Threshold</span>
-                          <span class="badge" id="nightThresholdValue">25</span>
-                        </label>
-                        <input type="range" class="form-range" id="nightThreshold" min="10" max="50" step="1" value="25" />
+                      <!-- Night Mode Settings -->
+                      <div class="mb-4">
+                        <h6 class="mb-3">
+                          <i class="bi bi-moon-stars me-2"></i>
+                          Night Mode Settings
+                        </h6>
+                        <div class="mb-3">
+                          <label for="nightThreshold" class="form-label d-flex justify-content-between">
+                            <span>Darkness Sensitivity</span>
+                            <span class="badge bg-info" id="nightThresholdValue">25</span>
+                          </label>
+                          <input type="range" class="form-range" id="nightThreshold" min="10" max="50" step="1" value="25" />
+                          <small class="text-muted">Adjust how dark an image needs to be to trigger night mode</small>
+                        </div>
+                        <div class="mb-3">
+                          <label for="nightClaheLimit" class="form-label d-flex justify-content-between">
+                            <span>Night Mode Enhancement</span>
+                            <span class="badge bg-info" id="nightClaheLimitValue">2.0</span>
+                          </label>
+                          <input type="range" class="form-range" id="nightClaheLimit" min="1.0" max="4.0" step="0.1" value="2.0" />
+                          <small class="text-muted">Increase to make dark areas more visible</small>
+                        </div>
                       </div>
-                      <div class="mb-3">
-                        <label for="nightClaheLimit" class="form-label d-flex justify-content-between">
-                          <span>Night CLAHE Limit</span>
-                          <span class="badge" id="nightClaheLimitValue">2.0</span>
-                        </label>
-                        <input type="range" class="form-range" id="nightClaheLimit" min="1.0" max="4.0" step="0.1" value="2.0" />
+
+                      <!-- Normal Mode Settings -->
+                      <div class="mb-4">
+                        <h6 class="mb-3">
+                          <i class="bi bi-sun me-2"></i>
+                          Normal Mode Settings
+                        </h6>
+                        <div class="mb-3">
+                          <label for="normalClaheLimit" class="form-label d-flex justify-content-between">
+                            <span>Image Enhancement</span>
+                            <span class="badge bg-info" id="normalClaheLimitValue">1.5</span>
+                          </label>
+                          <input type="range" class="form-range" id="normalClaheLimit" min="1.0" max="3.0" step="0.1" value="1.5" />
+                          <small class="text-muted">Adjust image clarity and contrast</small>
+                        </div>
                       </div>
-                      <div class="mb-3">
-                        <label for="normalClaheLimit" class="form-label d-flex justify-content-between">
-                          <span>Normal CLAHE Limit</span>
-                          <span class="badge" id="normalClaheLimitValue">1.5</span>
-                        </label>
-                        <input type="range" class="form-range" id="normalClaheLimit" min="1.0" max="3.0" step="0.1" value="1.5" />
+
+                      <div class="alert alert-info">
+                        <i class="bi bi-lightbulb me-2"></i>
+                        <strong>Tip:</strong> Higher values make images brighter but may reduce quality. Start with default values and adjust if needed.
                       </div>
                     </div>
                     <div class="modal-footer">
-                      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                      <button type="button" class="btn btn-primary" id="applyTuningBtn">Apply & Process</button>
+                      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-2"></i>Cancel
+                      </button>
+                      <button type="button" class="btn btn-primary" id="applyTuningBtn">
+                        <i class="bi bi-check-circle me-2"></i>Apply Settings
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -761,9 +796,88 @@
       thresholdSlider.addEventListener('input', function(e) {
         thresholdValue.textContent = e.target.value
       })
-
+      
       alphaSlider.addEventListener('input', function(e) {
         alphaValue.textContent = e.target.value
+      })
+      
+      // Add event listeners for tuning parameters
+      nightThresholdSlider.addEventListener('input', function(e) {
+        nightThresholdValue.textContent = e.target.value
+      })
+
+      nightClaheLimitSlider.addEventListener('input', function(e) {
+        nightClaheLimitValue.textContent = e.target.value
+      })
+
+      normalClaheLimitSlider.addEventListener('input', function(e) {
+        normalClaheLimitValue.textContent = e.target.value
+      })
+
+      // Handle apply tuning button click
+      applyTuningBtn.addEventListener('click', async function() {
+        if (imagesInput.files.length < 1) {
+          showError('Please upload at least one image first')
+          return
+        }
+
+        loading.style.display = 'block'
+        errorContainer.style.display = 'none'
+
+        const formData = new FormData()
+        formData.append('night_threshold', nightThresholdSlider.value)
+        formData.append('night_clahe_limit', nightClaheLimitSlider.value)
+        formData.append('normal_clahe_limit', normalClaheLimitSlider.value)
+        
+        // Add images if available
+        for (let i = 0; i < imagesInput.files.length; i++) {
+          formData.append('images', imagesInput.files[i])
+        }
+
+        try {
+          const response = await fetch('/tune_parameters', {
+            method: 'POST',
+            body: formData
+          })
+
+          if (!response.ok) {
+            throw new Error('Network response was not ok')
+          }
+
+          const data = await response.json()
+
+          if (data.success) {
+            // Update UI with new parameters
+            if (data.parameters) {
+              nightThresholdSlider.value = data.parameters.night_threshold
+              nightThresholdValue.textContent = data.parameters.night_threshold
+              nightClaheLimitSlider.value = data.parameters.night_clahe_clip_limit
+              nightClaheLimitValue.textContent = data.parameters.night_clahe_clip_limit
+              normalClaheLimitSlider.value = data.parameters.normal_clahe_clip_limit
+              normalClaheLimitValue.textContent = data.parameters.normal_clahe_clip_limit
+            }
+
+            // Show success message
+            const modal = bootstrap.Modal.getInstance(tuneParamsModal)
+            modal.hide()
+            
+            // Show success alert
+            const alert = document.createElement('div')
+            alert.className = 'alert alert-success alert-dismissible fade show'
+            alert.innerHTML = `
+              <i class="bi bi-check-circle me-2"></i>
+              ${data.message}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `
+            document.querySelector('.container').insertBefore(alert, document.querySelector('.row'))
+          } else {
+            showError(data.message || 'Failed to update parameters')
+          }
+        } catch (error) {
+          showError('Error updating parameters: ' + error.message)
+        } finally {
+          loading.style.display = 'none'
+              }
       })
 
       // Handle merge type change
@@ -790,19 +904,19 @@
         }
         formData.append('threshold', thresholdSlider.value)
         formData.append('use_orb', document.getElementById('useOrb').checked)
-
+      
         try {
           const response = await fetch('/feature_matches', {
             method: 'POST',
             body: formData
           })
-
+      
           if (!response.ok) {
             throw new Error('Network response was not ok')
           }
-
+      
           const data = await response.json()
-
+      
           if (data.success) {
             const img = document.createElement('img')
             img.src = data.result_image
@@ -820,32 +934,32 @@
           loading.style.display = 'none'
         }
       })
-
+      
       showPreprocessedBtn.addEventListener('click', async function() {
         if (imagesInput.files.length < 1) {
           showError('Please upload at least one image first')
           return
         }
-
+      
         loading.style.display = 'block'
         result.style.display = 'none'
         errorContainer.style.display = 'none'
 
         const formData = new FormData()
         formData.append('image', imagesInput.files[0])
-
+      
         try {
           const response = await fetch('/show_preprocessed', {
             method: 'POST',
             body: formData
           })
-
+      
           if (!response.ok) {
             throw new Error('Network response was not ok')
           }
-
+      
           const data = await response.json()
-
+      
           if (data.success) {
             const img = document.createElement('img')
             img.src = data.result_image
@@ -854,7 +968,7 @@
             result.innerHTML = ''
             result.appendChild(img)
             result.style.display = 'block'
-
+      
             // Add image analysis info
             const infoDiv = document.createElement('div')
             infoDiv.className = 'mt-3 p-3 bg-light rounded'
@@ -876,32 +990,32 @@
           loading.style.display = 'none'
         }
       })
-
+      
       enhancePanoramaBtn.addEventListener('click', async function() {
         if (!resultImageUrl) {
           showError('Please process images first')
           return
         }
-
+      
         loading.style.display = 'block'
         result.style.display = 'none'
         errorContainer.style.display = 'none'
 
         const formData = new FormData()
         formData.append('image', await fetch(resultImageUrl).then(r => r.blob()))
-
+      
         try {
           const response = await fetch('/enhance_panorama', {
             method: 'POST',
             body: formData
           })
-
+      
           if (!response.ok) {
             throw new Error('Network response was not ok')
           }
-
+      
           const data = await response.json()
-
+      
           if (data.success) {
             const img = document.createElement('img')
             img.src = data.result_image
@@ -911,7 +1025,7 @@
             result.appendChild(img)
             result.style.display = 'block'
             resultImageUrl = data.result_image
-
+      
             // Enable download button
             downloadBtn.style.display = 'block'
             downloadBtn.onclick = function() {
@@ -931,7 +1045,7 @@
           loading.style.display = 'none'
         }
       })
-
+      
       tuneParamsBtn.addEventListener('click', function() {
         const modal = new bootstrap.Modal(tuneParamsModal)
         modal.show()
@@ -945,7 +1059,7 @@
           showError('Please select at least 2 images')
           return
         }
-
+      
         // Reset UI
         loading.style.display = 'block'
         result.style.display = 'none'
@@ -959,7 +1073,7 @@
         tuneParamsBtn.disabled = true
 
         // Create FormData
-        const formData = new FormData()
+          const formData = new FormData()
         for (let i = 0; i < imagesInput.files.length; i++) {
           formData.append('images', imagesInput.files[i])
         }
@@ -973,13 +1087,13 @@
             method: 'POST',
             body: formData
           })
-
+      
           if (!response.ok) {
             throw new Error('Network response was not ok')
           }
-
+      
           const data = await response.json()
-
+      
           if (data.success) {
             // Display thumbnails
             thumbnailsContainer.innerHTML = ''
@@ -1003,7 +1117,7 @@
             result.appendChild(img)
             result.style.display = 'block'
             resultImageUrl = data.result_image
-
+      
             // Enable buttons
             showMatchesBtn.disabled = false
             showPreprocessedBtn.disabled = false
@@ -1030,7 +1144,7 @@
           loading.style.display = 'none'
         }
       })
-
+      
       // Helper function to display errors
       function showError(message) {
         errorContainer.querySelector('.error-message').textContent = message

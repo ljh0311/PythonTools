@@ -373,7 +373,15 @@ class ImageMerger:
         
         # Collect statistics from image set
         for img in image_set:
-            # Convert to grayscale
+            # Ensure image is in BGR format
+            if len(img.shape) == 2:  # If grayscale
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            elif len(img.shape) == 3 and img.shape[2] == 4:  # If RGBA
+                img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+            elif len(img.shape) == 3 and img.shape[2] == 1:  # If single channel
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            
+            # Convert to grayscale for analysis
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
             # Calculate brightness
@@ -1626,6 +1634,109 @@ def get_storage_usage():
         'used': round(used, 2),
         'total': total
     }
+
+@app.route('/tune_parameters', methods=['POST'])
+def tune_parameters():
+    """Handle parameter tuning requests"""
+    try:
+        # Get parameters from request
+        night_threshold = float(request.form.get('night_threshold', 100))
+        night_clahe_limit = float(request.form.get('night_clahe_limit', 4.0))
+        normal_clahe_limit = float(request.form.get('normal_clahe_limit', 2.0))
+        
+        # Create merger instance
+        merger = ImageMerger()
+        
+        # Update parameters
+        merger.night_threshold = night_threshold
+        merger.night_clahe_clip_limit = night_clahe_limit
+        merger.normal_clahe_clip_limit = normal_clahe_limit
+        
+        # If images are provided, tune parameters based on them
+        if 'images' in request.files:
+            files = request.files.getlist('images')
+            image_set = []
+            
+            for file in files:
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"tune_{filename}")
+                    file.save(filepath)
+                    
+                    img = cv2.imread(filepath)
+                    if img is not None:
+                        # Ensure image is in BGR format
+                        if len(img.shape) == 2:  # If grayscale
+                            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                        elif len(img.shape) == 3 and img.shape[2] == 4:  # If RGBA
+                            img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+                        image_set.append(img)
+            
+            if image_set:
+                try:
+                    # Tune parameters based on the image set
+                    tuning_result = merger.tune_preprocessing_parameters(image_set)
+                    return jsonify(tuning_result)
+                except Exception as e:
+                    logger.error(f"Error during parameter tuning: {str(e)}")
+                    return jsonify({
+                        'success': False,
+                        'message': f'Error during parameter tuning: {str(e)}'
+                    })
+        
+        return jsonify({
+            'success': True,
+            'message': 'Parameters updated successfully',
+            'parameters': {
+                'night_threshold': merger.night_threshold,
+                'night_clahe_clip_limit': merger.night_clahe_clip_limit,
+                'normal_clahe_clip_limit': merger.normal_clahe_clip_limit
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in tune_parameters: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Error updating parameters: {str(e)}'
+        })
+
+@app.route('/api/view_files')
+def api_view_files():
+    try:
+        uploads_path = app.config['UPLOAD_FOLDER']
+        results_path = app.config['RESULTS_FOLDER']
+        uploads = []
+        results = []
+        if os.path.exists(uploads_path):
+            for file in os.listdir(uploads_path):
+                file_path = os.path.join(uploads_path, file)
+                if os.path.isfile(file_path):
+                    size = os.path.getsize(file_path)
+                    modified = os.path.getmtime(file_path)
+                    uploads.append({
+                        'name': file,
+                        'path': f"/{uploads_path}/{file}",
+                        'size': size,
+                        'modified': modified
+                    })
+        if os.path.exists(results_path):
+            for file in os.listdir(results_path):
+                file_path = os.path.join(results_path, file)
+                if os.path.isfile(file_path):
+                    size = os.path.getsize(file_path)
+                    modified = os.path.getmtime(file_path)
+                    results.append({
+                        'name': file,
+                        'path': f"/{results_path}/{file}",
+                        'size': size,
+                        'modified': modified
+                    })
+        uploads.sort(key=lambda x: x['modified'], reverse=True)
+        results.sort(key=lambda x: x['modified'], reverse=True)
+        return jsonify({'success': True, 'uploads': uploads, 'results': results})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True)
