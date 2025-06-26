@@ -1,0 +1,68 @@
+2025-06-12 12:01:13 - Battery: 98% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:02:13 - Battery: 98% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:03:13 - Battery: 98% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:04:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:05:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:06:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:07:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:08:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:09:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:10:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:11:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:12:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:13:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:14:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:15:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:16:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:17:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:18:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:19:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:20:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:21:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:22:13 - Battery: 97% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:23:13 - Battery: 96% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:24:13 - Battery: 96% | Power: Plugged | Time Left: Unknown
+2025-06-12 12:26:02 - Battery: 96% | Power: Plugged | Time Left: Charging
+2025-06-12 12:50:05 - Battery: 95% | Power: Plugged | Time Left: Charging
+Top Power-Consuming Processes:
+
+2025-06-12 12:53:42 - Battery: 95% | Power: Plugged | Time Left: Charging
+Top Power-Consuming Processes:
+  - : CPU 0.0%, Memory 0.4%
+  - Registry: CPU 0.0%, Memory 0.1%
+  - svchost.exe: CPU 0.0%, Memory 0.1%
+  - MemCompression: CPU 0.0%, Memory 8.4%
+  - NVDisplay.Container.exe: CPU 0.0%, Memory 0.1%
+
+2025-06-12 12:55:25 - Battery: 95% | Power: Plugged | Time Left: Charging
+Top Power-Consuming Processes:
+  - System Idle Process: CPU 1034.1%, Memory 0.0%
+  - RobloxPlayerBeta.exe: CPU 177.3%, Memory 23.3%
+  - MSI.CentralServer.exe: CPU 100.9%, Memory 0.4%
+  - WmiPrvSE.exe: CPU 34.3%, Memory 0.1%
+  - dwm.exe: CPU 31.4%, Memory 0.5%
+
+2025-06-12 12:57:09 - Battery: 95% | Power: Plugged | Time Left: Charging
+Top Power-Consuming Processes:
+  - System Idle Process: CPU 1053.7%, Memory 0.0%
+  - RobloxPlayerBeta.exe: CPU 164.6%, Memory 23.3%
+  - MSI.CentralServer.exe: CPU 100.3%, Memory 0.3%
+  - WmiPrvSE.exe: CPU 34.5%, Memory 0.1%
+  - dwm.exe: CPU 31.6%, Memory 0.5%
+
+2025-06-12 12:58:53 - Battery: 95% | Power: Plugged | Time Left: Charging
+Top Power-Consuming Processes:
+  - System Idle Process: CPU 1041.2%, Memory 0.0%
+  - RobloxPlayerBeta.exe: CPU 185.1%, Memory 23.4%
+  - MSI.CentralServer.exe: CPU 101.4%, Memory 0.3%
+  - WmiPrvSE.exe: CPU 34.1%, Memory 0.1%
+  - dwm.exe: CPU 30.7%, Memory 0.5%
+
+2025-06-12 13:00:36 - Battery: 95% | Power: Plugged | Time Left: Charging
+Top Power-Consuming Processes:
+  - System Idle Process: CPU 1022.8%, Memory 0.0%
+  - RobloxPlayerBeta.exe: CPU 172.1%, Memory 23.4%
+  - MSI.CentralServer.exe: CPU 99.5%, Memory 0.3%
+  - WmiPrvSE.exe: CPU 34.3%, Memory 0.1%
+  - dwm.exe: CPU 31.6%, Memory 0.5%
+
