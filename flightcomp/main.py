@@ -34,20 +34,35 @@ def check_dependencies():
         return False
 
 def load_appropriate_window(root, role):
-    """Load the appropriate window based on selected role"""
-    # First destroy any existing widgets
+    """Load the appropriate window based on the selected role"""
+    # First destroy any existing widgets to clear the screen
     for widget in root.winfo_children():
         widget.destroy()
-    
-    # Then reconfigure the window with a new title
+
     if role == "pilot":
-        root.title("Pilot ATC Assistant")
+        # Load pilot-specific configuration
+        pilot_config = {
+            "experience_level": config.get("experience_level", "beginner"),
+            "aircraft_type": config.get("aircraft_type", "single_engine"),
+            "voice_enabled": config.get("voice_enabled", True),
+            "voice_rate": config.get("voice_rate", 150),
+            "phraseology_region": config.get("phraseology_region", "US"),
+            "auto_save_notes": config.get("auto_save_notes", True),
+            "notes_directory": config.get("notes_directory", "atc_notes")
+        }
+        
+        # Create pilot interface with configuration
         app = MainWindow(root)
+        
+        # Apply pilot-specific settings
+        if pilot_config["voice_enabled"]:
+            app.speech_engine.rate = pilot_config["voice_rate"]
+        
         return app
     elif role == "atc":
-        root.title("ATC Operations Assistant")
-        
-        # Create an ATC model with default airports
+        # For ATC role, we need to select an airport first
+        # Load the ATCModel to get available airports
+        from models.atc_model import ATCModel
         atc_model = ATCModel()
         
         # Print debugging information about the model
@@ -55,36 +70,29 @@ def load_appropriate_window(root, role):
         for airport_name, airport_data in atc_model.airports.items():
             print(f"  - {airport_name} (runways: {', '.join(airport_data.runways)})")
         
+        # Get the last selected airport from config
+        last_airport = config.get("last_selected_airport")
+        
+        # Show airport selection dialog
+        selected_airport, remember_choice = show_airport_selection_dialog(root, atc_model.airports, last_airport)
+        
+        if selected_airport is None:
+            # User canceled airport selection
+            return None
+        
+        # Save the selected airport for next time if user chose to remember
+        if remember_choice:
+            config.set("last_selected_airport", selected_airport)
+            config.save_config()
+        
         # Create a dictionary of airport data from the AirportConfiguration objects
         airports_dict = {}
         for name, airport_obj in atc_model.airports.items():
             # Convert AirportConfiguration to dict
             airports_dict[name] = airport_obj.to_dict()
         
-        # Show airport selection dialog
-        last_airport = config.get("last_airport")
-        selected_airport = show_airport_selection_dialog(root, atc_model.airports, last_airport)
-        if not selected_airport:  # User canceled the selection
-            # Show role selection again
-            RoleSelectionScreen(root, lambda r: on_role_selected(r, root, config))
-            return None
-        
-        # Remember the selected airport for next time
-        config.set("last_airport", selected_airport)
-        config.save_config()
-        
-        # Set the current airport in the dictionary
-        for airport_name in airports_dict:
-            if airport_name == selected_airport:
-                # This is the selected airport - nothing specific to set here
-                pass
-        
         # Pass the config and converted airport data to the ATCWindow
-        app = ATCWindow(root, config, airports_dict)
-        
-        # Set the current airport after initialization
-        app.current_airport = selected_airport
-        app.update_airport_config()
+        app = ATCWindow(root, config, airports_dict, selected_airport)
         
         return app
     else:
@@ -92,112 +100,167 @@ def load_appropriate_window(root, role):
         return None
 
 def show_airport_selection_dialog(parent, airports, last_airport=None):
-    """Show a dialog for the user to select an airport"""
+    """Show a modern dialog for the user to select an airport using a Treeview."""
+    from tkinter import ttk
+
     airport_dialog = tk.Toplevel(parent)
     airport_dialog.title("Select Airport")
-    airport_dialog.geometry("400x450")
-    airport_dialog.transient(parent)  # Make dialog modal
+    airport_dialog.geometry("650x550") # Adjusted size
+    airport_dialog.transient(parent)
     airport_dialog.grab_set()
     
     # Center the dialog on parent
     airport_dialog.update_idletasks()
-    x = parent.winfo_x() + (parent.winfo_width() // 2) - (400 // 2)
-    y = parent.winfo_y() + (parent.winfo_height() // 2) - (450 // 2)
+    x = parent.winfo_x() + (parent.winfo_width() // 2) - (650 // 2)
+    y = parent.winfo_y() + (parent.winfo_height() // 2) - (550 // 2)
     airport_dialog.geometry(f"+{x}+{y}")
+    airport_dialog.resizable(False, False)
     
     # Dialog content
-    tk.Label(
+    ttk.Label(
         airport_dialog, 
-        text="Select an airport to manage:",
-        font=("Arial", 12, "bold")
-    ).pack(pady=(20, 10))
+        text="Select an Airport to Manage",
+        font=("Arial", 16, "bold")
+    ).pack(pady=(20, 5))
+    
+    ttk.Label(
+        airport_dialog, 
+        text="Choose from the available airports below:",
+        font=("Arial", 10)
+    ).pack(pady=(0, 20))
     
     # Create frame for the airport list with scrollbar
-    list_frame = tk.Frame(airport_dialog)
-    list_frame.pack(fill="both", expand=True, padx=20, pady=10)
+    list_frame = ttk.Frame(airport_dialog)
+    list_frame.pack(fill="both", expand=True, padx=20, pady=5)
     
-    scrollbar = tk.Scrollbar(list_frame)
+    # --- Treeview Implementation ---
+    style = ttk.Style(airport_dialog)
+    style.configure("Treeview", rowheight=35, font=("Arial", 10), fieldbackground="#F0F0F0")
+    style.configure("Treeview.Heading", font=("Arial", 11, "bold"))
+    style.map("Treeview", background=[('selected', '#0078D7')])
+    style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})]) # Remove borders
+
+    tree = ttk.Treeview(
+        list_frame,
+        columns=("name", "icao", "runways"),
+        show="headings",
+        selectmode="browse",
+        height=8
+    )
+    tree.heading("name", text="Airport Name")
+    tree.heading("icao", text="ICAO")
+    tree.heading("runways", text="Runways")
+    
+    tree.column("name", width=300, anchor="w", stretch=tk.YES)
+    tree.column("icao", width=80, anchor="center", stretch=tk.NO)
+    tree.column("runways", width=150, anchor="w", stretch=tk.NO)
+
+    scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scrollbar.set)
+    
+    tree.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
     
-    airport_listbox = tk.Listbox(
-        list_frame,
-        height=15,
-        width=40,
-        selectmode="single",
-        font=("Arial", 10),
-        yscrollcommand=scrollbar.set
-    )
-    airport_listbox.pack(side="left", fill="both", expand=True)
-    scrollbar.config(command=airport_listbox.yview)
+    # Add data to Treeview
+    tree.tag_configure('oddrow', background='#F7F7F7')
+    tree.tag_configure('evenrow', background='#FFFFFF')
+
+    airport_map = {} # From tree item id to airport key
+    id_map = {}      # From airport key to tree item id
     
-    # Add airports to the listbox with details
-    airport_index_map = {}  # Map airport names to listbox indices
-    for idx, (airport_name, airport_obj) in enumerate(airports.items()):
-        icao = airport_obj.icao
-        num_runways = len(airport_obj.runways)
-        display_text = f"{airport_name} ({num_runways} runways)"
-        airport_listbox.insert("end", display_text)
-        airport_index_map[airport_name] = idx
-    
-    # Select the last used airport if it exists, otherwise select first item
-    if last_airport and last_airport in airport_index_map:
-        airport_listbox.selection_set(airport_index_map[last_airport])
-        airport_listbox.see(airport_index_map[last_airport])  # Scroll to show the selection
-    elif airport_listbox.size() > 0:
-        airport_listbox.selection_set(0)
-    
+    for i, (airport_name, airport_obj) in enumerate(airports.items()):
+        tag = 'oddrow' if i % 2 != 0 else 'evenrow'
+        runway_list = ", ".join(airport_obj.runways)
+        
+        # Add a space for padding
+        display_name = f" {airport_name}"
+        display_runways = f" {runway_list}"
+        
+        item_id = tree.insert("", "end", values=(display_name, airport_obj.icao, display_runways), tags=(tag,))
+        airport_map[item_id] = airport_name
+        id_map[airport_name] = item_id
+
+    # Select the last used airport if it exists, otherwise select the first item
+    if last_airport and last_airport in id_map:
+        item_to_select = id_map[last_airport]
+        tree.selection_set(item_to_select)
+        tree.see(item_to_select)
+    else:
+        children = tree.get_children()
+        if children:
+            tree.selection_set(children[0])
+            tree.see(children[0])
+
     # Info label at the bottom
-    info_text = "Select an airport from the list and click 'Open' to start managing the airport."
-    tk.Label(
+    info_text = "Double-click an airport or click 'Open Selected Airport' to start managing the airport."
+    ttk.Label(
         airport_dialog,
         text=info_text,
-        wraplength=360,
-        justify="center"
-    ).pack(pady=(0, 10))
-    
+        wraplength=460,
+        justify="center",
+        font=("Arial", 9)
+    ).pack(pady=(15, 5))
+
     # Result variable to store the selected airport
-    selected_airport = [None]  # Using a list as a container to modify from inner function
-    
+    selected_airport = [None]
+    remember_choice = [False]
+
+    # Add a checkbox for remembering the choice
+    remember_var = tk.BooleanVar(value=True)
+    remember_checkbox = ttk.Checkbutton(
+        airport_dialog,
+        text="Remember my airport choice for next time",
+        variable=remember_var,
+    )
+    remember_checkbox.pack(pady=(5, 15))
+
     # Button frame
-    button_frame = tk.Frame(airport_dialog)
+    button_frame = ttk.Frame(airport_dialog)
     button_frame.pack(pady=(0, 20))
-    
+
     def on_open():
-        selected_idx = airport_listbox.curselection()
-        if selected_idx:
-            # Get the display text and extract the airport name
-            display_text = airport_listbox.get(selected_idx[0])
-            selected_name = display_text.split(" (")[0]  # Extract airport name without runway count
-            selected_airport[0] = selected_name
+        selected_item = tree.selection()
+        if selected_item:
+            selected_airport[0] = airport_map[selected_item[0]]
+            remember_choice[0] = remember_var.get()
             airport_dialog.destroy()
-            
+        else:
+            messagebox.showwarning("No Selection", "Please select an airport first.")
+
     def on_cancel():
         airport_dialog.destroy()
-    
-    tk.Button(
+
+    # Create and style buttons
+    open_button = ttk.Button(
         button_frame, 
         text="Open Selected Airport",
         command=on_open,
-        width=20,
-        bg="#4CAF50",
-        fg="white",
-        font=("Arial", 10, "bold")
-    ).pack(side="left", padx=5)
+        width=25,
+        style="Accent.TButton"
+    )
+    open_button.pack(side="left", padx=10)
     
-    tk.Button(
+    cancel_button = ttk.Button(
         button_frame, 
         text="Cancel",
         command=on_cancel,
-        width=10
-    ).pack(side="left", padx=5)
+        width=15
+    )
+    cancel_button.pack(side="left", padx=10)
+
+    style.configure("Accent.TButton", font=("Arial", 10, "bold"), foreground="white", background="#0078D7")
     
-    # Double-click to select
-    airport_listbox.bind("<Double-Button-1>", lambda e: on_open())
+    # Bind events
+    tree.bind("<Double-Button-1>", lambda e: on_open())
+    tree.bind("<Return>", lambda e: on_open())
+    
+    # Focus on the listbox
+    tree.focus_set()
     
     # Wait for the dialog to be closed
     parent.wait_window(airport_dialog)
     
-    return selected_airport[0]
+    return selected_airport[0], remember_choice[0]
 
 def on_role_selected(role, root, config):
     """Handle when a role is selected from the role selection screen"""

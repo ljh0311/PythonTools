@@ -5,14 +5,20 @@ import time
 import requests
 import random
 import math
+import re
 
 
 class ATCWindow:
-    def __init__(self, root, config, airports):
+    def __init__(self, root, config, airports, preferred_airport=None):
         self.root = root
         self.config = config
         self.airports = airports
-        self.current_airport = list(airports.keys())[0]  # Default to first airport
+        
+        # Set the current airport - use preferred_airport if provided, otherwise default to first
+        if preferred_airport and preferred_airport in airports:
+            self.current_airport = preferred_airport
+        else:
+            self.current_airport = list(airports.keys())[0]  # Default to first airport
         
         # Enrich airport data with dynamic content
         self.enrich_airport_data()
@@ -31,7 +37,7 @@ class ATCWindow:
         
         # Create header frame for airport selection and weather
         header_frame = ttk.Frame(self.main_frame)
-        header_frame.pack(fill=tk.X, pady=(0, 10))
+        header_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
         
         # Airport selection
         airport_frame = ttk.Frame(header_frame)
@@ -47,9 +53,17 @@ class ATCWindow:
             width=10
         )
         self.airport_combo.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Set the current airport in the combo box
         if list(self.airports.keys()):
-            self.airport_combo.current(0)
-            self.current_airport = list(self.airports.keys())[0]
+            # Find the index of the current airport
+            try:
+                current_index = list(self.airports.keys()).index(self.current_airport)
+                self.airport_combo.current(current_index)
+            except ValueError:
+                # If current_airport not found, default to first
+                self.airport_combo.current(0)
+                self.current_airport = list(self.airports.keys())[0]
         
         # Refresh weather button
         self.refresh_weather_button = ttk.Button(
@@ -90,7 +104,6 @@ class ATCWindow:
         
         # Create main notebook for tabs
         self.notebook = ttk.Notebook(self.main_frame)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
         
         # Create status bar
         self.status_bar = ttk.Label(
@@ -99,7 +112,10 @@ class ATCWindow:
             relief=tk.SUNKEN, 
             anchor=tk.W
         )
-        self.status_bar.pack(fill=tk.X, side=tk.BOTTOM, pady=(5, 0))
+        
+        # Correct packing order: bottom, top, then fill
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X, pady=(5, 0))
+        self.notebook.pack(fill=tk.BOTH, expand=True, pady=(5,0))
         
         # Set up controller position tabs
         self.setup_ground_tab()
@@ -111,6 +127,72 @@ class ATCWindow:
         # Initialize weather display
         self.update_airport_config()
         self.update_weather_display()
+
+    def setup_ground_tab(self):
+        """Set up the Ground Control tab with a resizable layout."""
+        self.ground_tab = ttk.Frame(self.notebook, padding=5)
+        self.notebook.add(self.ground_tab, text="Ground Control")
+
+        # Use a main horizontal paned window
+        ground_paned_window = ttk.PanedWindow(self.ground_tab, orient=tk.HORIZONTAL)
+        ground_paned_window.pack(fill=tk.BOTH, expand=True)
+
+        # --- Left Frame (now a vertical paned window) ---
+        left_paned = ttk.PanedWindow(ground_paned_window, orient=tk.VERTICAL)
+        ground_paned_window.add(left_paned, weight=2)
+
+        # --- Top-left section for aircraft list ---
+        aircraft_section = ttk.Frame(left_paned, padding=5)
+        left_paned.add(aircraft_section, weight=3) # Give more initial space to the list
+
+        aircraft_header = ttk.Label(aircraft_section, text="Aircraft on Ground", font=("Arial", 11, "bold"))
+        aircraft_header.pack(anchor="w", pady=(0, 2))
+
+        aircraft_frame = ttk.Frame(aircraft_section)
+        aircraft_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+
+        columns = ("Callsign", "Type", "Location", "Status")
+        self.ground_aircraft_tree = ttk.Treeview(aircraft_frame, columns=columns, show="headings", height=10)
+        for col in columns:
+            self.ground_aircraft_tree.heading(col, text=col, command=lambda c=col: self._sort_treeview_column(self.ground_aircraft_tree, c, False))
+            self.ground_aircraft_tree.column(col, width=90 if col!="Status" else 120, anchor="w")
+        
+        self.ground_aircraft_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        aircraft_scrollbar = ttk.Scrollbar(aircraft_frame, orient="vertical", command=self.ground_aircraft_tree.yview)
+        self.ground_aircraft_tree.configure(yscrollcommand=aircraft_scrollbar.set)
+        aircraft_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        control_frame = ttk.Frame(aircraft_section)
+        control_frame.pack(fill=tk.X, pady=5)
+        ttk.Button(control_frame, text="Add Aircraft", command=self.add_ground_aircraft).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(control_frame, text="Remove", command=self.remove_ground_aircraft).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="Edit Status", command=self.edit_ground_status).pack(side=tk.LEFT, padx=5)
+
+        # --- Bottom-left section for communications ---
+        comm_section = ttk.Frame(left_paned, padding=5)
+        left_paned.add(comm_section, weight=1)
+
+        comm_header = ttk.Label(comm_section, text="Communications", font=("Arial", 11, "bold"))
+        comm_header.pack(anchor="w", pady=(0, 2))
+
+        comm_button_frame = ttk.Frame(comm_section)
+        comm_button_frame.pack(fill=tk.X, pady=2)
+        ttk.Button(comm_button_frame, text="Taxi Clearance", command=self.issue_taxi_clearance).pack(side=tk.LEFT)
+        ttk.Button(comm_button_frame, text="Hold Position", command=self.issue_hold_instruction).pack(side=tk.LEFT, padx=5)
+        ttk.Button(comm_button_frame, text="Transfer to Tower", command=lambda: self.transfer_aircraft("Tower")).pack(side=tk.LEFT, padx=5)
+        
+        self.ground_instructions = scrolledtext.ScrolledText(comm_section, height=4, wrap=tk.WORD, state=tk.DISABLED)
+        self.ground_instructions.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+
+        # --- Right frame for airport diagram ---
+        right_frame = ttk.Frame(ground_paned_window, padding=5)
+        ground_paned_window.add(right_frame, weight=1)
+
+        diagram_frame = ttk.LabelFrame(right_frame, text="Airport Diagram")
+        diagram_frame.pack(fill=tk.BOTH, expand=True)
+        self.airport_canvas = tk.Canvas(diagram_frame, bg="lightgrey")
+        self.airport_canvas.pack(fill=tk.BOTH, expand=True)
+        self.airport_canvas.bind("<Configure>", lambda event: self.draw_airport_diagram(event.widget))
 
     def refresh_current_airport_weather(self):
         """Refresh weather for current airport"""
@@ -149,6 +231,10 @@ class ATCWindow:
         # Schedule next update if auto-update is still enabled
         if self.auto_weather_var.get():
             self.schedule_weather_update()
+        
+        # Also update the tower weather display if it exists
+        if hasattr(self, 'tower_weather_display'):
+            self.update_tower_weather_display()
 
     def get_airport_weather_string(self):
         """Get formatted weather string for display"""
@@ -159,300 +245,121 @@ class ATCWindow:
 
         return f"Wind: {wind} | Visibility: {visibility} | Ceiling: {ceiling}"
 
-    def setup_ground_tab(self):
-        """Set up the Ground Control tab"""
-        self.ground_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.ground_tab, text="Ground Control")
-
-        # Split the tab into sections
-        ground_left_frame = ttk.Frame(self.ground_tab)
-        ground_left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
-
-        ground_right_frame = ttk.Frame(self.ground_tab)
-        ground_right_frame.pack(
-            side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(5, 0)
-        )
-        ground_right_frame.config(width=400)  # Set width after packing
-        ground_right_frame.pack_propagate(False)  # Prevent the frame from shrinking
-
-        # Aircraft list section
-        aircraft_frame = ttk.LabelFrame(ground_left_frame, text="Aircraft on Ground")
-        aircraft_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
-
-        # Create list with scrollbar
-        list_frame = ttk.Frame(aircraft_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        scrollbar = ttk.Scrollbar(list_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.ground_aircraft_list = tk.Listbox(
-            list_frame, height=15, selectmode=tk.SINGLE, font=("Consolas", 10)
-        )
-        self.ground_aircraft_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.ground_aircraft_list.config(yscrollcommand=scrollbar.set)
-        scrollbar.config(command=self.ground_aircraft_list.yview)
-
-        # Status indicators for aircraft
-        indicator_frame = ttk.Frame(aircraft_frame)
-        indicator_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-
-        self.ground_status_indicators = []
-        for i in range(10):  # Maximum 10 status indicators
-            status_canvas = tk.Canvas(
-                indicator_frame, width=15, height=15, bg="white", highlightthickness=0
-            )
-            status_canvas.pack(side=tk.LEFT, padx=1)
-            self.ground_status_indicators.append(status_canvas)
-
-        # Bind selection event to update status indicators
-        self.ground_aircraft_list.bind(
-            "<<ListboxSelect>>", self.update_ground_status_indicators
-        )
-
-        # Control buttons
-        control_frame = ttk.Frame(aircraft_frame)
-        control_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-
-        ttk.Button(
-            control_frame, text="Add Aircraft", command=self.add_ground_aircraft
-        ).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(
-            control_frame, text="Remove", command=self.remove_ground_aircraft
-        ).pack(side=tk.LEFT, padx=5)
-        ttk.Button(
-            control_frame, text="Edit Status", command=self.edit_ground_status
-        ).pack(side=tk.LEFT, padx=5)
-
-        # Communication buttons
-        comm_frame = ttk.LabelFrame(ground_left_frame, text="Communications")
-        comm_frame.pack(fill=tk.BOTH, pady=(5, 0), ipady=5)
-
-        button_frame = ttk.Frame(comm_frame)
-        button_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
-
-        ttk.Button(
-            button_frame,
-            text="Taxi Clearance",
-            command=lambda: self.issue_instruction("taxi"),
-        ).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(
-            button_frame,
-            text="Hold Position",
-            command=lambda: self.issue_instruction("hold"),
-        ).pack(side=tk.LEFT, padx=5)
-        ttk.Button(
-            button_frame,
-            text="Transfer to Tower",
-            command=lambda: self.transfer_aircraft("Tower"),
-        ).pack(side=tk.LEFT, padx=5)
-
-        # Current instruction display
-        self.ground_instructions = tk.Text(comm_frame, height=3, wrap=tk.WORD)
-        self.ground_instructions.pack(fill=tk.X, padx=10, pady=(5, 10))
-
-        # Airport diagram on the right
-        diagram_frame = ttk.LabelFrame(ground_right_frame, text="Airport Diagram")
-        diagram_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.ground_canvas = tk.Canvas(diagram_frame, bg="white")
-        self.ground_canvas.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        # Draw initial airport diagram
-        self.root.update_idletasks()  # Ensure canvas is properly sized
-        self.draw_airport_diagram(self.ground_canvas)
-
     def setup_tower_tab(self):
-        """Set up the tower control tab interface"""
-        # Create a frame with left and right sides
-        main_frame = ttk.Frame(self.notebook)
-        self.notebook.add(main_frame, text="Tower Control")  # Add the tab to the notebook
-        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        """Set up the Tower Control tab"""
+        self.tower_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.tower_tab, text="Tower")
+
+        # Use a paned window for resizable sections
+        tower_paned_window = ttk.PanedWindow(self.tower_tab, orient=tk.HORIZONTAL)
+        tower_paned_window.pack(fill=tk.BOTH, expand=True)
+
+        # Left frame for queues
+        left_frame = ttk.Frame(tower_paned_window, padding=5)
+        tower_paned_window.add(left_frame, weight=1)
+
+        # Right frame for status and info
+        right_frame = ttk.Frame(tower_paned_window, padding=5)
+        tower_paned_window.add(right_frame, weight=2)
+
+        # --- Left Frame: Departure and Arrival Queues ---
+        # Departure Queue
+        dep_queue_frame = ttk.LabelFrame(left_frame, text="Departure Queue")
+        dep_queue_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+
+        dep_list_frame = ttk.Frame(dep_queue_frame)
+        dep_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        dep_scrollbar = ttk.Scrollbar(dep_list_frame)
+        dep_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.departure_listbox = tk.Listbox(dep_list_frame, height=10, yscrollcommand=dep_scrollbar.set)
+        self.departure_listbox.pack(fill=tk.BOTH, expand=True)
+        dep_scrollbar.config(command=self.departure_listbox.yview)
+
+        dep_button_frame = ttk.Frame(dep_queue_frame)
+        dep_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        ttk.Button(dep_button_frame, text="Add Aircraft", command=lambda: self.add_aircraft_to_queue("departure")).pack(side=tk.LEFT)
+        ttk.Button(dep_button_frame, text="Remove", command=lambda: self.remove_aircraft_from_queue("departure")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(dep_button_frame, text="Line Up", command=self.line_up_departure).pack(side=tk.LEFT, padx=5)
+        ttk.Button(dep_button_frame, text="Takeoff Clearance", command=self.issue_takeoff_clearance).pack(side=tk.LEFT, padx=5)
+
+        # Arrival Queue
+        arr_queue_frame = ttk.LabelFrame(left_frame, text="Arrival Queue")
+        arr_queue_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
         
-        # Left side - Departure and Arrival queues
-        left_frame = ttk.Frame(main_frame)
-        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        arr_list_frame = ttk.Frame(arr_queue_frame)
+        arr_list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        arr_scrollbar = ttk.Scrollbar(arr_list_frame)
+        arr_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.arrival_listbox = tk.Listbox(arr_list_frame, height=10, yscrollcommand=arr_scrollbar.set)
+        self.arrival_listbox.pack(fill=tk.BOTH, expand=True)
+        arr_scrollbar.config(command=self.arrival_listbox.yview)
+
+        arr_button_frame = ttk.Frame(arr_queue_frame)
+        arr_button_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        ttk.Button(arr_button_frame, text="Add Aircraft", command=lambda: self.add_aircraft_to_queue("arrival")).pack(side=tk.LEFT)
+        ttk.Button(arr_button_frame, text="Remove", command=lambda: self.remove_aircraft_from_queue("arrival")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(arr_button_frame, text="Approach Clearance", command=self.issue_approach_clearance).pack(side=tk.LEFT, padx=5)
+        ttk.Button(arr_button_frame, text="Landing Clearance", command=self.issue_landing_clearance).pack(side=tk.LEFT, padx=5)
+        ttk.Button(arr_button_frame, text="Transfer to Ground", command=self.transfer_to_ground).pack(side=tk.LEFT, padx=5)
+
+        # --- Right Frame: Notebook for different info ---
+        right_notebook = ttk.Notebook(right_frame)
+        right_notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Runway Status Tab
+        runway_tab = ttk.Frame(right_notebook, padding=5)
+        right_notebook.add(runway_tab, text="Runway Status")
+        self.runway_frame = ttk.LabelFrame(runway_tab, text="Runway Status")
+        self.runway_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+
+        # Instructions Tab
+        instructions_tab = ttk.Frame(right_notebook, padding=5)
+        right_notebook.add(instructions_tab, text="Instructions")
+        instructions_frame = ttk.LabelFrame(instructions_tab, text="Instructions")
+        instructions_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        self.tower_instructions_text = scrolledtext.ScrolledText(instructions_frame, wrap=tk.WORD, height=10, relief=tk.FLAT, background=self.root.cget('bg'), state=tk.DISABLED)
+        self.tower_instructions_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Right side - Runway status and weather
-        right_frame = ttk.Frame(main_frame)
-        right_frame.pack(side="right", fill="both", expand=True, padx=(5, 0))
-        
-        # === LEFT SIDE - AIRCRAFT QUEUES ===
-        # Departure queue frame
-        departure_frame = ttk.LabelFrame(left_frame, text="Departure Queue")
-        departure_frame.pack(fill="both", expand=True, pady=(0, 5))
-        
-        # Create departure listbox with scrollbar
-        departure_list_frame = ttk.Frame(departure_frame)
-        departure_list_frame.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        departure_scrollbar = ttk.Scrollbar(departure_list_frame)
-        departure_scrollbar.pack(side="right", fill="y")
-        
-        self.departure_listbox = tk.Listbox(
-            departure_list_frame,
-            height=10,  # Increased height
-            width=40,
-            yscrollcommand=departure_scrollbar.set,
-            selectmode="single",
-            font=("Consolas", 10),
-            bg="white",  # Explicit background color
-            relief=tk.SUNKEN,  # Add border relief
-            borderwidth=1      # Add border width
+        # Log initial instructions
+        self.log_communication(
+            self.tower_instructions_text, 
+            "SYSTEM", 
+            "Tower control initialized. Monitor runway status and queues.",
+            clear=True
         )
-        self.departure_listbox.pack(side="left", fill="both", expand=True)
-        departure_scrollbar.config(command=self.departure_listbox.yview)
+
+        # Weather Tab
+        weather_tab = ttk.Frame(right_notebook, padding=5)
+        right_notebook.add(weather_tab, text="Weather")
+        weather_frame = ttk.LabelFrame(weather_tab, text="Current Weather")
+        weather_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         
-        # Add a placeholder message for empty queue
-        self.departure_listbox.insert(tk.END, "No aircraft in departure queue")
-        self.departure_listbox.itemconfig(0, {'fg': 'gray'})  # Gray out the placeholder text
-        
-        # Ensure the departure list frame has a minimum height
-        departure_list_frame.update_idletasks()
-        min_height = 150  # Minimum height in pixels
-        current_height = departure_list_frame.winfo_height()
-        if current_height < min_height:
-            departure_list_frame.config(height=min_height)
-            departure_list_frame.pack_propagate(False)  # Prevent shrinking smaller than min_height
-        
-        # Departure control buttons
-        departure_buttons_frame = ttk.Frame(departure_frame)
-        departure_buttons_frame.pack(fill="x", padx=5, pady=5)
-        
-        ttk.Button(
-            departure_buttons_frame,
-            text="Add Aircraft",
-            command=lambda: self.add_aircraft_to_queue("departure")
-        ).pack(side="left", padx=2)
-        
-        ttk.Button(
-            departure_buttons_frame,
-            text="Remove",
-            command=lambda: self.remove_aircraft_from_queue("departure")
-        ).pack(side="left", padx=2)
-        
-        ttk.Button(
-            departure_buttons_frame,
-            text="Line Up",
-            command=self.line_up_departure
-        ).pack(side="left", padx=2)
-        
-        ttk.Button(
-            departure_buttons_frame,
-            text="Takeoff Clearance",
-            command=self.issue_takeoff_clearance
-        ).pack(side="left", padx=2)
-        
-        # Arrival queue frame - Apply the same fixes
-        arrival_frame = ttk.LabelFrame(left_frame, text="Arrival Queue")
-        arrival_frame.pack(fill="both", expand=True, pady=(5, 0))
-        
-        # Create arrival listbox with scrollbar
-        arrival_list_frame = ttk.Frame(arrival_frame)
-        arrival_list_frame.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        arrival_scrollbar = ttk.Scrollbar(arrival_list_frame)
-        arrival_scrollbar.pack(side="right", fill="y")
-        
-        self.arrival_listbox = tk.Listbox(
-            arrival_list_frame,
-            height=10,  # Increased height
-            width=40,
-            yscrollcommand=arrival_scrollbar.set,
-            selectmode="single",
-            font=("Consolas", 10),
-            bg="white",  # Explicit background color
-            relief=tk.SUNKEN,  # Add border relief
-            borderwidth=1      # Add border width
-        )
-        self.arrival_listbox.pack(side="left", fill="both", expand=True)
-        arrival_scrollbar.config(command=self.arrival_listbox.yview)
-        
-        # Add a placeholder message for empty queue
-        self.arrival_listbox.insert(tk.END, "No aircraft in arrival queue")
-        self.arrival_listbox.itemconfig(0, {'fg': 'gray'})  # Gray out the placeholder text
-        
-        # Ensure the arrival list frame has a minimum height
-        arrival_list_frame.update_idletasks()
-        if arrival_list_frame.winfo_height() < min_height:
-            arrival_list_frame.config(height=min_height)
-            arrival_list_frame.pack_propagate(False)  # Prevent shrinking smaller than min_height
-        
-        # Arrival control buttons
-        arrival_buttons_frame = ttk.Frame(arrival_frame)
-        arrival_buttons_frame.pack(fill="x", padx=5, pady=5)
-        
-        ttk.Button(
-            arrival_buttons_frame,
-            text="Add Aircraft",
-            command=lambda: self.add_aircraft_to_queue("arrival")
-        ).pack(side="left", padx=2)
-        
-        ttk.Button(
-            arrival_buttons_frame,
-            text="Remove",
-            command=lambda: self.remove_aircraft_from_queue("arrival")
-        ).pack(side="left", padx=2)
-        
-        ttk.Button(
-            arrival_buttons_frame,
-            text="Approach Clearance",
-            command=self.issue_approach_clearance
-        ).pack(side="left", padx=2)
-        
-        ttk.Button(
-            arrival_buttons_frame,
-            text="Landing Clearance",
-            command=self.issue_landing_clearance
-        ).pack(side="left", padx=2)
-        
-        # === RIGHT SIDE - RUNWAY STATUS AND WEATHER ===
-        # Runway status frame
-        self.runway_frame = ttk.LabelFrame(right_frame, text="Runway Status")
-        self.runway_frame.pack(fill="both", expand=True, pady=(0, 5))
-        
-        # Initial placeholder for runway frame
-        ttk.Label(
-            self.runway_frame, 
-            text="Select an airport to view runway status"
-        ).pack(pady=20)
-        
-        # Weather information frame
-        weather_frame = ttk.LabelFrame(right_frame, text="Current Weather")
-        weather_frame.pack(fill="both", expand=True, pady=(5, 0))
-        
-        # Weather display
-        self.tower_weather_display = ttk.Label(
-            weather_frame,
-            text="No weather data available",
-            wraplength=300,
-            justify="left"
-        )
-        self.tower_weather_display.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Weather refresh button
-        ttk.Button(
-            weather_frame,
-            text="Refresh Weather",
-            command=self.refresh_current_airport_weather
-        ).pack(side="left", padx=10, pady=(0, 10))
-        
-        # Auto weather update checkbox
-        self.auto_weather_var = tk.BooleanVar(value=self.auto_weather_update)
-        auto_weather_check = ttk.Checkbutton(
-            weather_frame,
-            text="Auto Weather Updates",
-            variable=self.auto_weather_var,
-            command=self.toggle_auto_weather_updates
-        )
-        auto_weather_check.pack(side="right", padx=10, pady=(0, 10))
-        
-        # Initial update
-        self.update_runway_frame()
+        self.tower_weather_display = scrolledtext.ScrolledText(weather_frame, wrap=tk.WORD, height=10)
+        self.tower_weather_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.tower_weather_display.config(state=tk.DISABLED)
+
+        # Initialize runway status and weather for tower tab
+        # Note: These calls are moved to the end to ensure all UI elements are created first
+        self.root.after(100, self.update_runway_frame)
+        self.root.after(100, self.update_tower_weather_display)
+
+    def update_tower_weather_display(self):
+        """Updates the weather display in the tower tab"""
+        if hasattr(self, 'tower_weather_display'):
+            airport_data = self.airports.get(self.current_airport, {})
+            weather_str = self.get_airport_weather_string()
+            
+            metar = airport_data.get("metar", "No METAR available")
+            
+            full_weather_text = f"Current Weather:\n{weather_str}\n\nMETAR:\n{metar}"
+            
+            self.tower_weather_display.config(state=tk.NORMAL)
+            self.tower_weather_display.delete(1.0, tk.END)
+            self.tower_weather_display.insert(tk.END, full_weather_text)
+            self.tower_weather_display.config(state=tk.DISABLED)
 
     def setup_approach_tab(self):
-        """Set up the Approach tab"""
-        # Basic structure - to be expanded
+        """Set up the Approach Control tab"""
         self.approach_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.approach_tab, text="Approach Control")
         ttk.Label(self.approach_tab, text="Approach Control - Coming Soon").pack(pady=20)
@@ -473,110 +380,171 @@ class ATCWindow:
         ).pack()
 
     def setup_atis_tab(self):
-        """Set up the ATIS Management tab"""
-        # Basic structure - to be expanded
-        self.atis_tab = ttk.Frame(self.notebook)
+        """Set up the ATIS Management tab."""
+        self.atis_tab = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(self.atis_tab, text="ATIS Management")
-        ttk.Label(self.atis_tab, text="ATIS Management - Coming Soon").pack(pady=20)
-        ttk.Label(
-            self.atis_tab,
-            text="This tab will provide tools for creating and updating ATIS information.",
-        ).pack()
+
+        # ATIS Display Frame
+        atis_display_frame = ttk.LabelFrame(self.atis_tab, text="Current ATIS Message")
+        atis_display_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        self.atis_message_text = scrolledtext.ScrolledText(atis_display_frame, wrap=tk.WORD, height=10, state=tk.DISABLED)
+        self.atis_message_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # ATIS Control Frame
+        atis_control_frame = ttk.LabelFrame(self.atis_tab, text="ATIS Generation")
+        atis_control_frame.pack(fill=tk.X)
+
+        control_grid = ttk.Frame(atis_control_frame, padding=10)
+        control_grid.pack(fill=tk.X)
+
+        # Phonetic designator
+        ttk.Label(control_grid, text="Information:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.atis_designator_var = tk.StringVar()
+        self.phonetic_alphabet = [chr(i) for i in range(ord('A'), ord('Z') + 1)]
+        self.atis_designator_combo = ttk.Combobox(
+            control_grid, 
+            textvariable=self.atis_designator_var,
+            values=self.phonetic_alphabet,
+            width=5,
+            state="readonly"
+        )
+        self.atis_designator_combo.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        self.atis_designator_combo.set("A")
+
+        # Remarks
+        ttk.Label(control_grid, text="Remarks:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.atis_remarks_var = tk.StringVar()
+        remarks_entry = ttk.Entry(control_grid, textvariable=self.atis_remarks_var, width=60)
+        remarks_entry.grid(row=1, column=1, columnspan=3, sticky=tk.EW, padx=5, pady=5)
+        control_grid.columnconfigure(1, weight=1)
+        
+        # Buttons
+        button_frame = ttk.Frame(control_grid)
+        button_frame.grid(row=2, column=0, columnspan=4, pady=10)
+        
+        ttk.Button(button_frame, text="Generate New ATIS", command=self.generate_atis_message).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Broadcast ATIS", command=self.broadcast_atis).pack(side=tk.LEFT, padx=5)
+
+    def generate_atis_message(self):
+        """Generates the ATIS message content based on current data."""
+        airport_data = self.airports.get(self.current_airport)
+        if not airport_data:
+            messagebox.showerror("Error", "No airport data available.")
+            return
+
+        # Get data points
+        icao = airport_data.get("icao", "----")
+        designator = self.atis_designator_var.get()
+        now_utc = time.gmtime()
+        time_str = time.strftime("%H%M", now_utc) + "Z"
+        
+        # Weather
+        wind = airport_data.get("wind", "not available")
+        visibility = airport_data.get("visibility", "not available")
+        ceiling = airport_data.get("ceiling", "not available")
+        # In a real app, you'd also fetch temp, dewpoint, altimeter
+        metar = airport_data.get("metar", "")
+        altimeter_match = re.search(r"Q(\d{4})", metar)
+        altimeter = f"Altimeter {altimeter_match.group(1)}" if altimeter_match else "Altimeter not available"
+
+        # Active Runways
+        runway_status = airport_data.get("runway_status", {})
+        active_runways = [rwy for rwy, status in runway_status.items() if status.get("active")]
+        dep_rwy_text = f"Departing runways {', '.join(active_runways)}." if active_runways else "No runways available for departure."
+        arr_rwy_text = f"Landing runways {', '.join(active_runways)}." if active_runways else "No runways available for landing."
+
+        # Remarks
+        remarks = self.atis_remarks_var.get().strip()
+        remarks_text = f"Remarks... {remarks}..." if remarks else ""
+
+        # Assemble the message
+        message = (
+            f"{icao} airport information {designator}... time {time_str}...\n"
+            f"Wind {wind}... visibility {visibility}... ceiling {ceiling}...\n"
+            f"{altimeter}...\n"
+            f"{dep_rwy_text} {arr_rwy_text}\n"
+            f"{remarks_text}\n"
+            f"Advise controller on initial contact you have information {designator}."
+        )
+
+        # Display the message
+        self.atis_message_text.config(state=tk.NORMAL)
+        self.atis_message_text.delete(1.0, tk.END)
+        self.atis_message_text.insert(tk.END, message)
+        self.atis_message_text.config(state=tk.DISABLED)
+        
+        self.status_bar.config(text=f"Status: Generated new ATIS Information {designator} for review.")
+
+    def broadcast_atis(self):
+        """Makes the generated ATIS the current one and advances the designator."""
+        atis_message = self.atis_message_text.get(1.0, tk.END).strip()
+        if not atis_message:
+            messagebox.showwarning("Warning", "No ATIS message has been generated yet.")
+            return
+
+        designator = self.atis_designator_var.get()
+        
+        # Store in the airport data
+        airport_data = self.airports.get(self.current_airport)
+        if airport_data:
+            airport_data['atis'] = {
+                "designator": designator,
+                "message": atis_message,
+                "timestamp": time.time()
+            }
+        
+        self.status_bar.config(text=f"Status: ATIS Information {designator} is now being broadcast.")
+        
+        # Advance to the next designator
+        current_index = self.phonetic_alphabet.index(designator)
+        next_index = (current_index + 1) % len(self.phonetic_alphabet)
+        self.atis_designator_combo.set(self.phonetic_alphabet[next_index])
 
     # Helper methods for Ground Control tab
     def add_ground_aircraft(self):
-        """Add a new aircraft to ground control"""
-        # Create a dialog window
+        """Add a new aircraft to ground control (Treeview version)"""
         add_dialog = tk.Toplevel(self.root)
         add_dialog.title("Add Aircraft")
         add_dialog.geometry("400x350")
         add_dialog.resizable(False, False)
-        add_dialog.transient(self.root)  # Make dialog modal
+        add_dialog.transient(self.root)
         add_dialog.grab_set()
 
-        # Create a frame with padding
         frame = ttk.Frame(add_dialog, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
 
-        # Dialog header
-        ttk.Label(frame, text="Add New Aircraft", font=("Arial", 12, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 15)
-        )
-
-        # Input fields
+        ttk.Label(frame, text="Add New Aircraft", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 15))
         ttk.Label(frame, text="Callsign:").grid(row=1, column=0, sticky=tk.W, pady=5)
         callsign_var = tk.StringVar()
+        def to_uppercase(*args):
+            callsign_var.set(callsign_var.get().upper())
+        callsign_var.trace_add("write", to_uppercase)
         callsign_entry = ttk.Entry(frame, textvariable=callsign_var, width=25)
         callsign_entry.grid(row=1, column=1, sticky=tk.W, pady=5)
-
-        ttk.Label(frame, text="Aircraft Type:").grid(
-            row=2, column=0, sticky=tk.W, pady=5
-        )
+        ttk.Label(frame, text="Aircraft Type:").grid(row=2, column=0, sticky=tk.W, pady=5)
         type_var = tk.StringVar()
         type_entry = ttk.Combobox(frame, textvariable=type_var, width=25)
         type_entry["values"] = (
-            "C172",
-            "C152",
-            "PA28",
-            "B737",
-            "A320",
-            "E145",
-            "CRJ2",
-            "B747",
-            "B777",
-            "A330",
-            "A380",
+            "C152", "C172", "C182", "C206", "C208", "C210", "C310", "C340", "C402", "C414", "C421", "C441", "C500", "C510", "C525", "C550", "C560", "C650", "C680", "C750", "C850",
+            "PA28", "PA32", "PA34", "PA44", "PA46",
+            "BE20", "BE36", "BE58", "BE60", "BE76", "BE90", "BE99", "BE200", "BE300", "BE350", "BE400", "BE1900",
+            "B707", "B717", "B727", "B737", "B747", "B757", "B767", "B777", "B787", "B797",
+            "A220", "A300", "A310", "A318", "A319", "A320", "A321", "A330", "A340", "A350", "A380", "A400M",
+            "E135", "E140", "E145", "E170", "E175", "E190", "E195", "CRJ1", "CRJ2", "CRJ7", "CRJ9", "CRJ10",
+            "MD80", "MD90", "MD11", "DC9", "DC10", "L1011", "F100", "F70", "F28", "F50", "ATR42", "ATR72", "DHC8", "SF340", "EMB110", "EMB120", "EMB135", "EMB145", "EMB170", "EMB175", "EMB190", "EMB195"
         )
         type_entry.grid(row=2, column=1, sticky=tk.W, pady=5)
-
-        # Get dynamic locations from current airport
-        airport_data = self.airports.get(self.current_airport, {})
-        gates = airport_data.get("gates", [])
-        taxiways = airport_data.get("taxiways", [])
-        runways = airport_data.get("runways", [])
-        
-        # Create location options based on airport configuration
-        location_options = []
-        
-        # Add gates with proper formatting
-        for gate in gates:
-            if not gate.startswith("Gate "):
-                location_options.append(f"Gate {gate}")
-            else:
-                location_options.append(gate)
-                
-        # Add taxiways with proper formatting
-        for taxiway in taxiways:
-            if not taxiway.startswith("Taxiway "):
-                location_options.append(f"Taxiway {taxiway}")
-            else:
-                location_options.append(taxiway)
-                
-        # Add runways with proper formatting
-        for runway in runways:
-            if not runway.startswith("Runway "):
-                location_options.append(f"Runway {runway}")
-            else:
-                location_options.append(runway)
-        
-        # If no locations found, add some defaults
-        if not location_options:
-            location_options = [
-                "Gate A1", "Gate A2", "Taxiway A", "Taxiway B", "Runway 27"
-            ]
-
+        location_options = self._get_location_options()
         ttk.Label(frame, text="Location:").grid(row=3, column=0, sticky=tk.W, pady=5)
         location_var = tk.StringVar()
-        location_entry = ttk.Combobox(frame, textvariable=location_var, width=25)
-        location_entry["values"] = tuple(location_options)
+        location_entry = ttk.Combobox(frame, textvariable=location_var, values=tuple(location_options), width=25)
         location_entry.grid(row=3, column=1, sticky=tk.W, pady=5)
-
-        # Create dynamic status options based on airport configuration
+        runways = self.airports.get(self.current_airport, {}).get("runways", [])
         if runways:
             hold_short_options = [f"Hold Short Runway {runway}" for runway in runways]
         else:
             hold_short_options = ["Hold Short Runway 27", "Hold Short Runway 36"]
-            
         status_options = [
             "Ready to Taxi",
             "Pushback",
@@ -587,172 +555,84 @@ class ATCWindow:
             "Cleared for Takeoff",
             "Line Up and Wait",
         ]
-
         ttk.Label(frame, text="Status:").grid(row=4, column=0, sticky=tk.W, pady=5)
         status_var = tk.StringVar()
         status_entry = ttk.Combobox(frame, textvariable=status_var, width=25)
         status_entry["values"] = tuple(status_options)
         status_entry.grid(row=4, column=1, sticky=tk.W, pady=5)
-
-        # Additional options
         ttk.Label(frame, text="Notes:").grid(row=5, column=0, sticky=tk.W, pady=5)
         notes_text = tk.Text(frame, width=30, height=5)
         notes_text.grid(row=5, column=1, sticky=tk.W, pady=5)
-
-        # Buttons frame
         button_frame = ttk.Frame(frame)
         button_frame.grid(row=6, column=0, columnspan=2, pady=(20, 0))
-
         def add_aircraft():
-            # Validate inputs
             callsign = callsign_var.get().strip()
             aircraft_type = type_var.get().strip()
             location = location_var.get().strip()
             status = status_var.get().strip()
-
             if not callsign or not aircraft_type or not location or not status:
-                messagebox.showwarning(
-                    "Missing Information", "Please fill in all required fields"
-                )
+                messagebox.showwarning("Missing Information", "Please fill in all required fields")
                 return
-
-            # Create the new aircraft entry
-            new_aircraft = f"{callsign} - {aircraft_type} - {location} - {status}"
-
-            # Add to the listbox
-            self.ground_aircraft_list.insert(tk.END, new_aircraft)
-
-            # Update status bar
+            # Add to the Treeview
+            self.ground_aircraft_tree.insert("", tk.END, values=(callsign, aircraft_type, location, status))
             self.status_bar.config(text=f"Status: Added aircraft {callsign} to ground control")
-
-            # Close the dialog
             add_dialog.destroy()
-
         def cancel():
             add_dialog.destroy()
-
-        ttk.Button(button_frame, text="Add Aircraft", command=add_aircraft).pack(
-            side=tk.LEFT, padx=(0, 10)
-        )
+        ttk.Button(button_frame, text="Add Aircraft", command=add_aircraft).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(button_frame, text="Cancel", command=cancel).pack(side=tk.LEFT)
-
-        # Center the dialog on the parent window
         add_dialog.update_idletasks()
         width = add_dialog.winfo_width()
         height = add_dialog.winfo_height()
         x = self.root.winfo_x() + (self.root.winfo_width() - width) // 2
         y = self.root.winfo_y() + (self.root.winfo_height() - height) // 2
         add_dialog.geometry(f"{width}x{height}+{x}+{y}")
-
-        # Focus on the first entry
         callsign_entry.focus_set()
-
-        # Wait for the dialog to be closed
         add_dialog.wait_window()
 
     def remove_ground_aircraft(self):
-        """Remove an aircraft from ground control"""
-        selected = self.ground_aircraft_list.curselection()
+        """Remove an aircraft from ground control (Treeview version)"""
+        selected = self.ground_aircraft_tree.selection()
         if selected:
-            self.ground_aircraft_list.delete(selected)
+            self.ground_aircraft_tree.delete(selected)
             self.status_bar.config(text="Status: Aircraft removed from ground control")
         else:
-            messagebox.showinfo(
-                "Selection Required", "Please select an aircraft to remove"
-            )
+            messagebox.showinfo("Selection Required", "Please select an aircraft to remove")
 
     def edit_ground_status(self):
-        """Edit the status of an aircraft on the ground"""
-        selected = self.ground_aircraft_list.curselection()
+        """Edit the status of an aircraft on the ground (Treeview version)"""
+        selected = self.ground_aircraft_tree.selection()
         if not selected:
-            messagebox.showinfo(
-                "Selection Required", "Please select an aircraft to edit"
-            )
+            messagebox.showinfo("Selection Required", "Please select an aircraft to edit")
             return
-
-        # Get the selected aircraft info
-        aircraft_info = self.ground_aircraft_list.get(selected)
-
-        # Create a dialog window
+        aircraft_info = self.ground_aircraft_tree.item(selected, "values")
         edit_dialog = tk.Toplevel(self.root)
         edit_dialog.title("Edit Aircraft Status")
         edit_dialog.geometry("400x350")
         edit_dialog.resizable(False, False)
-        edit_dialog.transient(self.root)  # Make dialog modal
+        edit_dialog.transient(self.root)
         edit_dialog.grab_set()
-
-        # Create a frame with padding
         frame = ttk.Frame(edit_dialog, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
-
-        # Display current aircraft information
-        ttk.Label(frame, text="Aircraft Information:", font=("Arial", 12, "bold")).grid(
-            row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 10)
-        )
-
-        # Parse current information (assuming format: "CALLSIGN - TYPE - LOCATION - STATUS")
-        parts = aircraft_info.split(" - ")
-        callsign = parts[0] if len(parts) > 0 else ""
-        aircraft_type = parts[1] if len(parts) > 1 else ""
-        location = parts[2] if len(parts) > 2 else ""
-        status = parts[3] if len(parts) > 3 else ""
-
-        # Display current info
+        ttk.Label(frame, text="Aircraft Information:", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
+        callsign = aircraft_info[0] if len(aircraft_info) > 0 else ""
+        aircraft_type = aircraft_info[1] if len(aircraft_info) > 1 else ""
+        location = aircraft_info[2] if len(aircraft_info) > 2 else ""
+        status = aircraft_info[3] if len(aircraft_info) > 3 else ""
         ttk.Label(frame, text="Callsign:").grid(row=1, column=0, sticky=tk.W, pady=5)
         ttk.Label(frame, text=callsign).grid(row=1, column=1, sticky=tk.W, pady=5)
-
         ttk.Label(frame, text="Type:").grid(row=2, column=0, sticky=tk.W, pady=5)
         ttk.Label(frame, text=aircraft_type).grid(row=2, column=1, sticky=tk.W, pady=5)
-
-        # Get dynamic locations from current airport
-        airport_data = self.airports.get(self.current_airport, {})
-        gates = airport_data.get("gates", [])
-        taxiways = airport_data.get("taxiways", [])
-        runways = airport_data.get("runways", [])
-        
-        # Create location options based on airport configuration
-        location_options = []
-        
-        # Add gates with proper formatting
-        for gate in gates:
-            if not gate.startswith("Gate "):
-                location_options.append(f"Gate {gate}")
-            else:
-                location_options.append(gate)
-                
-        # Add taxiways with proper formatting
-        for taxiway in taxiways:
-            if not taxiway.startswith("Taxiway "):
-                location_options.append(f"Taxiway {taxiway}")
-            else:
-                location_options.append(taxiway)
-                
-        # Add runways with proper formatting
-        for runway in runways:
-            if not runway.startswith("Runway "):
-                location_options.append(f"Runway {runway}")
-            else:
-                location_options.append(runway)
-        
-        # If no locations found, add some defaults
-        if not location_options:
-            location_options = [
-                "Gate A1", "Gate A2", "Taxiway A", "Taxiway B", "Runway 27"
-            ]
-
-        # Create input fields for editable information
+        location_options = self._get_location_options()
         ttk.Label(frame, text="Location:").grid(row=3, column=0, sticky=tk.W, pady=5)
         location_var = tk.StringVar(value=location)
-        location_entry = ttk.Combobox(frame, textvariable=location_var, width=25)
-        location_entry["values"] = tuple(location_options)
+        location_entry = ttk.Combobox(frame, textvariable=location_var, values=tuple(location_options), width=25)
         location_entry.grid(row=3, column=1, sticky=tk.W, pady=5)
-
-        # Create dynamic status options based on airport configuration
+        runways = self.airports.get(self.current_airport, {}).get("runways", [])
         if runways:
             hold_short_options = [f"Hold Short Runway {runway}" for runway in runways]
         else:
             hold_short_options = ["Hold Short Runway 27", "Hold Short Runway 36"]
-            
         status_options = [
             "Ready to Taxi",
             "Pushback",
@@ -763,59 +643,72 @@ class ATCWindow:
             "Cleared for Takeoff",
             "Line Up and Wait",
         ]
-
         ttk.Label(frame, text="Status:").grid(row=4, column=0, sticky=tk.W, pady=5)
         status_var = tk.StringVar(value=status)
         status_entry = ttk.Combobox(frame, textvariable=status_var, width=25)
         status_entry["values"] = tuple(status_options)
         status_entry.grid(row=4, column=1, sticky=tk.W, pady=5)
-
-        # Additional options
         ttk.Label(frame, text="Notes:").grid(row=5, column=0, sticky=tk.W, pady=5)
         notes_text = tk.Text(frame, width=30, height=5)
         notes_text.grid(row=5, column=1, sticky=tk.W, pady=5)
-
-        # Buttons frame
         button_frame = ttk.Frame(frame)
         button_frame.grid(row=6, column=0, columnspan=2, pady=(20, 0))
-
         def save_changes():
-            # Update the aircraft status in the list
             new_location = location_var.get()
             new_status = status_var.get()
-            new_aircraft_info = (
-                f"{callsign} - {aircraft_type} - {new_location} - {new_status}"
-            )
-
-            # Update the listbox
-            self.ground_aircraft_list.delete(selected)
-            self.ground_aircraft_list.insert(selected, new_aircraft_info)
-            self.ground_aircraft_list.selection_set(selected)
-
-            # Update status bar
+            new_aircraft_info = (callsign, aircraft_type, new_location, new_status)
+            self.ground_aircraft_tree.item(selected, values=new_aircraft_info)
+            self.ground_aircraft_tree.selection_set(selected)
             self.status_bar.config(text=f"Status: Updated status for {callsign}")
-
-            # Close the dialog
             edit_dialog.destroy()
-
         def cancel():
             edit_dialog.destroy()
-
-        ttk.Button(button_frame, text="Save Changes", command=save_changes).pack(
-            side=tk.LEFT, padx=(0, 10)
-        )
+        ttk.Button(button_frame, text="Save Changes", command=save_changes).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(button_frame, text="Cancel", command=cancel).pack(side=tk.LEFT)
-
-        # Center the dialog on the parent window
         edit_dialog.update_idletasks()
         width = edit_dialog.winfo_width()
         height = edit_dialog.winfo_height()
         x = self.root.winfo_x() + (self.root.winfo_width() - width) // 2
         y = self.root.winfo_y() + (self.root.winfo_height() - height) // 2
         edit_dialog.geometry(f"{width}x{height}+{x}+{y}")
-
-        # Wait for the dialog to be closed
         edit_dialog.wait_window()
+
+    def _get_location_options(self):
+        """Get a list of all available location options for the current airport."""
+        airport_data = self.airports.get(self.current_airport, {})
+        gates = airport_data.get("gates", [])
+        taxiways = airport_data.get("taxiways", [])
+        runways = airport_data.get("runways", [])
+        
+        location_options = []
+        
+        # Expand and add gates
+        expanded_gates = []
+        for gate in gates:
+            # Handle ranges like "A1-A20"
+            match = re.match(r"([A-Z]+)(\d+)-[A-Z]*(\d+)", gate)
+            if match:
+                prefix, start_str, end_str = match.groups()
+                start, end = int(start_str), int(end_str)
+                expanded_gates.extend([f"{prefix}{i}" for i in range(start, end + 1)])
+            else:
+                expanded_gates.append(gate)
+        
+        for gate in expanded_gates:
+            location_options.append(f"Gate {gate}")
+            
+        # Add taxiways
+        for taxiway in taxiways:
+            location_options.append(f"Taxiway {taxiway}")
+            
+        # Add runways
+        for runway in runways:
+            location_options.append(f"Runway {runway}")
+            
+        if not location_options:
+            return ["Gate A1", "Gate A2", "Taxiway A", "Runway 27"] # Fallback
+            
+        return location_options
 
     # Helper methods for Tower tab
     def add_aircraft_to_queue(self, queue_type):
@@ -829,7 +722,11 @@ class ATCWindow:
         
         # Create form fields
         ttk.Label(dialog, text="Callsign:").grid(row=0, column=0, sticky="w", padx=10, pady=5)
-        callsign_entry = ttk.Entry(dialog, width=20)
+        callsign_var = tk.StringVar()
+        def to_uppercase(*args):
+            callsign_var.set(callsign_var.get().upper())
+        callsign_var.trace_add("write", to_uppercase)
+        callsign_entry = ttk.Entry(dialog, textvariable=callsign_var, width=20)
         callsign_entry.grid(row=0, column=1, padx=10, pady=5)
         callsign_entry.focus_set()
         
@@ -941,7 +838,7 @@ class ATCWindow:
         
         def add_aircraft():
             # Validate entries
-            callsign = callsign_entry.get().strip().upper()
+            callsign = callsign_var.get().strip()
             aircraft_type = aircraft_type_entry.get().strip().upper()
             runway = runway_var.get()
             status = status_var.get()
@@ -1044,7 +941,13 @@ class ATCWindow:
         
         index = selection[0]
         aircraft_info = self.departure_listbox.get(index)
-        callsign = aircraft_info.split(" ")[0]
+        
+        # Use regex to reliably extract the callsign
+        match = re.match(r"^([A-Z0-9]+)", aircraft_info)
+        if not match:
+            messagebox.showerror("Error", "Could not extract callsign from selected aircraft.")
+            return
+        callsign = match.group(1)
         
         if not hasattr(self, "aircraft_data") or "departure" not in self.aircraft_data:
             messagebox.showerror("Error", "Aircraft data not found")
@@ -1082,7 +985,13 @@ class ATCWindow:
         
         index = selection[0]
         aircraft_info = self.departure_listbox.get(index)
-        callsign = aircraft_info.split(" ")[0]
+        
+        # Use regex to reliably extract the callsign
+        match = re.match(r"^([A-Z0-9]+)", aircraft_info)
+        if not match:
+            messagebox.showerror("Error", "Could not extract callsign from selected aircraft.")
+            return
+        callsign = match.group(1)
         
         if not hasattr(self, "aircraft_data") or "departure" not in self.aircraft_data:
             messagebox.showerror("Error", "Aircraft data not found")
@@ -1606,7 +1515,8 @@ class ATCWindow:
         self.airport_config = self.airports.get(self.current_airport, {})
         
         # Update all displays that depend on airport information
-        self.update_runway_frame()
+        if hasattr(self, "runway_frame"):
+            self.update_runway_frame()
         self.update_frequency_display()
         
         # Update any diagrams or visualizations
@@ -1642,95 +1552,136 @@ class ATCWindow:
         self.update_airport_config()
         
         # Fetch the weather for the new airport
+        self.update_weather_display()
 
     def issue_instruction(self, instruction_type):
-        """Issue an instruction to the selected aircraft"""
-        selected = self.ground_aircraft_list.curselection()
+        """Issue a specific instruction to a selected aircraft"""
+        # Determine which listbox is active based on the notebook tab
+        selected_tab = self.notebook.tab(self.notebook.select(), "text")
+        if selected_tab == "Ground Control":
+            listbox = self.ground_aircraft_list
+        elif selected_tab == "Tower":
+            # In Tower, we need to determine if it's departure or arrival
+            # For now, we'll use departure listbox as default
+            listbox = self.departure_listbox
+        else:
+            # For now, only ground and tower have instruction context
+            messagebox.showinfo("Unsupported", "Instructions can only be issued from Ground or Tower tabs.")
+            return
+
+        selected = listbox.curselection()
         if not selected:
             messagebox.showinfo(
-                "Selection Required", "Please select an aircraft to issue an instruction"
+                "Selection Required", "Please select an aircraft to issue an instruction to"
             )
             return
             
-        aircraft_info = self.ground_aircraft_list.get(selected)
+        aircraft_info = listbox.get(selected)
         callsign = aircraft_info.split(" - ")[0]
         
-        # Get airport data for specific instructions
-        airport_data = self.airports.get(self.current_airport, {})
-        icao_code = self.current_airport.split(" - ")[0] if " - " in self.current_airport else ""
-        runways = airport_data.get("runways", [])
-        taxiways = airport_data.get("taxiways", [])
+        # Create a dialog to get instruction details
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Issue Instruction")
+        dialog.geometry("450x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Instruction categories
+        instructions = {
+            "Ground": [
+                "Taxi to Runway", "Taxi to Gate", "Taxi to Holding Point", 
+                "Hold Position", "Pushback Approved"
+            ],
+            "Departure": [
+                "Line Up and Wait", "Cleared for Takeoff", "Cancel Takeoff Clearance"
+            ],
+            "En-route": [
+                "Climb and Maintain", "Descend and Maintain", "Proceed Direct", 
+                "Contact Approach", "Contact Center"
+            ],
+            "Arrival": [
+                "Cleared for ILS Approach", "Cleared for Visual Approach", "Cleared for RNAV Approach",
+                "Cleared to Land", "Go Around"
+            ]
+        }
         
-        # Prepare instruction based on instruction type and airport specifics
-        instruction_text = ""
+        # Create a list with separators
+        instruction_options = []
+        for category, items in instructions.items():
+            instruction_options.append(f"--- {category.upper()} ---")
+            instruction_options.extend(items)
+            
+        ttk.Label(dialog, text="Instruction Type:").grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        instruction_var = tk.StringVar()
+        instruction_combo = ttk.Combobox(
+            dialog, textvariable=instruction_var, values=instruction_options,
+            state="readonly", width=30
+        )
+        instruction_combo.grid(row=0, column=1, padx=10, pady=10)
+
+        # Prevent selection of separators
+        def on_instruction_select(event):
+            selected_item = instruction_var.get()
+            if selected_item.startswith("---"):
+                # Find the next valid item to select
+                current_index = instruction_options.index(selected_item)
+                if current_index + 1 < len(instruction_options):
+                    next_item = instruction_options[current_index + 1]
+                    if not next_item.startswith("---"):
+                        instruction_combo.set(next_item)
+                else: # if separator is the last item, clear selection
+                    instruction_combo.set("")
         
-        if instruction_type == "taxi":
-            # Get taxiways and runways from current airport for specific instruction
-            taxi_routes = []
-            if taxiways:
-                # Create some realistic taxi routes using available taxiways
-                if len(taxiways) >= 3:
-                    taxi_routes.append(f"via {taxiways[0]} then {taxiways[1]} to {taxiways[2]}")
-                    if len(taxiways) >= 4:
-                        taxi_routes.append(f"via {taxiways[0]} then {taxiways[2]} cross {taxiways[3]}")
-                elif len(taxiways) == 2:
-                    taxi_routes.append(f"via {taxiways[0]} then {taxiways[1]}")
-                else:
-                    taxi_routes.append(f"via {taxiways[0]}")
-            else:
-                taxi_routes = ["via Alpha", "via Bravo then Charlie"]
+        instruction_combo.bind("<<ComboboxSelected>>", on_instruction_select)
+
+        # Frame for dynamic input fields
+        params_frame = ttk.Frame(dialog)
+        params_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
+
+        # Function to update parameters based on selected instruction
+        def update_params(event):
+            # Clear previous params
+            for widget in params_frame.winfo_children():
+                widget.destroy()
+            
+            instruction = instruction_var.get()
+            
+            if instruction == "Taxi to Runway":
+                ttk.Label(params_frame, text="Runway:").grid(row=0, column=0, sticky="w")
+                runway_entry = ttk.Entry(params_frame)
+                runway_entry.grid(row=0, column=1)
                 
-            # Select a random taxi route for variety
-            taxi_route = random.choice(taxi_routes)
-            
-            # Select target runway
-            runway = runways[0] if runways else "27"
-            
-            # Format instruction using correct local phraseology based on ICAO region
-            if icao_code.startswith("K"):  # US
-                instruction_text = f"{callsign}, taxi to runway {runway} {taxi_route}, hold short."
-            elif icao_code.startswith("E"):  # Europe
-                instruction_text = f"{callsign}, taxi to holding point runway {runway} {taxi_route}."
-            else:  # Default international
-                instruction_text = f"{callsign}, taxi to holding point runway {runway} {taxi_route}."
+                ttk.Label(params_frame, text="Taxi Route:").grid(row=1, column=0, sticky="w")
+                route_entry = ttk.Entry(params_frame)
+                route_entry.grid(row=1, column=1)
                 
-        elif instruction_type == "hold":
-            current_position = aircraft_info.split(" - ")[2] if len(aircraft_info.split(" - ")) >= 3 else "current position"
+            elif instruction == "Hold Position":
+                ttk.Label(params_frame, text="Location:").grid(row=0, column=0, sticky="w")
+                loc_entry = ttk.Entry(params_frame)
+                loc_entry.insert(0, "Current Position")
+                loc_entry.grid(row=0, column=1)
+
+        instruction_combo.bind("<<ComboboxSelected>>", update_params, add="+")
+
+        def issue():
+            selected_instruction = instruction_var.get()
+            # This is where you would build the full instruction text based on params
+            # For now, we just show a confirmation
             
-            # Format hold instruction based on region
-            if icao_code.startswith("K"):  # US
-                instruction_text = f"{callsign}, hold position at {current_position}."
-            else:  # International
-                instruction_text = f"{callsign}, hold position at {current_position}."
-                
-        elif instruction_type == "pushback":
-            # Format pushback instruction based on region and terminal area
-            terminals = airport_data.get("terminals", ["main terminal"])
-            terminal = terminals[0] if terminals else "terminal"
+            instruction_text = f"Issued '{selected_instruction}' to {callsign}"
             
-            if icao_code.startswith("K"):  # US
-                instruction_text = f"{callsign}, pushback approved, expect runway {runways[0] if runways else '27'}."
-            elif icao_code.startswith("E"):  # Europe 
-                instruction_text = f"{callsign}, push and start approved, face {taxiways[0] if taxiways else 'Alpha'}."
-            else:
-                instruction_text = f"{callsign}, pushback approved from {terminal}."
-                
-        else:
-            # Generic instruction
-            instruction_text = f"{callsign}, {instruction_type} instruction."
-            
-        # Display the instruction
-        self.ground_instructions.delete(1.0, tk.END)
-        self.ground_instructions.insert(tk.END, instruction_text)
-        
-        # For now, just show the instruction in the text area
-        # Later, this could update the aircraft's status, log the communication, etc.
-        self.status_bar.config(text=f"Status: Issued {instruction_type} instruction to {callsign}")
+            messagebox.showinfo("Instruction Issued", instruction_text)
+            self.status_bar.config(text=f"Status: {instruction_text}")
+            dialog.destroy()
+
+        ttk.Button(dialog, text="Issue", command=issue).grid(row=2, column=0, columnspan=2, pady=20)
+
+        dialog.wait_window()
 
     def enrich_airport_data(self):
-        """Add additional dynamic data to airports to enhance the user experience"""
-        for airport_key, airport_data in self.airports.items():
-            icao_code = airport_key.split(" - ")[0] if " - " in airport_key else ""
+        """Enriches airport data with dynamic information like runway directions"""
+        for airport_code, airport_data in self.airports.items():
+            icao_code = airport_code.split(" - ")[0] if " - " in airport_code else ""
             
             # Add specific runway instructions if not present
             if "runway_instructions" not in airport_data:
@@ -1755,16 +1706,16 @@ class ATCWindow:
             
             # Add time restrictions if not present
             if "time_restrictions" not in airport_data:
-                if "London" in airport_key or "Heathrow" in airport_key:
+                if "London" in airport_code or "Heathrow" in airport_code:
                     airport_data["time_restrictions"] = [
                         "Night curfew in effect 23:30-06:00 local time",
                         "Reduced operations between 23:00-23:30"
                     ]
-                elif "Frankfurt" in airport_key:
+                elif "Frankfurt" in airport_code:
                     airport_data["time_restrictions"] = [
                         "Night flight restrictions 23:00-05:00 local time"
                     ]
-                elif "Los Angeles" in airport_key or "LAX" in airport_key:
+                elif "Los Angeles" in airport_code or "LAX" in airport_code:
                     airport_data["time_restrictions"] = [
                         "Over-ocean operations typically from midnight to 06:30"
                     ]
@@ -1808,8 +1759,12 @@ class ATCWindow:
 
     def update_ground_status_indicators(self, event):
         """Update the status indicators when an aircraft is selected"""
+        # Check if ground_status_indicators exists
+        if not hasattr(self, "ground_status_indicators"):
+            return
+            
         # Get selected aircraft
-        selected = self.ground_aircraft_list.curselection()
+        selected = self.ground_aircraft_tree.curselection()
         if not selected:
             # Clear all indicators if nothing selected
             for canvas in self.ground_status_indicators:
@@ -1817,7 +1772,7 @@ class ATCWindow:
             return
             
         # Get the aircraft info
-        aircraft_info = self.ground_aircraft_list.get(selected)
+        aircraft_info = self.ground_aircraft_tree.get(selected)
         status = aircraft_info.split(" - ")[3] if len(aircraft_info.split(" - ")) > 3 else ""
         
         # Reset all indicators
@@ -1925,32 +1880,38 @@ class ATCWindow:
         # Update Tower tab weather display if available
         if hasattr(self, "tower_weather_display"):
             tower_weather = f"Current Weather:\n{wind}\nVisibility: {visibility}\nCeiling: {ceiling}\n\nMETAR:\n{metar}"
-            self.tower_weather_display.config(text=tower_weather)
+            self.tower_weather_display.config(state=tk.NORMAL)
+            self.tower_weather_display.delete(1.0, tk.END)
+            self.tower_weather_display.insert(tk.END, tower_weather)
+            self.tower_weather_display.config(state=tk.DISABLED)
         
         # Update status bar
         self.status_bar.config(text=f"Status: Weather updated for {self.current_airport}")
 
     def transfer_aircraft(self, destination):
         """Transfer an aircraft to another controller position"""
-        selected = self.ground_aircraft_list.curselection()
-        if not selected:
+        selected_item = self.ground_aircraft_tree.selection()
+        if not selected_item:
             messagebox.showinfo(
                 "Selection Required", "Please select an aircraft to transfer"
             )
             return
             
-        aircraft_info = self.ground_aircraft_list.get(selected)
-        callsign = aircraft_info.split(" - ")[0]
-        aircraft_type = aircraft_info.split(" - ")[1] if len(aircraft_info.split(" - ")) > 1 else ""
+        aircraft_info = self.ground_aircraft_tree.item(selected_item[0], 'values')
+        callsign = aircraft_info[0]
+        aircraft_type = aircraft_info[1]
         
         # Remove from ground list
-        self.ground_aircraft_list.delete(selected)
+        self.ground_aircraft_tree.delete(selected_item[0])
         
         # Different behavior based on destination
         if destination == "Tower":
             # Add to Tower's departure queue
             if hasattr(self, "departure_listbox"):
-                # Add to departure queue with appropriate status
+                # Remove placeholder if it exists
+                if self.departure_listbox.size() > 0 and "No aircraft" in self.departure_listbox.get(0):
+                    self.departure_listbox.delete(0)
+
                 display_text = f"{callsign} ({aircraft_type}) - Ready for Departure"
                 self.departure_listbox.insert(tk.END, display_text)
                 
@@ -1972,8 +1933,8 @@ class ATCWindow:
                     }
                 
             # Display transfer message
-            self.ground_instructions.delete(1.0, tk.END)
-            self.ground_instructions.insert(tk.END, f"{callsign}, contact Tower on {self.get_tower_frequency()}")
+            tower_freq = self.get_tower_frequency()
+            self.log_communication(self.ground_instructions, "GROUND", f"{callsign}, contact Tower on {tower_freq}.")
             
         # Could add other destinations here (Approach, Departure, etc.)
         
@@ -1987,298 +1948,295 @@ class ATCWindow:
         return frequencies.get("tower", "118.1")  # Default frequency if not defined
 
     def draw_airport_diagram(self, canvas):
-        """Draw the airport diagram on the provided canvas"""
-        # Clear the canvas
+        """Draw a detailed and improved airport diagram on the provided canvas."""
         canvas.delete("all")
-        
-        # Get current airport data
-        airport_data = self.airports.get(self.current_airport, {})
-        
-        # Get canvas dimensions
+
+        # Get canvas dimensions. If they are 1, the canvas is not yet sized.
         canvas_width = canvas.winfo_width()
         canvas_height = canvas.winfo_height()
-        
-        # If canvas hasn't been properly sized yet, use default values
-        if canvas_width < 10 or canvas_height < 10:
-            canvas_width = 400
-            canvas_height = 400
-        
-        # Draw background
-        canvas.create_rectangle(0, 0, canvas_width, canvas_height, fill="#B5D99C", outline="")
-        
-        # Get airport elements
+
+        if canvas_width <= 1 or canvas_height <= 1:
+            return # Don't draw if canvas is not yet sized
+
+        airport_data = self.airports.get(self.current_airport, {})
+
+        # Draw a subtle background gradient
+        canvas.create_rectangle(0, 0, canvas_width, canvas_height, fill="#E0E4E8", outline="")
+        canvas.create_rectangle(0, canvas_height * 0.6, canvas_width, canvas_height, fill="#D0D5DC", outline="")
+
         runways = airport_data.get("runways", [])
         taxiways = airport_data.get("taxiways", [])
         gates = airport_data.get("gates", [])
-        
-        # Calculate diagram center
-        center_x = canvas_width / 2
-        center_y = canvas_height / 2
-        
-        # Draw runways
-        runway_length = min(canvas_width, canvas_height) * 0.7
-        runway_width = runway_length * 0.07
-        
-        if runways:
-            # Calculate angles for runways based on their identifiers
-            runway_angles = []
-            for runway in runways:
-                parts = runway.split("/")
-                # Extract the runway number (removing L/R/C suffixes)
-                runway_num = int(''.join(filter(str.isdigit, parts[0])))
-                # Calculate angle (runway 09 = 90 degrees, 27 = 270 degrees, etc.)
-                angle = (runway_num * 10) % 360
-                runway_angles.append(angle)
-            
-            # Draw each runway
-            for i, (runway, angle) in enumerate(zip(runways, runway_angles)):
-                # Convert angle to radians
-                angle_rad = angle * 3.14159 / 180
-                
-                # Calculate runway endpoints
-                x1 = center_x - (runway_length / 2) * math.cos(angle_rad)
-                y1 = center_y - (runway_length / 2) * math.sin(angle_rad)
-                x2 = center_x + (runway_length / 2) * math.cos(angle_rad)
-                y2 = center_y + (runway_length / 2) * math.sin(angle_rad)
-                
-                # Draw the runway
-                runway_id = canvas.create_rectangle(
-                    x1, y1, x2, y2,
-                    fill="#444444",
-                    width=2,
-                    outline="#FFFFFF",
-                    tags=f"runway_{runway}"
-                )
-                
-                # Rotate the runway
-                canvas.itemconfig(runway_id, tags=f"runway_{runway}")
-                
-                # Add runway identifier text
-                label_x = x2 - (runway_length * 0.1) * math.cos(angle_rad)
-                label_y = y2 - (runway_length * 0.1) * math.sin(angle_rad)
-                canvas.create_text(
-                    label_x, label_y,
-                    text=runway,
-                    fill="white",
-                    font=("Arial", 10, "bold")
-                )
-        else:
-            # If no runways defined, draw default north-south and east-west runways
-            # North-South runway
-            canvas.create_rectangle(
-                center_x - runway_width / 2, center_y - runway_length / 2,
-                center_x + runway_width / 2, center_y + runway_length / 2,
-                fill="#444444",
-                outline="#FFFFFF",
-                width=2,
-                tags="runway_ns"
-            )
-            # Add runway identifiers
-            canvas.create_text(
-                center_x, center_y - runway_length / 2 + 20,
-                text="36",
-                fill="white",
-                font=("Arial", 10, "bold")
-            )
-            canvas.create_text(
-                center_x, center_y + runway_length / 2 - 20,
-                text="18",
-                fill="white",
-                font=("Arial", 10, "bold")
-            )
-            
-            # East-West runway
-            canvas.create_rectangle(
-                center_x - runway_length / 2, center_y - runway_width / 2,
-                center_x + runway_length / 2, center_y + runway_width / 2,
-                fill="#444444",
-                outline="#FFFFFF",
-                width=2,
-                tags="runway_ew"
-            )
-            # Add runway identifiers
-            canvas.create_text(
-                center_x - runway_length / 2 + 20, center_y,
-                text="27",
-                fill="white",
-                font=("Arial", 10, "bold")
-            )
-            canvas.create_text(
-                center_x + runway_length / 2 - 20, center_y,
-                text="09",
-                fill="white",
-                font=("Arial", 10, "bold")
-            )
-        
-        # Draw taxiways
-        if taxiways:
-            # Create some random taxiway paths connecting runways
-            offset_y = runway_width * 1.5
-            for i, taxiway in enumerate(taxiways):
-                # Offset from center to create parallel taxiways
-                tx_offset = (i - len(taxiways) / 2) * offset_y
-                
-                # Draw a curved taxiway
-                points = []
-                for t in range(0, 101, 5):
-                    t_normalized = t / 100.0
-                    # Create a curve from one side to another
-                    curve_x = center_x - runway_length / 2 + runway_length * t_normalized
-                    curve_y = center_y + tx_offset + math.sin(t_normalized * 3.14159) * offset_y
-                    points.extend([curve_x, curve_y])
-                
-                # Draw the taxiway
-                canvas.create_line(
-                    points,
-                    fill="#FFFF00",
-                    width=3,
-                    joinstyle=tk.ROUND,
-                    tags=f"taxiway_{taxiway}"
-                )
-                
-                # Add taxiway identifier
-                label_t = 50  # Middle point
-                label_x = center_x
-                label_y = center_y + tx_offset + math.sin(label_t / 100.0 * 3.14159) * offset_y - 10
-                canvas.create_text(
-                    label_x, label_y,
-                    text=taxiway,
-                    fill="black",
-                    font=("Arial", 8, "bold"),
-                    tags=f"taxiway_label_{taxiway}"
-                )
-        else:
-            # Draw default taxiways if none defined
-            # Main taxiway parallel to NS runway
-            canvas.create_line(
-                center_x + runway_width * 2, center_y - runway_length / 2,
-                center_x + runway_width * 2, center_y + runway_length / 2,
-                fill="#FFFF00",
-                width=3,
-                tags="taxiway_alpha"
-            )
-            # Taxiway label
-            canvas.create_text(
-                center_x + runway_width * 2, center_y,
-                text="A",
-                fill="black",
-                font=("Arial", 8, "bold")
-            )
-            
-            # Main taxiway parallel to EW runway
-            canvas.create_line(
-                center_x - runway_length / 2, center_y + runway_width * 2,
-                center_x + runway_length / 2, center_y + runway_width * 2,
-                fill="#FFFF00",
-                width=3,
-                tags="taxiway_bravo"
-            )
-            # Taxiway label
-            canvas.create_text(
-                center_x, center_y + runway_width * 2,
-                text="B",
-                fill="black",
-                font=("Arial", 8, "bold")
-            )
-        
-        # Draw terminal and gates
-        terminal_width = runway_length * 0.3
-        terminal_height = runway_width * 3
-        terminal_x = center_x - terminal_width / 2
-        terminal_y = center_y + runway_length / 2 - terminal_height - runway_width * 4
-        
-        # Draw terminal building
+
+        if not runways:
+            self._draw_no_diagram_message(canvas, canvas_width, canvas_height)
+            return
+
+        # --- Define layout parameters based on percentages ---
+        runway_length = canvas_width * 0.9
+        runway_width = 20
+        runway_y = canvas_height * 0.88
+        main_taxiway_y = runway_y - 55
+        apron_top_y = main_taxiway_y - 15
+        apron_bottom_y = canvas_height * 0.15  # 15% margin from top
+
+        # --- Draw Components ---
+        self._draw_runway(canvas, canvas_width, runway_y, runway_length, runway_width, runways[0])
+        self._draw_taxiways(canvas, canvas_width, runway_length, runway_y, main_taxiway_y, taxiways)
+        self._draw_aprons_and_gates(canvas, canvas_width, apron_top_y, apron_bottom_y, gates)
+        self._draw_diagram_labels(canvas, canvas_width, canvas_height, airport_data)
+
+    def _draw_runway(self, canvas, c_width, r_y, r_length, r_width, rwy_name):
+        """Draws the runway with more details."""
+        x_start = (c_width - r_length) / 2
+        x_end = x_start + r_length
+
+        # Runway asphalt
         canvas.create_rectangle(
-            terminal_x, terminal_y,
-            terminal_x + terminal_width, terminal_y + terminal_height,
-            fill="#8A9EA0",
-            outline="#444444",
-            width=2,
-            tags="terminal"
+            x_start, r_y - r_width / 2, x_end, r_y + r_width / 2,
+            fill="#4a4a4a", outline="#6e6e6e", width=2, tags="runway"
+        )
+        # Centerline
+        canvas.create_line(
+            x_start + 70, r_y, x_end - 70, r_y,
+            fill="white", width=2, dash=(30, 20), tags="runway_marking"
+        )
+        
+        # Threshold markings (piano keys)
+        for i in range(5):
+            offset = i * 4
+            canvas.create_rectangle(x_start + 15 + offset, r_y - r_width/3, x_start + 20 + offset, r_y + r_width/3, fill="white", outline="")
+            canvas.create_rectangle(x_end - 15 - offset, r_y - r_width/3, x_end - 20 - offset, r_y + r_width/3, fill="white", outline="")
+
+        # Runway labels
+        rwy_labels = rwy_name.split('/')
+        canvas.create_text(
+            x_start + 45, r_y, text=rwy_labels[0], fill="white",
+            font=("Consolas", 14, "bold"), anchor="center"
+        )
+        if len(rwy_labels) > 1:
+            canvas.create_text(
+                x_end - 45, r_y, text=rwy_labels[1], fill="white",
+                font=("Consolas", 14, "bold"), anchor="center"
+            )
+
+    def _draw_taxiways(self, canvas, c_width, r_length, r_y, t_y, taxiways):
+        """Draws a more complex taxiway system."""
+        x_start = (c_width - r_length) / 2
+        x_end = x_start + r_length
+        taxiway_width = 12
+
+        # Main parallel taxiway
+        canvas.create_line(
+            x_start, t_y, x_end, t_y,
+            fill="#a08b5f", width=taxiway_width, capstyle=tk.ROUND, tags="taxiway"
+        )
+        canvas.create_line(
+            x_start, t_y, x_end, t_y,
+            fill="#796841", width=1, tags="taxiway_edge"
+        )
+        canvas.create_text(
+            x_start - 15, t_y, text=taxiways[0] if taxiways else 'A', 
+            fill="#796841", font=("Arial", 9, "bold"), anchor="e"
+        )
+        
+        # Perpendicular connectors to runway
+        num_connectors = 5
+        connector_labels = (taxiways[1:] + ["", "", "", ""])[:num_connectors-1] # Pad list to avoid index errors
+
+        for i in range(1, num_connectors):
+            conn_x = x_start + (r_length / num_connectors) * i
+            canvas.create_line(
+                conn_x, t_y, conn_x, r_y - (20 / 2),
+                fill="#a08b5f", width=taxiway_width-2, capstyle=tk.ROUND, tags="taxiway"
+            )
+            label = connector_labels[i-1]
+            if label:
+                canvas.create_text(
+                    conn_x, t_y + 15, text=label,
+                    fill="#796841", font=("Arial", 8, "bold")
+                )
+
+    def _draw_aprons_and_gates(self, canvas, c_width, top_y, bottom_y, gates):
+        """Lays out aprons horizontally to avoid overlap."""
+        # Classify gates
+        main_bays = sorted([g for g in gates if g.isdigit() or g.endswith(('R', 'L', 'C'))])
+        remote_bays = sorted([g for g in gates if g.startswith('R') and g[1:].isdigit()])
+        ga_bays = sorted([g for g in gates if g.startswith(('G', 'H'))])
+
+        # Define horizontal sections for each apron, with reduced width for margins
+        sections = []
+        if ga_bays: sections.append({"name": "GA Parking", "bays": ga_bays, "width_ratio": 0.22})
+        if main_bays: sections.append({"name": "Main Terminal", "bays": main_bays, "width_ratio": 0.46})
+        if remote_bays: sections.append({"name": "Remote Bays", "bays": remote_bays, "width_ratio": 0.22})
+        
+        total_ratio = sum(s['width_ratio'] for s in sections)
+        
+        margin = (c_width - (c_width * total_ratio)) / 2
+        current_x = margin
+
+        for section in sections:
+            section_width = c_width * section['width_ratio']
+            self._draw_apron_section(canvas, section['name'], section['bays'], current_x, top_y, section_width, top_y - bottom_y)
+            current_x += section_width
+
+    def _draw_diagram_labels(self, canvas, c_width, c_height, airport_data):
+        """Draws the airport name and other diagram labels."""
+        airport_name = airport_data.get("name", "Unknown Airport")
+        canvas.create_text(
+            c_width / 2, c_height * 0.07, text=airport_name,
+            font=("Arial", 18, "bold"), fill="#2c3e50"
+        )
+        canvas.create_text(
+            c_width - 10, c_height - 10, text="Diagram not to scale",
+            anchor="se", font=("Arial", 8, "italic"), fill="grey"
+        )
+
+    def _draw_no_diagram_message(self, canvas, width, height):
+        """Draw a message when no diagram is available."""
+        canvas.create_text(
+            width / 2, height / 2,
+            text="No Airport Diagram Available for this airport.",
+            font=("Arial", 14, "italic"),
+            fill="#888888"
+        )
+
+    def _draw_apron_section(self, canvas, name, gates, x_pos, y_pos, width, height):
+        """Draws a single apron section with gates, updated for new layout."""
+        # Apron background
+        canvas.create_rectangle(
+            x_pos, y_pos - height, x_pos + width, y_pos,
+            fill="#C8C8C8", outline="#A0A0A0", width=2, tags="apron"
+        )
+        # Apron label
+        canvas.create_text(
+            x_pos + width / 2, y_pos - height + 20, text=name, 
+            font=("Arial", 11, "bold"), fill="#555555"
         )
         
         # Draw gates
-        if gates:
-            # Calculate gate positions along the terminal
-            gate_width = terminal_width / (len(gates) + 1)
-            for i, gate in enumerate(gates):
-                gate_x = terminal_x + gate_width * (i + 1)
-                gate_y = terminal_y + terminal_height
-                
-                # Draw gate
-                canvas.create_rectangle(
-                    gate_x - gate_width * 0.4, gate_y,
-                    gate_x + gate_width * 0.4, gate_y + runway_width * 2,
-                    fill="#B5D99C",
-                    outline="#FFFFFF",
-                    width=1,
-                    tags=f"gate_{gate}"
-                )
-                
-                # Add gate label
-                canvas.create_text(
-                    gate_x, gate_y + runway_width,
-                    text=gate,
-                    fill="black",
-                    font=("Arial", 7)
-                )
-        else:
-            # Draw default gates if none defined
-            default_gates = ["A1", "A2", "A3", "B1", "B2"]
-            gate_width = terminal_width / (len(default_gates) + 1)
-            for i, gate in enumerate(default_gates):
-                gate_x = terminal_x + gate_width * (i + 1)
-                gate_y = terminal_y + terminal_height
-                
-                # Draw gate
-                canvas.create_rectangle(
-                    gate_x - gate_width * 0.4, gate_y,
-                    gate_x + gate_width * 0.4, gate_y + runway_width * 2,
-                    fill="#B5D99C",
-                    outline="#FFFFFF",
-                    width=1,
-                    tags=f"gate_{gate}"
-                )
-                
-                # Add gate label
-                canvas.create_text(
-                    gate_x, gate_y + runway_width,
-                    text=gate,
-                    fill="black",
-                    font=("Arial", 7)
-                )
-        
-        # Add airport name and info
-        canvas.create_text(
-            center_x, 20,
-            text=self.current_airport,
-            fill="black",
-            font=("Arial", 12, "bold")
-        )
-        
-        # Add compass rose in the corner
-        radius = 20
-        cx, cy = canvas_width - radius - 10, radius + 10
-        canvas.create_oval(
-            cx - radius, cy - radius,
-            cx + radius, cy + radius,
-            fill="white",
-            outline="black"
-        )
-        # N marker
-        canvas.create_text(cx, cy - radius + 10, text="N", fill="red", font=("Arial", 8, "bold"))
-        # E marker
-        canvas.create_text(cx + radius - 10, cy, text="E", fill="black", font=("Arial", 8, "bold"))
-        # S marker
-        canvas.create_text(cx, cy + radius - 10, text="S", fill="black", font=("Arial", 8, "bold"))
-        # W marker
-        canvas.create_text(cx - radius + 10, cy, text="W", fill="black", font=("Arial", 8, "bold"))
-        # Compass lines
-        canvas.create_line(cx, cy - radius + 5, cx, cy + radius - 5, fill="black")
-        canvas.create_line(cx - radius + 5, cy, cx + radius - 5, cy, fill="black")
+        num_gates = len(gates)
+        if num_gates == 0: return
 
-    def instruct_go_around(self):
-        """Instruct selected arrival aircraft to go around"""
+        gate_spacing = width / (num_gates + 1)
+        gate_y_start = y_pos - height + 40
+        gate_y_end = y_pos - 15
+
+        for i, gate in enumerate(gates):
+            gate_x = x_pos + gate_spacing * (i + 1)
+            # Parking line
+            canvas.create_line(gate_x, gate_y_start, gate_x, gate_y_end, fill="#eac117", width=1.5, dash=(4, 4))
+            # Gate label
+            canvas.create_text(gate_x, gate_y_end + 8, text=gate, font=("Arial", 9, "bold"), anchor="n")
+
+    def issue_taxi_clearance(self):
+        """Opens a dialog to issue a taxi clearance."""
+        selected_item = self.ground_aircraft_tree.selection()
+        if not selected_item:
+            messagebox.showinfo("Selection Required", "Please select an aircraft.")
+            return
+
+        aircraft_info = self.ground_aircraft_tree.item(selected_item[0], 'values')
+        callsign = aircraft_info[0]
+
+        # Create dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Taxi Clearance for {callsign}")
+        dialog.geometry("400x200")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text="Taxi to:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        runway_var = tk.StringVar()
+        runways = self.airports.get(self.current_airport, {}).get("runways", [])
+        runway_combo = ttk.Combobox(frame, textvariable=runway_var, values=runways, width=25)
+        runway_combo.grid(row=0, column=1, sticky=tk.EW, pady=5)
+        if runways:
+            runway_combo.current(0)
+            
+        ttk.Label(frame, text="Via Taxiway(s):").grid(row=1, column=0, sticky=tk.W, pady=5)
+        route_var = tk.StringVar()
+        route_entry = ttk.Entry(frame, textvariable=route_var, width=27)
+        route_entry.grid(row=1, column=1, sticky=tk.EW, pady=5)
+        
+        def issue():
+            runway = runway_var.get()
+            route = route_var.get()
+            if not runway or not route:
+                messagebox.showwarning("Missing Info", "Please specify runway and taxi route.")
+                return
+
+            instruction = f"{callsign}, taxi to runway {runway} via taxiway(s) {route}."
+            self.log_communication(self.ground_instructions, "GROUND", instruction)
+            
+            # Update aircraft status
+            new_status = f"Taxiing to Runway {runway}"
+            parts = list(aircraft_info)
+            parts[2] = route # Update Location
+            parts[3] = new_status # Update Status
+            self.ground_aircraft_tree.item(selected_item[0], values=tuple(parts))
+
+            self.status_bar.config(text=f"Status: Taxi clearance issued to {callsign}")
+            dialog.destroy()
+
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        ttk.Button(button_frame, text="Issue Clearance", command=issue).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def issue_hold_instruction(self):
+        """Opens a dialog to issue a hold instruction."""
+        selected_item = self.ground_aircraft_tree.selection()
+        if not selected_item:
+            messagebox.showinfo("Selection Required", "Please select an aircraft.")
+            return
+
+        aircraft_info = self.ground_aircraft_tree.item(selected_item[0], 'values')
+        callsign = aircraft_info[0]
+
+        # Create dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Hold Instruction for {callsign}")
+        dialog.geometry("400x150")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="Hold short of:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        hold_point_var = tk.StringVar()
+        hold_point_entry = ttk.Entry(frame, textvariable=hold_point_var, width=27)
+        hold_point_entry.grid(row=0, column=1, sticky=tk.EW, pady=5)
+
+        def issue():
+            hold_point = hold_point_var.get()
+            if not hold_point:
+                messagebox.showwarning("Missing Info", "Please specify the holding point.")
+                return
+
+            instruction = f"{callsign}, hold short of {hold_point}."
+            self.log_communication(self.ground_instructions, "GROUND", instruction)
+
+            # Update aircraft status
+            new_status = f"Holding short of {hold_point}"
+            parts = list(aircraft_info)
+            parts[3] = new_status # Update Status
+            self.ground_aircraft_tree.item(selected_item[0], values=tuple(parts))
+
+            self.status_bar.config(text=f"Status: Hold instruction issued to {callsign}")
+            dialog.destroy()
+
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=1, column=0, columnspan=2, pady=10)
+        ttk.Button(button_frame, text="Issue Instruction", command=issue).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def transfer_to_ground(self):
+        """Transfer selected arrival aircraft to ground control"""
         selection = self.arrival_listbox.curselection()
         
         if not selection:
@@ -2287,7 +2245,13 @@ class ATCWindow:
         
         index = selection[0]
         aircraft_info = self.arrival_listbox.get(index)
-        callsign = aircraft_info.split(" ")[0]
+        
+        # Use regex to reliably extract the callsign
+        match = re.match(r"^([A-Z0-9]+)", aircraft_info)
+        if not match:
+            messagebox.showerror("Error", "Could not extract callsign from selected aircraft.")
+            return
+        callsign = match.group(1)
         
         if not hasattr(self, "aircraft_data") or "arrival" not in self.aircraft_data:
             messagebox.showerror("Error", "Aircraft data not found")
@@ -2297,50 +2261,62 @@ class ATCWindow:
             messagebox.showerror("Error", f"Aircraft {callsign} not found in arrival data")
             return
         
-        # Update aircraft status
+        # Get aircraft data
         aircraft_data = self.aircraft_data["arrival"][callsign]
-        runway = aircraft_data["runway"]
-        prev_status = aircraft_data["status"]
-        aircraft_data["status"] = "Going Around"
-        aircraft_data["last_instruction"] = "Go around"
+        aircraft_type = aircraft_data["type"]
         
-        # Update listbox entry
+        # Remove from arrival listbox
         self.arrival_listbox.delete(index)
-        new_text = f"{callsign} ({aircraft_data['type']}) - Going Around - RWY {runway}"
-        self.arrival_listbox.insert(index, new_text)
         
-        # Clear runway if this aircraft was using it
-        airport_data = self.airports[self.current_airport]
-        runway_status = airport_data.get("runway_status", {}).get(runway, {})
-        if runway_status.get("current_aircraft") == callsign:
-            self.clear_runway(runway)
+        # Add placeholder message if queue is now empty
+        if self.arrival_listbox.size() == 0:
+            placeholder = "No aircraft in arrival queue"
+            self.arrival_listbox.insert(tk.END, placeholder)
+            self.arrival_listbox.itemconfig(0, {'fg': 'gray'})
         
-        # Set a timer to return to approach (simulating go-around)
-        self.root.after(10000, lambda: self.simulate_aircraft_returning(callsign))
+        # Add to ground control list
+        if hasattr(self, "ground_aircraft_list"):
+            display_text = f"{callsign} - {aircraft_type} - Taxiway A - Taxiing to Gate"
+            self.ground_aircraft_list.insert(tk.END, display_text)
+        
+        # Remove from data structure
+        del self.aircraft_data["arrival"][callsign]
         
         # Update status bar
-        self.status_bar.config(text=f"Status: {callsign} instructed to go around from Runway {runway}")
-    
-    def simulate_aircraft_returning(self, callsign):
-        """Simulate aircraft returning to the approach after a go-around"""
-        if not hasattr(self, "aircraft_data") or "arrival" not in self.aircraft_data:
-            return
-            
-        if callsign not in self.aircraft_data["arrival"]:
-            return
-            
-        # Update aircraft status
-        aircraft_data = self.aircraft_data["arrival"][callsign]
-        runway = aircraft_data["runway"]
-        aircraft_data["status"] = "On Approach"
+        self.status_bar.config(text=f"Status: {callsign} transferred to Ground Control")
+
+    def log_communication(self, text_widget, sender, message, clear=False):
+        """Log communication messages to the specified text widget"""
+        if clear:
+            text_widget.config(state=tk.NORMAL)
+            text_widget.delete(1.0, tk.END)
+            text_widget.config(state=tk.DISABLED)
         
-        # Find and update in listbox
-        for i in range(self.arrival_listbox.size()):
-            if callsign in self.arrival_listbox.get(i):
-                self.arrival_listbox.delete(i)
-                new_text = f"{callsign} ({aircraft_data['type']}) - On Approach - RWY {runway}"
-                self.arrival_listbox.insert(i, new_text)
-                break
-                
-        # Update status bar
-        self.status_bar.config(text=f"Status: {callsign} returning for another approach to Runway {runway}")
+        # Get current time
+        current_time = time.strftime("%H:%M:%S")
+        
+        # Format the message
+        formatted_message = f"[{current_time}] {sender}: {message}\n"
+        
+        # Add to the text widget
+        text_widget.config(state=tk.NORMAL)
+        text_widget.insert(tk.END, formatted_message)
+        text_widget.see(tk.END)  # Scroll to the end
+        text_widget.config(state=tk.DISABLED)
+
+    def _sort_treeview_column(self, tv, col, reverse):
+        """Sort a treeview column when the heading is clicked."""
+        l = [(tv.set(k, col), k) for k in tv.get_children('')]
+        
+        # Try to sort numerically if possible
+        try:
+            l.sort(key=lambda t: float(t[0]), reverse=reverse)
+        except ValueError:
+            l.sort(key=lambda t: t[0], reverse=reverse)
+
+        # Rearrange items in sorted positions
+        for index, (val, k) in enumerate(l):
+            tv.move(k, '', index)
+
+        # Reverse sort next time
+        tv.heading(col, command=lambda: self._sort_treeview_column(tv, col, not reverse))

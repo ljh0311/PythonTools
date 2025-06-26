@@ -2,8 +2,8 @@
     "preferred_role": null,
     "remember_role_preference": false,
     "skip_role_selection": false,
-    "experience_level": "beginner",
-    "aircraft_type": "single_engine",
+    "experience_level": "advanced",
+    "aircraft_type": "jet",
     "voice_enabled": true,
     "voice_rate": 150,
     "phraseology_region": "US",
@@ -31,5 +31,402 @@
         "tower": "118.7",
         "approach": "119.1",
         "departure": "125.5"
+    },
+    "airports": {
+        "WSSS": {
+            "runways": [
+                "02C",
+                "02L",
+                "02R",
+                "20C",
+                "20L",
+                "20R"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo",
+                "Charlie",
+                "Delta",
+                "Echo",
+                "Foxtrot",
+                "Golf",
+                "Hotel",
+                "India",
+                "Juliet",
+                "Kilo",
+                "Lima",
+                "Mike",
+                "November",
+                "Oscar",
+                "Papa",
+                "Quebec",
+                "Romeo",
+                "Sierra",
+                "Tango",
+                "Uniform",
+                "Victor",
+                "Whiskey",
+                "Xray",
+                "Yankee",
+                "Zulu"
+            ],
+            "frequencies": {
+                "ground": "121.7",
+                "tower": "118.1",
+                "approach": "119.7",
+                "departure": "123.45"
+            }
+        },
+        "WSAP": {
+            "runways": [
+                "02",
+                "20"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo",
+                "Charlie"
+            ],
+            "frequencies": {
+                "ground": "121.8",
+                "tower": "118.3",
+                "approach": "119.9"
+            }
+        },
+        "WSSL": {
+            "runways": [
+                "02",
+                "20"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.9",
+                "tower": "118.5"
+            }
+        },
+        "WMKK": {
+            "runways": [
+                "14L",
+                "14R",
+                "15L",
+                "15R",
+                "32L",
+                "32R",
+                "33L",
+                "33R"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo",
+                "Charlie",
+                "Delta",
+                "Echo",
+                "Foxtrot",
+                "Golf",
+                "Hotel",
+                "India",
+                "Juliet",
+                "Kilo",
+                "Lima",
+                "Mike",
+                "November",
+                "Oscar",
+                "Papa",
+                "Quebec",
+                "Romeo",
+                "Sierra",
+                "Tango",
+                "Uniform",
+                "Victor",
+                "Whiskey",
+                "Xray",
+                "Yankee",
+                "Zulu"
+            ],
+            "frequencies": {
+                "ground": "121.6",
+                "tower": "118.1",
+                "approach": "119.7",
+                "departure": "124.75"
+            }
+        },
+        "WMKL": {
+            "runways": [
+                "02",
+                "20"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo",
+                "Charlie",
+                "Delta"
+            ],
+            "frequencies": {
+                "ground": "121.8",
+                "tower": "118.3",
+                "approach": "119.9"
+            }
+        },
+        "WMKP": {
+            "runways": [
+                "03",
+                "21"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo",
+                "Charlie"
+            ],
+            "frequencies": {
+                "ground": "121.7",
+                "tower": "118.5",
+                "approach": "119.7"
+            }
+        },
+        "WMKB": {
+            "runways": [
+                "07",
+                "25"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.9",
+                "tower": "118.7"
+            }
+        },
+        "WMKD": {
+            "runways": [
+                "04",
+                "22"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo",
+                "Charlie"
+            ],
+            "frequencies": {
+                "ground": "121.8",
+                "tower": "118.3",
+                "approach": "119.9"
+            }
+        },
+        "WMKC": {
+            "runways": [
+                "08",
+                "26"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.7",
+                "tower": "118.5"
+            }
+        },
+        "WMKS": {
+            "runways": [
+                "05",
+                "23"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.9",
+                "tower": "118.7"
+            }
+        },
+        "WMKA": {
+            "runways": [
+                "01",
+                "19"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.8",
+                "tower": "118.3"
+            }
+        },
+        "WMKN": {
+            "runways": [
+                "06",
+                "24"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.7",
+                "tower": "118.5"
+            }
+        },
+        "WMKJ": {
+            "runways": [
+                "03",
+                "21"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.9",
+                "tower": "118.7"
+            }
+        },
+        "WMKI": {
+            "runways": [
+                "04",
+                "22"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.8",
+                "tower": "118.3"
+            }
+        },
+        "WMKM": {
+            "runways": [
+                "02",
+                "20"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.7",
+                "tower": "118.5"
+            }
+        },
+        "WMKT": {
+            "runways": [
+                "05",
+                "23"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.9",
+                "tower": "118.7"
+            }
+        },
+        "WMKU": {
+            "runways": [
+                "03",
+                "21"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.8",
+                "tower": "118.3"
+            }
+        },
+        "WMKV": {
+            "runways": [
+                "02",
+                "20"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.7",
+                "tower": "118.5"
+            }
+        },
+        "WMKW": {
+            "runways": [
+                "04",
+                "22"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.9",
+                "tower": "118.7"
+            }
+        },
+        "WMKX": {
+            "runways": [
+                "03",
+                "21"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.8",
+                "tower": "118.3"
+            }
+        },
+        "WMKY": {
+            "runways": [
+                "02",
+                "20"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.7",
+                "tower": "118.5"
+            }
+        },
+        "WMKZ": {
+            "runways": [
+                "05",
+                "23"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo"
+            ],
+            "frequencies": {
+                "ground": "121.9",
+                "tower": "118.7"
+            }
+        },
+        "KLAX": {
+            "runways": [
+                "25L",
+                "25R",
+                "24L",
+                "24R"
+            ],
+            "taxiways": [
+                "Alpha",
+                "Bravo",
+                "Charlie"
+            ],
+            "frequencies": {
+                "departure": "124.75"
+            }
+        }
     }
 }

@@ -25,6 +25,9 @@ class MainWindow:
         # Load configuration
         self.config = Config()
         
+        # Load airports data from the main config
+        self.airports = self.config.get("airports", {})
+        
         # Initialize speech engine
         self.speech_engine = SpeechEngine(
             rate=self.config.get("voice_rate"),
@@ -88,33 +91,63 @@ class MainWindow:
         
     def setup_atc_tab(self):
         """Set up the ATC Instructions tab"""
-        # Create frames
-        left_frame = ttk.Frame(self.atc_tab, padding="5")
-        right_frame = ttk.Frame(self.atc_tab, padding="5")
-        
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        
-        # Left side - Instruction selection
+        # Main frame divided into left and right
+        left_frame = ttk.Frame(self.atc_tab, padding=5)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        right_frame = ttk.Frame(self.atc_tab, padding=5)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+
+        # --- Left Frame ---
+        # Airport Selection
+        ttk.Label(left_frame, text="Airport:").pack(anchor=tk.W, pady=(0, 5))
+        self.airport_var = tk.StringVar()
+        self.airport_combo = ttk.Combobox(
+            left_frame,
+            textvariable=self.airport_var,
+            values=list(self.airports.keys()),
+            state="readonly"
+        )
+        self.airport_combo.pack(fill=tk.X, pady=(0, 10))
+        self.airport_combo.bind("<<ComboboxSelected>>", self.on_airport_select)
+        if self.airports:
+            self.airport_combo.current(0)
+
+        # Instruction type selection
         ttk.Label(left_frame, text="Instruction Type:").pack(anchor=tk.W, pady=(0, 5))
-        
-        # Get all instruction types
-        instruction_types = self.atc.get_all_instruction_types()
         instruction_var = tk.StringVar()
+        instruction_types = self.atc.get_all_instruction_types()
         
         # Set default instruction
         if instruction_types:
             instruction_var.set(instruction_types[0])
         
         # Instruction type dropdown
-        self.instruction_dropdown = ttk.Combobox(
+        self.instruction_type_combo = ttk.Combobox(
             left_frame, 
             textvariable=instruction_var,
             values=instruction_types,
             state="readonly"
         )
-        self.instruction_dropdown.pack(fill=tk.X, pady=(0, 10))
-        self.instruction_dropdown.bind("<<ComboboxSelected>>", self.on_instruction_selected)
+        self.instruction_type_combo.pack(fill=tk.X, pady=(0, 10))
+        self.instruction_type_combo.bind(
+            "<<ComboboxSelected>>", self.on_instruction_select
+        )
+        
+        # Prevent separators from being selected
+        def on_combo_select(event):
+            selection = self.instruction_type_combo.get()
+            if selection.startswith("---"):
+                self.instruction_type_combo.set("") # Clear selection or set to previous valid one
+                # Or find next valid one
+                all_instructions = self.atc.get_all_instruction_types()
+                current_index = all_instructions.index(selection)
+                if current_index + 1 < len(all_instructions):
+                    next_item = all_instructions[current_index + 1]
+                    if not next_item.startswith("---"):
+                        self.instruction_type_combo.set(next_item)
+                        self.on_instruction_select(None) # Manually trigger update
+        
+        self.instruction_type_combo.bind("<<ComboboxSelected>>", on_combo_select, add=True)
         
         # Parameters frame
         self.param_frame = ttk.LabelFrame(left_frame, text="Parameters", padding="5")
@@ -139,54 +172,50 @@ class MainWindow:
         ))
         
         # Buttons
-        button_frame = ttk.Frame(left_frame)
-        button_frame.pack(fill=tk.X, pady=10)
-        
-        self.generate_btn = ttk.Button(
-            button_frame, 
-            text="Generate Readback", 
-            command=self.generate_readback
+        bottom_frame = ttk.Frame(left_frame)
+        bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(10, 0))
+
+        self.generate_button = ttk.Button(
+            bottom_frame, text="Generate Readback", command=self.generate_readback
         )
-        self.generate_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        
-        self.speak_btn = ttk.Button(
-            button_frame, 
-            text="Speak ATC", 
-            command=self.speak_atc
+        self.generate_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
+
+        self.speak_button = ttk.Button(
+            bottom_frame, text="Speak ATC", command=self.speak_atc
         )
-        self.speak_btn.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0))
+        self.speak_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5, 0))
         
-        # Right side - Display
+        # --- Right Frame ---
         ttk.Label(right_frame, text="ATC Instruction:").pack(anchor=tk.W, pady=(0, 5))
         
-        self.instruction_display = scrolledtext.ScrolledText(
+        self.atc_instruction_text = scrolledtext.ScrolledText(
             right_frame, 
             height=6, 
             wrap=tk.WORD
         )
-        self.instruction_display.pack(fill=tk.X, pady=(0, 10))
+        self.atc_instruction_text.pack(fill=tk.X, pady=(0, 10))
         
         ttk.Label(right_frame, text="Proper Readback:").pack(anchor=tk.W, pady=(0, 5))
         
-        self.readback_display = scrolledtext.ScrolledText(
+        self.readback_text = scrolledtext.ScrolledText(
             right_frame, 
             height=6, 
             wrap=tk.WORD
         )
-        self.readback_display.pack(fill=tk.X, pady=(0, 10))
+        self.readback_text.pack(fill=tk.X, pady=(0, 10))
         
         ttk.Label(right_frame, text="Explanation:").pack(anchor=tk.W, pady=(0, 5))
         
-        self.explanation_display = scrolledtext.ScrolledText(
+        self.explanation_text = scrolledtext.ScrolledText(
             right_frame, 
             height=6, 
             wrap=tk.WORD
         )
-        self.explanation_display.pack(fill=tk.BOTH, expand=True)
+        self.explanation_text.pack(fill=tk.BOTH, expand=True)
         
         # Set initial instruction
         if instruction_types:
-            self.on_instruction_selected(None)
+            self.on_instruction_select(None)
     
     def setup_atis_tab(self):
         """Set up the ATIS Decoder tab"""
@@ -376,12 +405,12 @@ class MainWindow:
                 self.speech_engine.set_rate(self.config.get("voice_rate"))
                 
                 # Update instruction dropdown
-                self.instruction_dropdown['values'] = self.atc.get_all_instruction_types()
+                self.instruction_type_combo['values'] = self.atc.get_all_instruction_types()
                 
                 # Reset the selected instruction
-                if self.instruction_dropdown['values']:
-                    self.instruction_dropdown.current(0)
-                    self.on_instruction_selected(None)
+                if self.instruction_type_combo['values']:
+                    self.instruction_type_combo.current(0)
+                    self.on_instruction_select(None)
                 
             else:
                 messagebox.showerror("Settings", "Failed to save settings!")
@@ -401,156 +430,224 @@ class MainWindow:
         # Configure grid to expand
         settings_frame.columnconfigure(1, weight=1)
     
-    def on_instruction_selected(self, event):
-        """Handle instruction type selection"""
-        instruction_type = self.instruction_dropdown.get()
-        instruction = self.atc.get_instruction(instruction_type)
-        
-        if instruction:
-            # Clear displays
-            self.instruction_display.delete(1.0, tk.END)
-            self.readback_display.delete(1.0, tk.END)
-            self.explanation_display.delete(1.0, tk.END)
-            
-            # Show explanation
-            self.explanation_display.insert(tk.END, instruction["explanation"])
-            
-            # Update parameter fields
-            self.update_parameter_fields(instruction_type)
-    
-    def update_parameter_fields(self, instruction_type):
-        """Dynamically update parameter entry fields based on instruction type"""
-        # Clear existing parameter entries
+    def on_airport_select(self, event):
+        """Handle airport selection change"""
+        self.on_instruction_select(None) # Refresh parameters for new airport
+
+    def on_instruction_select(self, event):
+        """Handle instruction type selection change"""
+        # Clear previous parameter entries by destroying all widgets in the frame
         for widget in self.param_inner_frame.winfo_children():
             widget.destroy()
+        self.param_entries.clear()
+
+        # Clear text boxes
+        self.atc_instruction_text.delete(1.0, tk.END)
+        self.readback_text.delete(1.0, tk.END)
+        self.explanation_text.delete(1.0, tk.END)
         
-        self.param_entries = {}
-        
+        selected_instruction = self.instruction_type_combo.get()
+        if not selected_instruction or selected_instruction.startswith("---"):
+            return
+
+        # Get instruction details
+        instruction_data = self.atc.get_instruction(selected_instruction)
+        if not instruction_data:
+            return
+
+        # Populate the explanation box
+        self.explanation_text.insert(tk.END, instruction_data.get("explanation", "No explanation available."))
+
         # Get parameters for the selected instruction
-        parameters = self.atc.get_parameters_for_instruction(instruction_type)
-        
+        params = self.atc.get_parameters_for_instruction(selected_instruction)
+
+        # Get data for the currently selected airport
+        current_airport_name = self.airport_var.get()
+        airport_data = self.airports.get(current_airport_name, {})
+
         # Create entry fields for each parameter
-        for i, param in enumerate(parameters):
-            # Create a friendly display name
+        for i, param in enumerate(params):
             display_name = param.replace('_', ' ').title()
-            ttk.Label(self.param_inner_frame, text=f"{display_name}:").grid(row=i, column=0, sticky=tk.W, pady=2)
             
-            # For some parameters, we'll use comboboxes with predefined values
-            if param == "direction":
-                values = ["Left", "Right"]
-                if instruction_type == "hold" or instruction_type == "circling_approach":
-                    values = ["North", "South", "East", "West"]
-                var = tk.StringVar()
-                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=values, width=20)
-                entry.current(0)
-            elif param == "climb_descend":
-                var = tk.StringVar()
-                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=["Climb", "Descend"], width=20)
-                entry.current(0)
-            elif param == "direction_turn":
-                var = tk.StringVar()
-                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=["Right", "Left"], width=20)
-                entry.current(0)
-            elif param == "approach_type":
-                var = tk.StringVar()
-                entry = ttk.Combobox(
-                    self.param_inner_frame, 
-                    textvariable=var, 
-                    values=["ILS", "RNAV", "VOR", "NDB", "Visual", "GPS", "Localizer"], 
-                    width=20
-                )
-                entry.current(0)
-            else:
-                # Use text entry for other parameters
-                var = tk.StringVar()
-                entry = ttk.Entry(self.param_inner_frame, textvariable=var, width=20)
+            if param == "taxiways":
+                # Create a more complex widget for sequential taxiway selection
+                taxiway_container = ttk.LabelFrame(self.param_inner_frame, text="Taxi Route")
+                taxiway_container.grid(row=i, column=0, columnspan=2, sticky=tk.EW, pady=5)
+
+                # Data
+                available_taxiways = airport_data.get("taxiways", [])
                 
-                # Set default values for common parameters
-                if param == "callsign":
-                    var.set("N123AB")
-                elif param == "runway":
-                    var.set("27")
-                elif param == "altitude":
-                    var.set("5000")
-                elif param == "heading":
-                    var.set("270")
-                elif param == "speed":
-                    var.set("210")
-                elif param == "frequency":
-                    var.set("125.5")
-                elif param == "wind_direction":
-                    var.set("270")
-                elif param == "wind_speed":
-                    var.set("10")
-                elif param == "position":
-                    var.set("2")
-                elif param == "distance":
-                    var.set("3")
-                elif param == "destination":
-                    var.set("KXYZ")
-                elif param == "squawk":
-                    var.set("1234")
-                elif param == "rate":
-                    var.set("1500")
-                elif param == "fix":
-                    var.set("ALPHA")
-                elif param == "facility":
-                    var.set("Tower")
-                elif param == "taxiways":
-                    var.set("A, B, C")
-                elif param == "aircraft_type":
-                    var.set("Cessna")
-                elif param == "setting":
-                    var.set("2992")
-                elif param == "arrival":
-                    var.set("STAR")
+                # --- Widgets ---
+                # Route display
+                current_route_var = tk.StringVar(value="Taxi via: ")
+                ttk.Label(taxiway_container, textvariable=current_route_var).pack(anchor=tk.W, padx=5, pady=2)
+                
+                # Selection UI
+                selection_frame = ttk.Frame(taxiway_container)
+                selection_frame.pack(fill=tk.X, padx=5, pady=2)
+
+                # Available taxiways list
+                ttk.Label(selection_frame, text="Available:").pack(side=tk.LEFT)
+                taxiway_list_var = tk.StringVar(value=available_taxiways)
+                listbox = tk.Listbox(selection_frame, listvariable=taxiway_list_var, height=4, exportselection=False, width=15)
+                listbox.pack(side=tk.LEFT, padx=5)
+
+                # Buttons
+                button_frame = ttk.Frame(selection_frame)
+                button_frame.pack(side=tk.LEFT, fill=tk.Y, pady=5)
+                
+                self.param_entries['taxiways'] = [] # Use a list to store the sequence
+
+                def add_taxiway():
+                    selected_indices = listbox.curselection()
+                    if not selected_indices:
+                        return
+                    
+                    selected_taxiway = available_taxiways[selected_indices[0]]
+                    self.param_entries['taxiways'].append(selected_taxiway)
+                    
+                    route_str = "Taxi via: " + " → ".join(self.param_entries['taxiways'])
+                    current_route_var.set(route_str)
+
+                def remove_last_taxiway():
+                    if self.param_entries['taxiways']:
+                        self.param_entries['taxiways'].pop()
+                        route_str = "Taxi via: " + " → ".join(self.param_entries['taxiways'])
+                        current_route_var.set(route_str)
+
+                def clear_route():
+                    self.param_entries['taxiways'].clear()
+                    current_route_var.set("Taxi via: ")
+
+                ttk.Button(button_frame, text="Add →", command=add_taxiway).pack(fill=tk.X, pady=2)
+                ttk.Button(button_frame, text="Remove Last", command=remove_last_taxiway).pack(fill=tk.X, pady=2)
+                ttk.Button(button_frame, text="Clear", command=clear_route).pack(fill=tk.X, pady=2)
+
+                continue
+
+            var = tk.StringVar()
+            entry = None
+
+            # Use comboboxes for parameters with specific options
+            if param == "direction":
+                if selected_instruction == "Hold":
+                    values = ["North", "South", "East", "West", "NE", "NW", "SE", "SW"]
+                else:
+                    values = ["Left", "Right"]
+                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=values, width=20)
+            elif param == "turn_direction":
+                 entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=["Left", "Right"], width=20)
+            elif param == "clock_position":
+                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=[str(i) for i in range(1, 13)], width=20)
+            elif param == "movement":
+                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=["Northbound", "Southbound", "Eastbound", "Westbound", "Opposite Direction", "Same Direction", "No factor"], width=20)
+            elif param == "approach_type":
+                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=["ILS", "RNAV", "VOR/DME", "Visual"], width=20)
+            elif param == "aircraft_type":
+                aircraft_options = [
+                    # Cessna Aircraft
+                    "C152", "C172", "C182", "C206", "C208", "C210", "C310", "C340", "C402", "C414", "C421", "C441", 
+                    "C500", "C510", "C525", "C550", "C560", "C650", "C680", "C750", "C850",
+                    # Piper Aircraft
+                    "PA28", "PA32", "PA34", "PA44", "PA46",
+                    # Beechcraft Aircraft
+                    "BE20", "BE36", "BE58", "BE60", "BE76", "BE90", "BE99", "BE200", "BE300", "BE350", "BE400", "BE1900",
+                    # Boeing Aircraft
+                    "B707", "B717", "B727", "B737", "B747", "B757", "B767", "B777", "B787", "B797",
+                    # Airbus Aircraft
+                    "A220", "A300", "A310", "A318", "A319", "A320", "A321", "A330", "A340", "A350", "A380", "A400M",
+                    # Regional Jets
+                    "E135", "E140", "E145", "E170", "E175", "E190", "E195", "CRJ1", "CRJ2", "CRJ7", "CRJ9", "CRJ10",
+                    # Other Commercial Aircraft
+                    "MD80", "MD90", "MD11", "DC9", "DC10", "L1011", "F100", "F70", "F28", "F50", 
+                    "ATR42", "ATR72", "DHC8", "SF340", "EMB110", "EMB120", "EMB135", "EMB145", 
+                    "EMB170", "EMB175", "EMB190", "EMB195"
+                ]
+                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=aircraft_options, width=20)
+            elif param == "destination":
+                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=list(self.airports.keys()), width=20)
+            elif param == "runway":
+                entry = ttk.Combobox(self.param_inner_frame, textvariable=var, values=airport_data.get("runways", []), width=20)
+            elif param == "frequency":
+                 # Use default frequency from airport data if available
+                default_freq = airport_data.get("frequencies", {}).get("departure", "121.5")
+                var.set(default_freq)
+                entry = ttk.Entry(self.param_inner_frame, textvariable=var, width=22)
+            else:
+                entry = ttk.Entry(self.param_inner_frame, textvariable=var, width=22)
+
+            # Set default values from config first, then airport-specific if available
+            defaults = {
+                "callsign": "9V-SIA", "runway": "02C", "altitude": "5000",
+                "heading": "270", "speed": "210",
+                "wind_direction": "270", "wind_speed": "10", "clock_position": "2",
+                "distance": "3", "destination": "WSSS", "squawk": "1234",
+                "fix": "SELAT", "facility": "Tower",
+                "setting": "1013", "aircraft_type": "Boeing 737",
+                "movement": "Northbound", "radial": "180", "leg_length": "5",
+                "expect_time": "1800Z", "arrival_name": "SELAT1A"
+            }
+            if not var.get(): # Only set default if not already set by airport data
+                if param in defaults:
+                    var.set(defaults[param])
             
+            # For airport-specific runway and taxiway, if a default is in the list, set it
+            if param == "runway" and airport_data.get("runways"):
+                var.set(airport_data.get("runways")[0])
+
+            if isinstance(entry, ttk.Combobox) and not var.get() and entry['values']:
+                entry.current(0)
+
             entry.grid(row=i, column=1, sticky=tk.EW, pady=2)
             self.param_entries[param] = var
-        
-        # Configure grid to expand
-        self.param_inner_frame.columnconfigure(1, weight=1)
-        
-        # Update the scrollable region
-        self.param_inner_frame.update_idletasks()
-        self.param_canvas.configure(scrollregion=self.param_canvas.bbox("all"))
-    
+
     def generate_readback(self):
-        """Generate a readback example for the selected instruction"""
-        instruction_type = self.instruction_dropdown.get()
-        
-        # Get parameter values from the entry fields
+        """Generate and display the readback message"""
+        selected_instruction = self.instruction_type_combo.get()
+        if not selected_instruction or selected_instruction.startswith("---"):
+            messagebox.showwarning(
+                "Warning", "Please select a valid instruction type first"
+            )
+            return
+
+        # Get parameter values from entry fields
         params = {}
-        for param, var in self.param_entries.items():
-            params[param] = var.get()
-        
-        # Get the instruction and readback
-        instruction = self.atc.get_instruction(instruction_type)
-        
-        if instruction:
-            try:
-                # Format the instruction and readback
-                atc_message = instruction["instruction"].format(**params)
-                readback = self.atc.get_readback(instruction_type, **params)
-                
-                # Display them
-                self.instruction_display.delete(1.0, tk.END)
-                self.readback_display.delete(1.0, tk.END)
-                
-                self.instruction_display.insert(tk.END, atc_message)
-                self.readback_display.insert(tk.END, readback)
-                
-                self.status_var.set(f"Generated readback for {instruction_type}")
-            except KeyError as e:
-                messagebox.showerror("Error", f"Missing parameter: {e}")
+        for param, var_or_vars in self.param_entries.items():
+            if param == 'taxiways' and isinstance(var_or_vars, list):
+                params[param] = " via " + " then ".join(var_or_vars)
+            elif hasattr(var_or_vars, 'get'):
+                params[param] = var_or_vars.get()
+            else:
+                params[param] = var_or_vars
+
+        # Get the full instruction and readback
+        instruction_data = self.atc.get_instruction(selected_instruction)
+        if not instruction_data:
+            return
+            
+        try:
+            # Populate the ATC instruction and readback boxes
+            atc_text = instruction_data["instruction"].format(**params)
+            readback_text = instruction_data["readback"].format(**params)
+            
+            self.atc_instruction_text.delete(1.0, tk.END)
+            self.atc_instruction_text.insert(tk.END, atc_text)
+            
+            self.readback_text.delete(1.0, tk.END)
+            self.readback_text.insert(tk.END, readback_text)
+
+        except KeyError as e:
+            messagebox.showerror("Error", f"Missing parameter: {e}")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
     
     def speak_atc(self):
-        """Speak the ATC instruction"""
+        """Use text-to-speech to read the ATC instruction"""
         if not self.config.get("voice_enabled"):
             messagebox.showinfo("Voice Disabled", "Voice playback is disabled in settings.")
             return
             
-        atc_text = self.instruction_display.get(1.0, tk.END).strip()
+        atc_text = self.atc_instruction_text.get(1.0, tk.END).strip()
         if atc_text:
             self.speech_engine.speak(atc_text)
             self.status_var.set("Speaking ATC instruction...")
@@ -559,15 +656,14 @@ class MainWindow:
     
     def insert_sample_atis(self):
         """Insert a sample ATIS message"""
-        sample_atis = """KXYZ INFORMATION ALPHA. 1430Z. RUNWAY IN USE 27L AND 27R. 
-WIND 280 AT 10 KNOTS. VISIBILITY 10 MILES. FEW CLOUDS AT 5000. 
-TEMPERATURE 22 DEW POINT 15. ALTIMETER 2992. 
+        sample_atis = """WSSS INFORMATION ALPHA. 1430Z. RUNWAY IN USE 02L AND 02R. 
+WIND 020 AT 8 KNOTS. VISIBILITY 10 KILOMETRES. FEW CLOUDS AT 4000. 
+TEMPERATURE 28 DEW POINT 24. QNH 1013. 
 ILS APPROACH IN PROGRESS. BIRDS REPORTED VICINITY OF AIRPORT.
-ADVISE YOU HAVE INFORMATION ALPHA ON INITIAL CONTACT. CONTACT TOWER ON 118.7."""
+ADVISE YOU HAVE INFORMATION ALPHA ON INITIAL CONTACT. CONTACT TOWER ON 118.1."""
         
         self.atis_input.delete(1.0, tk.END)
         self.atis_input.insert(tk.END, sample_atis)
-    
     def decode_atis(self):
         """Decode the ATIS message"""
         raw_atis = self.atis_input.get(1.0, tk.END).strip()

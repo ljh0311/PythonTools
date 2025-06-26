@@ -13,6 +13,7 @@ class AirportConfiguration:
     wind: str = "Calm"
     visibility: str = "10 miles"
     ceiling: str = "Clear"
+    runway_instructions: List[str] = field(default_factory=list)
     
     def get_full_name(self):
         """Get the full name of the airport (ICAO - Name)"""
@@ -29,7 +30,8 @@ class AirportConfiguration:
             gates=data_dict["gates"],
             wind=data_dict.get("wind", "Calm"),
             visibility=data_dict.get("visibility", "10 miles"),
-            ceiling=data_dict.get("ceiling", "Clear")
+            ceiling=data_dict.get("ceiling", "Clear"),
+            runway_instructions=data_dict.get("runway_instructions", [])
         )
     
     def to_dict(self):
@@ -42,7 +44,8 @@ class AirportConfiguration:
             "gates": self.gates,
             "wind": self.wind,
             "visibility": self.visibility,
-            "ceiling": self.ceiling
+            "ceiling": self.ceiling,
+            "runway_instructions": self.runway_instructions
         }
 
 @dataclass
@@ -136,9 +139,9 @@ class ATCModel:
             AirportConfiguration(
                 icao="WBGG",
                 name="Kuching International Airport",
-                runways=["04/22"],
-                taxiways=["A", "B", "C", "D", "E"],
-                gates=["1", "2", "3", "4", "5", "6", "7", "8"],
+                runways=["07/25"],
+                taxiways=["A", "B", "C", "F", "G", "J", "K"],
+                gates=["1", "2", "3", "4", "5", "5R", "6", "7", "7R", "8", "8L", "8R", "9", "R1", "R2", "R3", "G1", "G2", "G3", "H1", "H2", "H3"],
                 wind="040° at 8kts",
                 visibility="8000",
                 ceiling="SCT025"
@@ -158,6 +161,13 @@ class ATCModel:
         # Add them to the airports dictionary
         for airport in default_airports:
             self.add_airport(airport)
+        
+        # Add specific instructions after initialization
+        if "WBGG - Kuching International Airport" in self.airports:
+            self.airports["WBGG - Kuching International Airport"].runway_instructions = [
+                "No wide body aircraft allowed to park at bay 8 and 9 when bay 8L is occupied.",
+                "Pilots to follow marshaller instructions at all stands."
+            ]
     
     def add_airport(self, airport: AirportConfiguration):
         """Add an airport to the system"""
