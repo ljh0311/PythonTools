@@ -27,21 +27,27 @@ def get_process_power_usage():
         # Get number of CPU cores
         cpu_count = psutil.cpu_count()
         
-        # Get all processes
+        # Get all processes with minimal overhead
         processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+        for proc in psutil.process_iter(['pid', 'name']):
             try:
-                # Get process info with a timeout
+                # Get process info without CPU calculation first
                 pinfo = proc.info
-                # Get CPU usage with a small interval to ensure accurate reading
-                cpu_percent = proc.cpu_percent(interval=0.1)
+                
+                # Only check CPU for processes that might be significant
+                # Skip system processes that are unlikely to be high usage
+                skip_processes = {'System Idle Process', 'System', 'Registry', 'svchost.exe', 'csrss.exe', 'winlogon.exe'}
+                if pinfo['name'] in skip_processes:
+                    continue
+                
+                # Get CPU usage with minimal interval
+                cpu_percent = proc.cpu_percent(interval=0.01)
                 # Normalize CPU usage to percentage across all cores
                 normalized_cpu = cpu_percent / cpu_count
-                # Get memory usage
-                memory_percent = proc.memory_percent()
                 
-                # Only include processes with significant resource usage
-                if normalized_cpu > 0.1 or memory_percent > 0.1:
+                # Only get memory if CPU usage is significant
+                if normalized_cpu > 0.5:
+                    memory_percent = proc.memory_percent()
                     processes.append({
                         'pid': pinfo['pid'],
                         'name': pinfo['name'],
@@ -51,7 +57,6 @@ def get_process_power_usage():
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
             except Exception as e:
-                print(f"Error getting process info: {str(e)}")
                 continue
         
         # Sort by CPU usage
@@ -102,7 +107,7 @@ def get_battery_info():
             "time_left": f"Error: {str(e)}"
         }
 
-def save_battery_log(info, top_processes):
+def save_battery_log(info, top_processes, process_history):
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -234,6 +239,69 @@ def save_charge_cycles(data):
     except Exception as e:
         print(f"Error saving charge cycles: {str(e)}")
 
+def update_threshold_data(data, cycle_type, threshold, time_to_threshold):
+    try:
+        threshold_key = f"{cycle_type}_thresholds"
+        threshold_str = str(threshold)
+        
+        if threshold_str in data[threshold_key]:
+            data[threshold_key][threshold_str]['times'].append(time_to_threshold)
+            # Keep only last 10 times
+            if len(data[threshold_key][threshold_str]['times']) > 10:
+                data[threshold_key][threshold_str]['times'] = data[threshold_key][threshold_str]['times'][-10:]
+            # Calculate new average
+            data[threshold_key][threshold_str]['average'] = sum(data[threshold_key][threshold_str]['times']) / len(data[threshold_key][threshold_str]['times'])
+            
+            save_charge_cycles(data)
+    except Exception as e:
+        print(f"Error updating threshold data: {str(e)}")
+
+def analyze_existing_cycles(data):
+    """Analyze existing cycles to populate threshold data"""
+    try:
+        # Analyze charge cycles
+        for cycle in data['charge_cycles']:
+            start_time = datetime.fromisoformat(cycle['start'])
+            end_time = datetime.fromisoformat(cycle['end'])
+            start_percent = cycle.get('start_percent', 0)
+            end_percent = cycle['percent']
+            
+            # Calculate time to reach each threshold
+            thresholds = [80, 85, 90, 95, 100]
+            for threshold in thresholds:
+                if start_percent < threshold <= end_percent:
+                    # Estimate time to reach this threshold
+                    total_duration = cycle['duration']
+                    percent_range = end_percent - start_percent
+                    if percent_range > 0:
+                        threshold_progress = (threshold - start_percent) / percent_range
+                        time_to_threshold = total_duration * threshold_progress
+                        update_threshold_data(data, 'charge', threshold, time_to_threshold)
+        
+        # Analyze discharge cycles
+        for cycle in data['discharge_cycles']:
+            start_time = datetime.fromisoformat(cycle['start'])
+            end_time = datetime.fromisoformat(cycle['end'])
+            start_percent = cycle.get('start_percent', 100)
+            end_percent = cycle['percent']
+            
+            # Calculate time to reach each threshold
+            thresholds = [20, 15, 10, 5, 0]
+            for threshold in thresholds:
+                if start_percent > threshold >= end_percent:
+                    # Estimate time to reach this threshold
+                    total_duration = cycle['duration']
+                    percent_range = start_percent - end_percent
+                    if percent_range > 0:
+                        threshold_progress = (start_percent - threshold) / percent_range
+                        time_to_threshold = total_duration * threshold_progress
+                        update_threshold_data(data, 'discharge', threshold, time_to_threshold)
+        
+        save_charge_cycles(data)
+        print("Existing cycles analyzed and threshold data populated.")
+    except Exception as e:
+        print(f"Error analyzing existing cycles: {str(e)}")
+
 def update_cycle(data, cycle_type, start_time, end_time, current_percent, start_percent=None):
     try:
         duration = (end_time - start_time).total_seconds() / 60  # Convert to minutes
@@ -258,17 +326,8 @@ def update_cycle(data, cycle_type, start_time, end_time, current_percent, start_
         if len(data[cycle_list]) > 10:
             data[cycle_list] = data[cycle_list][-10:]
         
-        # Update threshold times
-        threshold_key = f"{cycle_type}_thresholds"
-        threshold = str(current_percent)
-        if threshold in data[threshold_key]:
-            data[threshold_key][threshold]['times'].append(duration)
-            if len(data[threshold_key][threshold]['times']) > 10:
-                data[threshold_key][threshold]['times'] = data[threshold_key][threshold]['times'][-10:]
-            data[threshold_key][threshold]['average'] = sum(data[threshold_key][threshold]['times']) / len(data[threshold_key][threshold]['times'])
-        
         save_charge_cycles(data)
-        return data[threshold_key]
+        return data
     except Exception as e:
         print(f"Error updating {cycle_type} cycle: {str(e)}")
         return None
@@ -278,6 +337,10 @@ def main():
     print("Press Ctrl+C to stop monitoring")
     logging = 0
     
+    # Load and analyze existing data
+    charge_data = load_charge_cycles()
+    analyze_existing_cycles(charge_data)
+
     # Memory cleanup thresholds
     MEMORY_THRESHOLD = 80  # Percentage
     last_cleanup_time = 0
@@ -305,11 +368,8 @@ def main():
     process_history = {}  # Dictionary to store process usage history
     PROCESS_HISTORY_DURATION = 300  # 5 minutes in seconds
     idle_proc_count = 0
-    
+
     try:
-        # Initial CPU usage calculation
-        psutil.cpu_percent(interval=1)
-        
         while True:
             battery_info = get_battery_info()
             top_processes = get_process_power_usage()
@@ -377,9 +437,10 @@ def main():
                         current_percent >= threshold and 
                         (last_percent is None or last_percent < threshold)):
                         reached_charge_thresholds.add(threshold)
-                        thresholds_data = update_cycle(load_charge_cycles(), 'charge', cycle_start_time, datetime.now(), threshold, cycle_start_percent)
-                        if thresholds_data:
-                            print(f"\nReached {threshold}% charge in {thresholds_data[str(threshold)]['average']:.1f} minutes (average)")
+                        # Calculate time to reach this threshold
+                        time_to_threshold = (datetime.now() - cycle_start_time).total_seconds() / 60
+                        update_threshold_data(load_charge_cycles(), 'charge', threshold, time_to_threshold)
+                        print(f"\nReached {threshold}% charge in {time_to_threshold:.1f} minutes")
             
             # Track discharging progress
             else:
@@ -389,9 +450,10 @@ def main():
                         current_percent <= threshold and 
                         (last_percent is None or last_percent > threshold)):
                         reached_discharge_thresholds.add(threshold)
-                        thresholds_data = update_cycle(load_charge_cycles(), 'discharge', cycle_start_time, datetime.now(), threshold, cycle_start_percent)
-                        if thresholds_data:
-                            print(f"\nReached {threshold}% discharge in {thresholds_data[str(threshold)]['average']:.1f} minutes (average)")
+                        # Calculate time to reach this threshold
+                        time_to_threshold = (datetime.now() - cycle_start_time).total_seconds() / 60
+                        update_threshold_data(load_charge_cycles(), 'discharge', threshold, time_to_threshold)
+                        print(f"\nReached {threshold}% discharge in {time_to_threshold:.1f} minutes")
             
             last_charge_state = current_charge_state
             last_percent = current_percent
@@ -545,20 +607,24 @@ def main():
                         print("Calculating discharge rate...")
             
             # Display average cycle durations
-            if any(charge_data['charge_thresholds'][t]['average'] > 0 for t in charge_data['charge_thresholds']):
+            charge_thresholds_with_data = [t for t in charge_data['charge_thresholds'] if charge_data['charge_thresholds'][t]['times']]
+            if charge_thresholds_with_data:
                 print("\nAverage Charging Times:")
                 for threshold in ['80', '85', '90', '95', '100']:
-                    avg_time = charge_data['charge_thresholds'][threshold]['average']
-                    if avg_time > 0:
-                        print(f"  To {threshold}%: {avg_time:.1f} minutes")
+                    if threshold in charge_data['charge_thresholds'] and charge_data['charge_thresholds'][threshold]['times']:
+                        avg_time = charge_data['charge_thresholds'][threshold]['average']
+                        count = len(charge_data['charge_thresholds'][threshold]['times'])
+                        print(f"  To {threshold}%: {avg_time:.1f} minutes ({count} samples)")
             
-            if any(charge_data['discharge_thresholds'][t]['average'] > 0 for t in charge_data['discharge_thresholds']):
+            # Display average discharge times
+            discharge_thresholds_with_data = [t for t in charge_data['discharge_thresholds'] if charge_data['discharge_thresholds'][t]['times']]
+            if discharge_thresholds_with_data:
                 print("\nAverage Discharge Times:")
                 for threshold in ['20', '15', '10', '5', '0']:
-                    avg_time = charge_data['discharge_thresholds'][threshold]['average']
-                    if avg_time > 0:
-                        print(f"  To {threshold}%: {avg_time:.1f} minutes")
-            
+                    if threshold in charge_data['discharge_thresholds'] and charge_data['discharge_thresholds'][threshold]['times']:
+                        avg_time = charge_data['discharge_thresholds'][threshold]['average']
+                        count = len(charge_data['discharge_thresholds'][threshold]['times'])
+                        print(f"  To {threshold}%: {avg_time:.1f} minutes ({count} samples)")
             # Display recent cycle information
             if charge_data['charge_cycles'] or charge_data['discharge_cycles']:
                 print("\nRecent Battery Cycles:")
@@ -573,24 +639,54 @@ def main():
                         if 'start_percent' in latest:
                             print(f"  Percentage Change: {latest['percent_change']}%")
                             print(f"  Rate: {latest['rate_per_hour']:.1f}%/hour")
-            
+                            # Show estimated time to full charge or full discharge, depending on cycle type and rate direction
+                            rate = latest.get('rate_per_hour')
+                            if rate and rate != 0:
+                                if cycle_type == 'charge' and rate > 0:
+                                    time_to_full = 100 / rate * 60  # in minutes
+                                    if time_to_full > 60:
+                                        hours = int(time_to_full // 60)
+                                        minutes = int(time_to_full % 60)
+                                        print(f"  Estimated time to full charge: {hours} hours {minutes} minutes")
+                                    else:
+                                        print(f"  Estimated time to full charge: {time_to_full:.1f} minutes")
+                                elif cycle_type == 'discharge' and rate < 0:
+                                    time_to_empty = 100 / abs(rate) * 60  # in minutes
+                                    if time_to_empty > 60:
+                                        hours = int(time_to_empty // 60)
+                                        minutes = int(time_to_empty % 60)
+                                        print(f"  Estimated time to full discharge: {hours} hours {minutes} minutes")
+                                    else:
+                                        print(f"  Estimated time to full discharge: {time_to_empty:.1f} minutes")
+                                else:
+                                    print("  Estimated time to next charge/discharge: N/A")
+                            else:
+                                print("  Estimated time to next charge/discharge: N/A")
+
+            # Display average cycle durations
+            charge_thresholds_with_data = [t for t in charge_data['charge_thresholds'] if charge_data['charge_thresholds'][t]['times']]
+            if charge_thresholds_with_data:
+                print("\nAverage Charging Times:")
+                for threshold in ['80', '85', '90', '95', '100']:
+                    if threshold in charge_data['charge_thresholds'] and charge_data['charge_thresholds'][threshold]['times']:
+                        avg_time = charge_data['charge_thresholds'][threshold]['average']
             print("\n=== Top Power-Consuming Processes ===")
             if top_processes:
-                # Sort processes by CPU usage (excluding System Idle Process)
                 active_processes = [p for p in top_processes if p['name'] != 'System Idle Process']
-                active_processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
                 
-                # Print top 5 processes with highest CPU usage
-                print("Top 5 CPU-Intensive Processes:")
-                for proc in active_processes[:5]:
+                print("Top 5 CPU/Memory-Intensive Processes:")
+                # Get top 5 by CPU and top 5 by Memory, then combine and deduplicate while preserving order
+                top_cpu = sorted(active_processes, key=lambda x: x['cpu_percent'], reverse=True)[:5]
+                top_mem = sorted(active_processes, key=lambda x: x['memory_percent'], reverse=True)[:5]
+                seen = set()
+                combined = []
+                for proc in top_cpu + top_mem:
+                    key = proc['name']
+                    if key not in seen:
+                        combined.append(proc)
+                        seen.add(key)
+                for proc in combined:
                     print(f"  {proc['name']}: CPU {proc['cpu_percent']:.1f}%, Memory {proc['memory_percent']:.1f}%")
-                
-                # Print top 5 processes with highest memory usage
-                print("\nTop 5 Memory-Intensive Processes:")
-                memory_processes = sorted(active_processes, key=lambda x: x['memory_percent'], reverse=True)
-                for proc in memory_processes[:5]:
-                    print(f"  {proc['name']}: Memory {proc['memory_percent']:.1f}%, CPU {proc['cpu_percent']:.1f}%")
-                
                 # Print System Idle Process separately at the end with average usage
                 idle_processes = [p for p in top_processes if p['name'] == 'System Idle Process']
                 idle_proc_count += 1
@@ -603,16 +699,36 @@ def main():
                 print("No processes found")
 
             # Print system resource usage with better formatting
-            print("\n=== System Resource Usage ===")
-            print(f"CPU Usage:    {psutil.cpu_percent(interval=1):>6.1f}%")
-            print(f"Memory Usage: {psutil.virtual_memory().percent:>6.1f}%")
-            print(f"Disk Usage:   {psutil.disk_usage('/').percent:>6.1f}%")
+            print("\n=== System Resource Usage (Average) ===")
+            # Maintain running totals and counts for averages
+            if 'cpu_usage_total' not in locals():
+                cpu_usage_total = 0.0
+                memory_usage_total = 0.0
+                disk_usage_total = 0.0
+                usage_count = 0
+
+            current_cpu = psutil.cpu_percent()
+            current_mem = psutil.virtual_memory().percent
+            current_disk = psutil.disk_usage('/').percent
+
+            cpu_usage_total += current_cpu
+            memory_usage_total += current_mem
+            disk_usage_total += current_disk
+            usage_count += 1
+
+            avg_cpu = cpu_usage_total / usage_count
+            avg_mem = memory_usage_total / usage_count
+            avg_disk = disk_usage_total / usage_count
+
+            print(f"CPU Usage (Avg):    {avg_cpu:>6.1f}%")
+            print(f"Memory Usage (Avg): {avg_mem:>6.1f}%")
+            print(f"Disk Usage (Avg):   {avg_disk:>6.1f}%")
             
             if logging == 1:
                 print("\nLogging to battery_log.txt...")      
-                save_battery_log(battery_info, top_processes)
+                save_battery_log(battery_info, top_processes, process_history)
             
-            time.sleep(5)  # Update every 5 seconds
+            time.sleep(2)  # Update every 2 seconds
             
     except KeyboardInterrupt:
         print("\nMonitoring stopped.")
