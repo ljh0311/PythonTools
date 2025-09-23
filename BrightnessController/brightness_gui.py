@@ -167,53 +167,69 @@ class BrightnessGUI:
         )
         self.category_selector.place(x=0, y=-10)  # Will be positioned dynamically
 
-        # Human detection toggle
+        # Human detection frame with organized sections
         human_detection_frame = create_frame(self.root, "Human Detection")
 
+        # Main toggle
+        main_toggle_frame = ttk.Frame(human_detection_frame)
+        main_toggle_frame.pack(fill="x", pady=(0, 10))
+        
         self.human_detection_checkbox = ttk.Checkbutton(
-            human_detection_frame,
+            main_toggle_frame,
             text="Enable Human Detection",
             variable=self.human_detection_enabled,
         )
         self.human_detection_checkbox.pack(anchor="w")
 
-        self.strict_detection_checkbox = ttk.Checkbutton(
-            human_detection_frame,
-            text="Strict Detection (Reduces False Positives)",
-            variable=self.strict_detection_enabled,
-        )
-        self.strict_detection_checkbox.pack(anchor="w")
-
-        self.auto_strict_checkbox = ttk.Checkbutton(
-            human_detection_frame,
-            text="Auto-Strict Detection (Automatic Mode Switching)",
-            variable=self.auto_strict_enabled,
-        )
-        self.auto_strict_checkbox.pack(anchor="w")
-
-        self.grace_period_checkbox = ttk.Checkbutton(
-            human_detection_frame,
-            text="Grace Period (3s delay when looking away)",
-            variable=self.grace_period_enabled,
-        )
-        self.grace_period_checkbox.pack(anchor="w")
-
-        self.adaptive_grace_checkbox = ttk.Checkbutton(
-            human_detection_frame,
-            text="Adaptive Grace Period (Auto-adjusts timing)",
-            variable=self.adaptive_grace_enabled,
-        )
-        self.adaptive_grace_checkbox.pack(anchor="w")
+        # Detection modes section
+        modes_frame = ttk.LabelFrame(human_detection_frame, text="Detection Modes", padding="5")
+        modes_frame.pack(fill="x", pady=(0, 10))
 
         self.distance_detection_checkbox = ttk.Checkbutton(
-            human_detection_frame,
-            text="Distance Detection (Primary User vs Distant People)",
+            modes_frame,
+            text="Distance Detection (Primary User vs Background)",
             variable=self.distance_detection_enabled,
         )
-        self.distance_detection_checkbox.pack(anchor="w")
+        self.distance_detection_checkbox.pack(anchor="w", pady=2)
 
-        self.human_present_label = create_label(human_detection_frame, "Human Present: N/A")
-        self.detection_status_label = create_label(human_detection_frame, "Detection Status: Standard Mode")
+        self.strict_detection_checkbox = ttk.Checkbutton(
+            modes_frame,
+            text="Strict Detection (Higher Accuracy)",
+            variable=self.strict_detection_enabled,
+        )
+        self.strict_detection_checkbox.pack(anchor="w", pady=2)
+
+        self.auto_strict_checkbox = ttk.Checkbutton(
+            modes_frame,
+            text="Auto-Strict (Auto-switch when unstable)",
+            variable=self.auto_strict_enabled,
+        )
+        self.auto_strict_checkbox.pack(anchor="w", pady=2)
+
+        # Grace period section
+        grace_frame = ttk.LabelFrame(human_detection_frame, text="Grace Period Settings", padding="5")
+        grace_frame.pack(fill="x", pady=(0, 10))
+
+        self.grace_period_checkbox = ttk.Checkbutton(
+            grace_frame,
+            text="Enable Grace Period (3s delay when looking away)",
+            variable=self.grace_period_enabled,
+        )
+        self.grace_period_checkbox.pack(anchor="w", pady=2)
+
+        self.adaptive_grace_checkbox = ttk.Checkbutton(
+            grace_frame,
+            text="Adaptive Timing (Learn from your behavior)",
+            variable=self.adaptive_grace_enabled,
+        )
+        self.adaptive_grace_checkbox.pack(anchor="w", pady=2)
+
+        # Status display
+        status_frame = ttk.LabelFrame(human_detection_frame, text="Detection Status", padding="5")
+        status_frame.pack(fill="x")
+
+        self.human_present_label = create_label(status_frame, "Human Present: N/A")
+        self.detection_status_label = create_label(status_frame, "Detection Status: Standard Mode")
 
         # Control buttons
         button_frame = ttk.Frame(self.root, padding=10)
