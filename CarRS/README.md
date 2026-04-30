@@ -7,27 +7,27 @@ This application helps users find the best car rental option based on their trip
 ### Main Files (Use These)
 
 - **CarRentalApp.bat** - The main launcher for the enhanced application (RECOMMENDED)
-- **fixed_car_loader.py** - The enhanced loader script that fixes data issues and adds features
+- **car_rental_recommender_gui.py** - The main GUI application with recommendations, EV support, reasoning display, and management tabs
+- **car_rental_recommender_core.py** - Shared recommendation and data-processing logic used by the GUI
 
-### Original Files
+### Data and Configuration
 
-- **car_rental_recommender_gui.py** - The original GUI application
-- **car_rental_recommender.py** - The original CLI application
 - **22 - Sheet1.csv** - The data file with rental records
+- **settings.json** - Application settings
 
 ### Support Files (For Developers)
 
 - **requirements.txt** - Lists all required Python packages
+- **test_ev_functionality.py** - Tests EV-specific recommendation behavior
+- **test_reasoning_display.py** - Tests reasoning display behavior
+- **ML_RECOMMENDATIONS_README.md** - Notes for machine-learning recommendation features
+- **OLLAMA_INTEGRATION_README.md** - Notes for local AI/Ollama integration
+- **EV_FEATURES_SUMMARY.md** - Summary of EV support
+- **IMPLEMENTATION_COMPLETE.md** - Implementation summary
 
 ### Backup/Testing Files (Not Needed for Normal Use)
 
-- **load_and_run.py** - Older script that attempted to load data
-- **direct_load.py** - Older script that attempted to directly load data
-- **run_gui.bat** - Original GUI launcher
-- **run_recommender.bat** - Original CLI launcher
-- **run_with_data.bat** - Testing launcher
-- **run_fixed_app.bat** - Testing launcher
-- **run_direct_load.bat** - Testing launcher
+- **zzGG.py** - Legacy/experimental helper; avoid using it for normal application startup unless it is explicitly maintained
 
 ## How to Use
 
@@ -83,12 +83,5 @@ If you encounter any issues:
 
 ## Cleaning Up (Optional)
 
-If you want to clean up unused files, you can safely delete these files:
+Review legacy files before deleting them. The current launcher still calls `fixed_car_loader.py`, but that file is not present in the checked-in project. Update the launcher or restore the loader before relying on the batch startup path.
 
-- load_and_run.py
-- direct_load.py
-- run_gui.bat
-- run_recommender.bat
-- run_with_data.bat
-- run_fixed_app.bat
-- run_direct_load.bat

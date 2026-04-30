@@ -1,6 +1,6 @@
 # Python Tools Collection
 
-A collection of useful Python tools and utilities for various purposes. This repository serves as a centralized location for different Python-based tools that can help automate tasks and enhance productivity.
+A modular collection of Python and web utilities organized as independent projects. The original project intention is to keep practical tools in one repository while preserving clear project boundaries, plug-and-play development, and assistive AI workflows that support users without replacing human judgement.
 
 ## Tools Available
 
@@ -11,6 +11,14 @@ A Car Rental Recommendation System that helps users find the best rental options
 - Cost breakdown (duration and fuel costs)
 - User-friendly interface
 - Customizable search parameters
+
+### [Battery Monitor](./New%20folder)
+A battery monitoring utility with charge-cycle logging and local AI-assisted battery analysis:
+- Battery status and charge/discharge cycle tracking
+- Historical logging for battery usage patterns
+- Local Ollama-based analysis prompts
+
+> Current structure note: this project is still stored under `New folder/` on `main`. Active feature work renames it to `BatteryMonitor/`, which should be completed before further scaling.
 
 ### [Image Merger](./Image_Merger)
 A Flask web application for merging multiple images into panoramas:
@@ -28,14 +36,6 @@ Automatically adjusts screen brightness based on camera input or screen content:
 - User-friendly GUI interface
 - Configurable brightness levels
 
-### [The Eyes](./The_Eyes)
-A computer vision system that uses multiple cameras to create 3D reconstructions:
-- Multi-camera calibration and synchronization
-- Feature detection and matching across camera views
-- 3D point cloud generation
-- Mesh generation and texturing
-- Real-time visualization capabilities
-
 ### [Time Logger](./TimeLogger)
 A desktop application for tracking work hours and generating reports:
 - Time logging with start/end times and break durations
@@ -50,6 +50,7 @@ A tool to assist pilots and air traffic controllers with aviation communications
 - Ground operations and tower control for controllers
 - Aircraft sequencing and ATIS management
 - Configurable based on experience level and aircraft type
+- Active feature work is adding AI-guided debrief workflows for training support
 
 ### [3D Reconstruction](./3d_reconstruction)
 A pipeline for creating 3D reconstructions from video input:
@@ -65,6 +66,8 @@ The repository is organized by tool, with each tool in its own directory contain
 - Documentation
 - Configuration files
 - Test cases (where applicable)
+
+Weekly coordination notes are tracked in [`weekly_progress.md`](./weekly_progress.md). If a project-specific report becomes too large for the root update, that project should add its own `weekly_progress.md`.
 
 ## Contributing
 Feel free to contribute by:
