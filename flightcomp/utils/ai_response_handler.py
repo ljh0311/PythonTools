@@ -5,8 +5,23 @@ Integrates Ollama AI with the ATC window for intelligent responses
 
 import threading
 import time
+import re
+from collections import deque
 from typing import Dict, List, Optional, Any, Callable
 from utils.ollama_client import OllamaClient
+from utils.trainee_situation import (
+    repair_conflicting_clearance,
+    normalize_for_dedupe,
+    pilot_message_sounds_like_readback,
+    clearance_requires_readback,
+    pilot_ack_only,
+    readback_training_reminder_line,
+    pilot_answered_information_request_about_altitude,
+    pilot_requests_descend_maintain_fl,
+    pilot_requests_climb_maintain_fl,
+    pilot_indicates_frequency_change_compliance,
+    pilot_sector_initial_checkin,
+)
 import logging
 
 class AIResponseHandler:
@@ -29,6 +44,15 @@ class AIResponseHandler:
         # Communication history for context
         self.communication_history: List[str] = []
         self.max_history = 20
+
+        # Latest AI request id (for stale-callback suppression in UI)
+        self._dispatch_seq: int = 0
+        # Last substantive ATC line issued to the pilot (for prompt + dedupe)
+        self._last_substantive_atc: str = ""
+        # Last full ATC line (normalized) in pilot training — catches repeat questions
+        # that are not "substantive" clearances and therefore bypass _dedupe_clearance_response.
+        self._last_pilot_mode_atc_norm: str = ""
+        self._pilot_recent_atc_norms: deque[str] = deque(maxlen=10)
         
         # Callback for updating UI
         self.ui_update_callback: Optional[Callable] = None
@@ -61,6 +85,25 @@ class AIResponseHandler:
     def set_ui_update_callback(self, callback: Callable):
         """Set callback for updating UI when AI responses are generated"""
         self.ui_update_callback = callback
+
+    @property
+    def last_dispatch_seq(self) -> int:
+        """Monotonic id of the most recently started generate_atc_response call."""
+        return self._dispatch_seq
+
+    def generate_response(self, prompt: str) -> str:
+        """Synchronous single-shot generation for helper prompts (e.g. readbacks, phraseology translation)."""
+        if not self.is_enabled or not self.ollama_client:
+            return ""
+        try:
+            return self.ollama_client.generate_from_prompt(
+                prompt.strip(),
+                temperature=self.temperature,
+                num_predict=280,
+            )
+        except Exception as e:
+            self.logger.error("generate_response failed: %s", e)
+            return ""
     
     def add_to_history(self, sender: str, message: str):
         """Add a message to the communication history"""
@@ -90,24 +133,61 @@ class AIResponseHandler:
             standby_index: Line index of the placeholder in the log (for in-place replacement).
 
         Returns:
-            Generated ATC response
+            Generated ATC response (stub text when AI runs async; full text when AI is off)
         """
-        if not self.is_enabled or not self.ollama_client:
-            return self._generate_fallback_response(pilot_message, aircraft_info, response_type, airport_info)
-
-        # Add pilot message to history
+        self._dispatch_seq += 1
+        request_id = self._dispatch_seq
         self.add_to_history("PILOT", pilot_message)
 
-        # Generate response in a separate thread to avoid blocking UI
+        if not self.is_enabled or not self.ollama_client:
+            training_mode = (aircraft_info.get("training_mode") or "").lower()
+            last_sub = self._last_substantive_atc
+            if (
+                training_mode == "pilot"
+                and last_sub
+                and clearance_requires_readback(last_sub)
+                and pilot_ack_only(pilot_message)
+            ):
+                callsign = aircraft_info.get("callsign", "Aircraft")
+                ai_response = self._sanitize_phraseology(
+                    readback_training_reminder_line(callsign), aircraft_info
+                )
+            elif sc := self._short_circuit_frequency_handoff_ack(
+                pilot_message, aircraft_info
+            ):
+                ai_response = self._sanitize_phraseology(sc, aircraft_info)
+            else:
+                ai_response = self._generate_fallback_response(
+                    pilot_message, aircraft_info, response_type, airport_info
+                )
+                ai_response, _ = repair_conflicting_clearance(ai_response or "")
+                ai_response = self._sanitize_phraseology(ai_response, aircraft_info)
+                ai_response = self._dedupe_clearance_response(
+                    ai_response, pilot_message, aircraft_info
+                )
+                ai_response = self._squash_pilot_mode_duplicate_atc_output(
+                    ai_response, pilot_message, aircraft_info
+                )
+            self.add_to_history("ATC", ai_response)
+            self._note_pilot_mode_atc_norm(ai_response, aircraft_info)
+            if self._is_substantive_atc(ai_response):
+                self._last_substantive_atc = ai_response
+            if self.ui_update_callback:
+                self.ui_update_callback(
+                    ai_response,
+                    standby_index=standby_index,
+                    request_id=request_id,
+                )
+            return ai_response
+
         response_thread = threading.Thread(
             target=self._generate_response_async,
-            args=(pilot_message, aircraft_info, airport_info, response_type, standby_index)
+            args=(pilot_message, aircraft_info, airport_info, response_type, standby_index, request_id),
         )
         response_thread.daemon = True
         response_thread.start()
 
-        # Return immediate acknowledgment
-        callsign = aircraft_info.get('callsign', 'Aircraft')
+        callsign = aircraft_info.get("callsign", "Aircraft")
         return f"{callsign}, roger, standby."
     
     def _generate_response_async(self,
@@ -115,9 +195,45 @@ class AIResponseHandler:
                                  aircraft_info: Dict[str, Any],
                                  airport_info: Dict[str, Any],
                                  response_type: str,
-                                 standby_index: Optional[int] = None):
+                                 standby_index: Optional[int] = None,
+                                 request_id: int = 0):
         """Generate response asynchronously and update UI"""
         try:
+            training_mode = (aircraft_info.get("training_mode") or "").lower()
+            last_sub = self._last_substantive_atc
+
+            # Pilot training: teach readback discipline instead of repeating clearances
+            if (
+                training_mode == "pilot"
+                and last_sub
+                and clearance_requires_readback(last_sub)
+                and pilot_ack_only(pilot_message)
+            ):
+                callsign = aircraft_info.get("callsign", "Aircraft")
+                ai_response = readback_training_reminder_line(callsign)
+                ai_response = self._sanitize_phraseology(ai_response, aircraft_info)
+                self.add_to_history("ATC", ai_response)
+                self._note_pilot_mode_atc_norm(ai_response, aircraft_info)
+                if self.ui_update_callback:
+                    self.ui_update_callback(
+                        ai_response,
+                        standby_index=standby_index,
+                        request_id=request_id,
+                    )
+                return
+
+            if sc := self._short_circuit_frequency_handoff_ack(pilot_message, aircraft_info):
+                ai_response = self._sanitize_phraseology(sc, aircraft_info)
+                self.add_to_history("ATC", ai_response)
+                self._note_pilot_mode_atc_norm(ai_response, aircraft_info)
+                if self.ui_update_callback:
+                    self.ui_update_callback(
+                        ai_response,
+                        standby_index=standby_index,
+                        request_id=request_id,
+                    )
+                return
+
             # Get recent context (last 10 messages for better scenario progression)
             context = self.communication_history[-10:] if self.communication_history else []
 
@@ -126,24 +242,41 @@ class AIResponseHandler:
             if "traffic" in airport_info:
                 traffic_aircraft = airport_info.get("traffic", [])
 
+            ai_aircraft_info = dict(aircraft_info)
+            ai_aircraft_info["last_atc_clearance"] = self._last_substantive_atc
+
             # Generate AI response with enhanced context
             ai_response = self.ollama_client.generate_atc_response(
                 pilot_message=pilot_message,
-                aircraft_info=aircraft_info,
+                aircraft_info=ai_aircraft_info,
                 airport_info=airport_info,
                 context=context,
                 traffic_aircraft=traffic_aircraft,
                 phraseology_standard=self.config.get("phraseology_standard", "ICAO"),
                 temperature=self.temperature
             )
+            ai_response, _repair_notes = repair_conflicting_clearance(ai_response or "")
             ai_response = self._sanitize_phraseology(ai_response, aircraft_info)
+            ai_response = self._dedupe_clearance_response(
+                ai_response, pilot_message, aircraft_info
+            )
+            ai_response = self._squash_pilot_mode_duplicate_atc_output(
+                ai_response, pilot_message, aircraft_info
+            )
 
             # Add AI response to history
             self.add_to_history("ATC", ai_response)
+            if self._is_substantive_atc(ai_response):
+                self._last_substantive_atc = ai_response
+            self._note_pilot_mode_atc_norm(ai_response, aircraft_info)
 
             # Update UI with the generated response (pass standby_index for in-place replace)
             if self.ui_update_callback:
-                self.ui_update_callback(ai_response, standby_index=standby_index)
+                self.ui_update_callback(
+                    ai_response,
+                    standby_index=standby_index,
+                    request_id=request_id,
+                )
             else:
                 self.logger.debug("No UI callback set!")
 
@@ -155,8 +288,21 @@ class AIResponseHandler:
                 response_type,
                 airport_info
             )
+            fallback, _ = repair_conflicting_clearance(fallback)
+            fallback = self._sanitize_phraseology(fallback, aircraft_info)
+            fallback = self._dedupe_clearance_response(
+                fallback, pilot_message, aircraft_info
+            )
+            fallback = self._squash_pilot_mode_duplicate_atc_output(
+                fallback, pilot_message, aircraft_info
+            )
+            self._note_pilot_mode_atc_norm(fallback, aircraft_info)
             if self.ui_update_callback:
-                self.ui_update_callback(fallback, standby_index=standby_index)
+                self.ui_update_callback(
+                    fallback,
+                    standby_index=standby_index,
+                    request_id=request_id,
+                )
             else:
                 self.logger.debug("No UI callback set for fallback!")
 
@@ -187,7 +333,118 @@ class AIResponseHandler:
             cleaned += "."
 
         return cleaned
-    
+
+    def _short_circuit_frequency_handoff_ack(
+        self, pilot_message: str, aircraft_info: Dict[str, Any]
+    ) -> Optional[str]:
+        """Deterministic tower reply when the pilot only states/simulates switching frequency."""
+        if (aircraft_info.get("training_mode") or "").lower() != "pilot":
+            return None
+        if not pilot_indicates_frequency_change_compliance(pilot_message):
+            return None
+        cs = aircraft_info.get("callsign", "Aircraft")
+        return f"{cs}, wilco, good day."
+
+    def _note_pilot_mode_atc_norm(
+        self, atc_line: str, aircraft_info: Dict[str, Any]
+    ) -> None:
+        if (aircraft_info.get("training_mode") or "").lower() != "pilot":
+            return
+        if atc_line and atc_line.strip():
+            n = normalize_for_dedupe(atc_line)
+            self._last_pilot_mode_atc_norm = n
+            if len(n) >= 20:
+                self._pilot_recent_atc_norms.append(n)
+
+    def _squash_pilot_mode_duplicate_atc_output(
+        self,
+        response: str,
+        pilot_message: str,
+        aircraft_info: Dict[str, Any],
+    ) -> str:
+        """
+        If the model repeats the exact same ATC line as last time (common when
+        `_last_substantive_atc` did not advance because the line was only a question),
+        replace with standard phraseology instead of looping.
+        """
+        if (aircraft_info.get("training_mode") or "").lower() != "pilot":
+            return response
+        if not response or not response.strip():
+            return response
+        n_new = normalize_for_dedupe(response)
+        if len(n_new) < 20:
+            return response
+        prev = self._last_pilot_mode_atc_norm
+        infoish = bool(
+            re.search(
+                r"(altitude|heading|what|confirm|flight\s*level|level|position|report|"
+                r"emergency|weather|procedure)",
+                n_new,
+            )
+        )
+        seen_again = n_new in self._pilot_recent_atc_norms
+        consecutive_same = bool(prev and n_new == prev)
+        if not consecutive_same and not (infoish and seen_again):
+            return response
+        cs = aircraft_info.get("callsign", "Aircraft")
+        pl = (pilot_message or "").strip()
+        if re.fullmatch(r"what[\s?!.'-]*", pl, re.I):
+            return self._sanitize_phraseology(
+                f"{cs}, say again your altitude and request.", aircraft_info
+            )
+        if pilot_answered_information_request_about_altitude(pl):
+            fl_d = pilot_requests_descend_maintain_fl(pl)
+            if fl_d:
+                return self._sanitize_phraseology(
+                    f"{cs}, roger, descend and maintain flight level {fl_d}.",
+                    aircraft_info,
+                )
+            fl_c = pilot_requests_climb_maintain_fl(pl)
+            if fl_c:
+                return self._sanitize_phraseology(
+                    f"{cs}, roger, climb and maintain flight level {fl_c}.",
+                    aircraft_info,
+                )
+            return self._sanitize_phraseology(
+                f"{cs}, roger, standby for further instructions.", aircraft_info
+            )
+        return self._sanitize_phraseology(f"{cs}, say again.", aircraft_info)
+
+    def _is_substantive_atc(self, msg: str) -> bool:
+        if not msg or len(msg.strip()) < 12:
+            return False
+        low = msg.lower()
+        if re.match(r"^[\w\s]+,\s*roger\.?$", msg.strip(), re.I):
+            return False
+        if "readback correct" in low:
+            return False
+        return bool(
+            re.search(
+                r"\b(cleared|taxi|line up|hold short|contact\s+\w+|"
+                r"maintain|climb|descend|turn|squawk|pushback|start)\b",
+                low,
+            )
+        )
+
+    def _dedupe_clearance_response(
+        self, response: str, pilot_message: str, aircraft_info: Dict[str, Any]
+    ) -> str:
+        """If the model repeats the last substantive clearance, shorten to an acknowledgment."""
+        callsign = aircraft_info.get("callsign", "Aircraft")
+        prev = self._last_substantive_atc
+        if not prev or not response:
+            return response
+        n_prev = normalize_for_dedupe(prev)
+        n_new = normalize_for_dedupe(response)
+        if len(n_prev) < 24 or len(n_new) < 24:
+            return response
+        if n_prev != n_new:
+            return response
+
+        if pilot_message_sounds_like_readback(pilot_message):
+            return f"{callsign}, roger, readback correct."
+        return f"{callsign}, roger."
+
     def _generate_fallback_response(self, 
                                   pilot_message: str,
                                   aircraft_info: Dict[str, Any],
@@ -196,6 +453,15 @@ class AIResponseHandler:
         """Generate a fallback response when AI is not available"""
         callsign = aircraft_info.get('callsign', 'Aircraft')
         pilot_message_lower = pilot_message.lower()
+        if pilot_indicates_frequency_change_compliance(pilot_message):
+            return f"{callsign}, wilco, good day."
+        sector = pilot_sector_initial_checkin(pilot_message)
+        if sector in ("departure", "approach", "center", "radar"):
+            return (
+                f"{callsign}, radar contact, climb via SID unless otherwise instructed."
+            )
+        if sector in ("tower", "ground", "delivery"):
+            return f"{callsign}, roger, go ahead."
         runway = "27"
         if airport_info:
             runways = airport_info.get("runways", [])
@@ -297,6 +563,9 @@ class AIResponseHandler:
     def clear_history(self):
         """Clear communication history"""
         self.communication_history.clear()
+        self._last_substantive_atc = ""
+        self._last_pilot_mode_atc_norm = ""
+        self._pilot_recent_atc_norms.clear()
     
     def get_history(self) -> List[str]:
         """Get communication history"""

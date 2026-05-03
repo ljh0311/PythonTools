@@ -32,6 +32,19 @@ class ReportGenerator:
         if not session:
             return {"error": "Session not found"}
         
+        error_categories: Dict[str, int] = {}
+        sample_messages: List[str] = []
+        seen_msg: set = set()
+        for comm in session.communications:
+            for err in comm.errors:
+                et = err.get("error_type") or "unknown"
+                error_categories[et] = error_categories.get(et, 0) + 1
+                msg = (err.get("message") or "").strip()
+                if msg and msg not in seen_msg:
+                    seen_msg.add(msg)
+                    if len(sample_messages) < 8:
+                        sample_messages.append(msg)
+
         report = {
             "session_id": session.session_id,
             "pilot_id": session.pilot_id,
@@ -50,15 +63,18 @@ class ReportGenerator:
                     "readback": comm.readback,
                     "score": round(comm.score, 1),
                     "response_time": round(comm.response_time, 2) if comm.response_time else None,
-                    "error_count": len(comm.errors)
+                    "error_count": len(comm.errors),
+                    "errors": comm.errors,
                 }
                 for comm in session.communications
             ],
             "summary": {
                 "average_score": round(session.get_average_score(), 1),
                 "total_errors": sum(len(comm.errors) for comm in session.communications),
-                "average_response_time": self._calculate_avg_response_time(session)
-            }
+                "average_response_time": self._calculate_avg_response_time(session),
+                "error_categories": error_categories,
+                "sample_error_messages": sample_messages,
+            },
         }
         
         return report
@@ -114,7 +130,9 @@ class ReportGenerator:
             if "error" in report:
                 return False
             
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            parent = os.path.dirname(output_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(report, f, indent=2, ensure_ascii=False)
             return True
@@ -129,7 +147,9 @@ class ReportGenerator:
             if "error" in report:
                 return False
             
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            parent = os.path.dirname(output_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(report, f, indent=2, ensure_ascii=False)
             return True
@@ -240,8 +260,8 @@ Skill Breakdown:
         avg_response = float(session_report.get("summary", {}).get("average_response_time", 0.0))
         errors = int(session_report.get("summary", {}).get("total_errors", 0))
 
-        benchmark_score = 80.0
-        benchmark_response = 8.0
+        benchmark_score = float(extra_metrics.get("benchmark_score", 80.0))
+        benchmark_response = float(extra_metrics.get("benchmark_response_sec", 8.0))
         score_delta = score - benchmark_score
         response_delta = benchmark_response - avg_response
 
@@ -285,6 +305,13 @@ Skill Breakdown:
 
         role_focus = extra_metrics.get("focus_area", "Maintain concise, standard phraseology.")
         role_insight = extra_metrics.get("insight", "")
+        session_recs = extra_metrics.get("session_recommendations") or []
+        if isinstance(session_recs, str):
+            session_recs = [session_recs]
+
+        err_cats = session_report.get("summary", {}).get("error_categories") or {}
+        top_cats = sorted(err_cats.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        samples = session_report.get("summary", {}).get("sample_error_messages") or []
 
         analysis = [
             f"{role_title} Debrief",
@@ -297,15 +324,34 @@ Skill Breakdown:
             *[f"- {line}" for line in comments],
             "",
             "Insights:",
-            f"- Benchmark score comparison (80 target): {score_delta:+.1f} points",
-            f"- Benchmark response comparison (8s target): {response_delta:+.2f}s better-than-target" if avg_response > 0 else "- Response-time benchmark unavailable",
+            f"- Benchmark score comparison ({benchmark_score:.0f} target): {score_delta:+.1f} points",
+            (
+                f"- Benchmark response comparison ({benchmark_response:.0f}s target): {response_delta:+.2f}s better-than-target"
+                if avg_response > 0
+                else "- Response-time benchmark unavailable"
+            ),
             f"- {trend_text}",
             f"- {baseline_text}",
             "",
-            "Focus and Next Actions:",
-            f"- Priority focus: {role_focus}",
-            "- Next session target: keep score >= 85 with fewer than 3 communication errors.",
         ]
+        if session_recs:
+            analysis.extend(["Coaching notes (session):", *[f"- {r}" for r in session_recs[:5]], ""])
+        if top_cats:
+            analysis.append("Top error categories:")
+            analysis.extend([f"- {k}: {v}" for k, v in top_cats])
+            analysis.append("")
+        if samples:
+            analysis.append("Sample issues:")
+            analysis.extend([f"- {s}" for s in samples[:5]])
+            analysis.append("")
+
+        analysis.extend(
+            [
+                "Focus and Next Actions:",
+                f"- Priority focus: {role_focus}",
+                "- Next session target: keep score >= 85 with fewer than 3 communication errors.",
+            ]
+        )
         if role_insight:
             analysis.insert(-2, f"- Operational insight: {role_insight}")
 

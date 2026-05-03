@@ -3,6 +3,8 @@ ATC Instructions Module
 Contains common ATC instructions and proper readback formats
 """
 
+import ollama
+
 class ATCInstructions:
     def __init__(self, experience_level="beginner", aircraft_type="single_engine"):
         self.experience_level = experience_level
@@ -171,26 +173,47 @@ class ATCInstructions:
             })
             
         return instructions
-    
+
     def get_instruction(self, instruction_name):
         """Get an ATC instruction by its user-friendly name"""
         for category in self.instructions_db.values():
             if instruction_name in category:
                 return category[instruction_name]
         return None
-    
-    def get_readback(self, instruction_name, **kwargs):
-        """Generate a readback for a specific instruction with variable substitution"""
+
+    def get_readback(self, instruction_name, use_ollama=False, **kwargs):
+        """
+        Generate a readback for a specific instruction with variable substitution.
+        If use_ollama is True, use Ollama LLM to generate a realistic, full readback as a pilot would say it.
+        """
         instruction_data = self.get_instruction(instruction_name)
         if instruction_data:
-            try:
-                if "alternative_readback" in instruction_data and kwargs.get("traffic_in_sight", False):
-                    return instruction_data["alternative_readback"].format(**kwargs)
-                return instruction_data["readback"].format(**kwargs)
-            except KeyError as e:
-                return f"Error: Missing parameter {e} for readback"
+            if use_ollama:
+                prompt_text = (
+                    "You are a pilot communicating with ATC. "
+                    "Given the following ATC instruction and information, "
+                    "generate the correct, professional pilot readback. "
+                    "If there's an example readback, you may paraphrase but must be correct and in standard aviation language.\n\n"
+                    f"ATC Instruction: {instruction_data['instruction'].format(**{k:v for k,v in kwargs.items() if k in instruction_data['parameters']})}\n"
+                    f"Parameters/Data: {kwargs}\n"
+                    "Example Readback: " + instruction_data.get('readback', '') + "\n\n"
+                    "Your (pilot) readback:"
+                )
+                try:
+                    response = ollama.chat(model="llama3", messages=[{"role": "user", "content": prompt_text}])
+                    # ollama.chat output is: {'message': {'role': 'assistant', 'content': ...}, ...}
+                    return response["message"]["content"].strip()
+                except Exception as e:
+                    return f"Error using Ollama for readback: {e}"
+            else:
+                try:
+                    if "alternative_readback" in instruction_data and kwargs.get("traffic_in_sight", False):
+                        return instruction_data["alternative_readback"].format(**kwargs)
+                    return instruction_data["readback"].format(**kwargs)
+                except KeyError as e:
+                    return f"Error: Missing parameter {e} for readback"
         return None
-    
+
     def get_all_instruction_types(self):
         """Get a list of all available instruction types with separators"""
         instruction_list = []
@@ -199,7 +222,7 @@ class ATCInstructions:
                 instruction_list.append(f"--- {category_name.upper()} ---")
                 instruction_list.extend(list(instructions.keys()))
         return instruction_list
-    
+
     def get_parameters_for_instruction(self, instruction_name):
         """Get the required parameters for a specific instruction type"""
         instruction_data = self.get_instruction(instruction_name)
@@ -207,6 +230,7 @@ class ATCInstructions:
             return instruction_data["parameters"]
         return []
 
+ 
 def format_readback_example(instruction_name, instruction_obj, **kwargs):
     """Format an example with both the instruction and proper readback"""
     instr = instruction_obj.get_instruction(instruction_name)

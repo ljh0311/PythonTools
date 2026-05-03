@@ -28,56 +28,83 @@ class ATISDecoder:
         
         return result
     
-    def format_decoded_atis(self, decoded_atis, verbose=True):
-        """Format decoded ATIS for display, with verbosity level based on experience"""
+    def format_decoded_atis(self, decoded_atis, verbose=True, use_ollama_format=False):
+        """
+        Format decoded ATIS for display, with verbosity level based on experience.
+
+        If use_ollama_format is True, format using utils/ollama_client.py template.
+        """
         sections = []
-        
-        # Airport and Information code
-        header = f"{decoded_atis['airport']} INFORMATION {decoded_atis['information']}"
-        sections.append(header)
-        
+
+        if use_ollama_format:
+            # Import here to avoid cyclic imports if any
+            from utils.ollama_client import OllamaClient
+
+            airport_info = {
+                "icao": decoded_atis.get("airport", "Unknown"),
+                "wind": decoded_atis.get("weather", {}).get("wind", "Unknown"),
+                "visibility": decoded_atis.get("weather", {}).get("visibility", "Unknown"),
+                "ceiling": decoded_atis.get("weather", {}).get("clouds", "Unknown"),
+                "runways": [decoded_atis.get("runway_info")] if decoded_atis.get("runway_info") else [],
+                "name": decoded_atis.get("airport", "Unknown"),
+            }
+
+            ollama = OllamaClient()
+            atis_string = ollama.decode_atis(airport_info)
+            return atis_string
+
+        # Airport and Information
+        if decoded_atis.get('airport'):
+            airport_info = f"Airport: {decoded_atis['airport']}"
+            if decoded_atis.get('information') and decoded_atis['information'] != "Unknown":
+                airport_info += f", Information {decoded_atis['information']}"
+            sections.append(airport_info)
+        elif decoded_atis.get('information') and decoded_atis['information'] != "Unknown":
+            sections.append(f"Information {decoded_atis['information']}")
+
         # Time
-        if decoded_atis['time']:
+        if decoded_atis.get('time'):
             sections.append(f"Time: {decoded_atis['time']}")
-        
+
         # Runway information
-        if decoded_atis['runway_info']:
+        if decoded_atis.get('runway_info'):
             sections.append(f"Runway: {decoded_atis['runway_info']}")
-        
+
         # Weather information
-        if decoded_atis['weather']:
-            weather = decoded_atis['weather']
+        weather = decoded_atis.get('weather')
+        if weather:
             if verbose:
                 sections.append("Weather:")
-                for key, value in weather.items():
-                    if value:
-                        sections.append(f"  {key.capitalize()}: {value}")
+                for key in ['wind', 'visibility', 'clouds', 'temperature', 'dewpoint']:
+                    if key in weather and weather[key]:
+                        sections.append(f"  {key.capitalize()}: {weather[key]}")
             else:
                 weather_str = []
-                if weather.get('visibility'): 
+                if weather.get('visibility'):
                     weather_str.append(f"Vis {weather['visibility']}")
-                if weather.get('wind'): 
+                if weather.get('wind'):
                     weather_str.append(f"Wind {weather['wind']}")
-                if weather.get('clouds'): 
+                if weather.get('clouds'):
                     weather_str.append(f"Clouds {weather['clouds']}")
-                if weather.get('temperature'): 
+                if weather.get('temperature'):
                     weather_str.append(f"Temp {weather['temperature']}")
-                sections.append("Weather: " + ", ".join(weather_str))
-        
+                if weather_str:
+                    sections.append("Weather: " + ", ".join(weather_str))
+
         # Altimeter
-        if decoded_atis['altimeter']:
+        if decoded_atis.get('altimeter'):
             sections.append(f"Altimeter: {decoded_atis['altimeter']}")
-        
+
         # Frequency for initial contact
-        if decoded_atis['frequency']:
+        if decoded_atis.get('frequency'):
             sections.append(f"Contact: {decoded_atis['frequency']}")
-        
+
         # Remarks
-        if decoded_atis['remarks']:
+        if decoded_atis.get('remarks'):
             sections.append(f"Remarks: {decoded_atis['remarks']}")
-        
+
         return "\n".join(sections)
-    
+
     def _extract_airport(self, raw_atis):
         """Extract airport identifier from ATIS"""
         # Look for common airport identifier patterns (3-4 letter codes)
