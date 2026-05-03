@@ -1,94 +1,87 @@
 """
-Aircraft Model
-Represents an aircraft in the ATC system with relevant properties and state
+Live aircraft model: stateful aircraft with wake category, clearances, and comms history.
+Use for UI and rich state; for serializable ATC records use models.atc_model.Aircraft.
 """
+
 import time
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 
 class AircraftType(Enum):
-    """Aircraft types with their wake turbulence categories"""
-    # Light (L)
+    """Aircraft types with display name and wake turbulence category (L/M/H/J)."""
+
     C152 = ("Cessna 152", "L")
     C172 = ("Cessna 172", "L")
     PA28 = ("Piper Cherokee", "L")
-    
-    # Medium (M)
     B737 = ("Boeing 737", "M")
     A320 = ("Airbus A320", "M")
     E145 = ("Embraer 145", "M")
     CRJ2 = ("CRJ-200", "M")
-    
-    # Heavy (H)
     B747 = ("Boeing 747", "H")
     B777 = ("Boeing 777", "H")
     A330 = ("Airbus A330", "H")
-    
-    # Super (J)
     A380 = ("Airbus A380", "J")
-    
-    def __init__(self, display_name, wake_category):
+
+    def __init__(self, display_name: str, wake_category: str) -> None:
         self.display_name = display_name
         self.wake_category = wake_category
 
 
 class AircraftStatus(Enum):
-    """Possible statuses for an aircraft"""
-    # Ground statuses
+    """Possible statuses for an aircraft (ground, departure, approach, etc.)."""
+
     PARKED = "Parked at gate"
     PUSHBACK = "Pushing back"
     TAXIING = "Taxiing"
     HOLDING_SHORT = "Holding short"
     RUNWAY_LINEUP = "Lined up on runway"
-    
-    # Departure statuses
     TAKEOFF_ROLL = "Takeoff roll"
     DEPARTED = "Departed"
     CLIMB = "Climbing"
-    
-    # Approach/Arrival statuses
     APPROACH = "On approach"
     FINAL = "On final"
     LANDED = "Landed"
     LANDING_ROLL = "Landing roll"
-    
-    # Other statuses
     GO_AROUND = "Going around"
     HOLDING = "Holding"
     EMERGENCY = "Emergency"
 
 
 class AircraftPosition(Enum):
-    """Possible positions for an aircraft"""
-    # Ground positions
+    """Possible positions for an aircraft (gate, taxiway, runway, airspace)."""
+
     GATE = "Gate"
     RAMP = "Ramp"
     TAXIWAY = "Taxiway"
     RUNWAY = "Runway"
-    
-    # Airborne positions
     DEPARTURE = "Departure"
     TERMINAL = "Terminal Airspace"
     ARRIVAL = "Arrival"
     PATTERN = "Traffic Pattern"
 
 
-class Aircraft:
-    """Represents an aircraft in the ATC system"""
+class LiveAircraft:
+    """
+    Stateful aircraft model for UI: wake category, clearances, comms history.
+    For serializable ATC records use models.atc_model.Aircraft.
+    """
+
     def __init__(
-        self, 
-        callsign, 
-        aircraft_type, 
-        status=AircraftStatus.PARKED, 
-        position=AircraftPosition.GATE,
-        location_details="",
-        altitude=0,
-        heading=0,
-        speed=0,
-        squawk="1200",
-        flight_rules="VFR",
-        destination="",
-        route=""
-    ):
+        self,
+        callsign: str,
+        aircraft_type: AircraftType,
+        status: AircraftStatus = AircraftStatus.PARKED,
+        position: AircraftPosition = AircraftPosition.GATE,
+        location_details: str = "",
+        altitude: int = 0,
+        heading: int = 0,
+        speed: int = 0,
+        squawk: str = "1200",
+        flight_rules: str = "VFR",
+        destination: str = "",
+        route: str = "",
+    ) -> None:
         self.callsign = callsign
         self.aircraft_type = aircraft_type
         self.status = status
@@ -101,49 +94,38 @@ class Aircraft:
         self.flight_rules = flight_rules
         self.destination = destination
         self.route = route
-        
-        # Track timing information
-        self.status_changed_time = time.time()
-        self.expected_ready_time = None
-        
-        # Track clearance information
-        self.cleared_altitude = None
-        self.cleared_heading = None
-        self.cleared_speed = None
-        self.cleared_approach = None
-        self.cleared_runway = None
-        
-        # Track communication history
-        self.comms_history = []
-    
-    def update_status(self, new_status):
-        """Update the status of the aircraft"""
+        self.status_changed_time: float = time.time()
+        self.expected_ready_time: Optional[float] = None
+        self.cleared_altitude: Optional[Any] = None
+        self.cleared_heading: Optional[Any] = None
+        self.cleared_speed: Optional[Any] = None
+        self.cleared_approach: Optional[Any] = None
+        self.cleared_runway: Optional[Any] = None
+        self.comms_history: List[Dict[str, Any]] = []
+
+    def update_status(self, new_status: AircraftStatus) -> None:
+        """Update status and log the change in comms history."""
         self.status = new_status
         self.status_changed_time = time.time()
-        
-        # Log status change to comms history
         self.comms_history.append({
             "time": time.time(),
             "type": "status_change",
-            "message": f"Status changed to {new_status.value}"
+            "message": f"Status changed to {new_status.value}",
         })
-    
-    def update_position(self, new_position, location_details=""):
-        """Update the position of the aircraft"""
+
+    def update_position(self, new_position: AircraftPosition, location_details: str = "") -> None:
+        """Update position and optionally location details; log in comms history."""
         self.position = new_position
-        
         if location_details:
             self.location_details = location_details
-        
-        # Log position change to comms history
         self.comms_history.append({
             "time": time.time(),
             "type": "position_change",
-            "message": f"Position changed to {new_position.value} - {self.location_details}"
+            "message": f"Position changed to {new_position.value} - {self.location_details}",
         })
-    
-    def issue_clearance(self, clearance_type, value):
-        """Issue a clearance to the aircraft"""
+
+    def issue_clearance(self, clearance_type: str, value: Any) -> None:
+        """Set a clearance (altitude, heading, speed, approach, runway) and log it."""
         if clearance_type == "altitude":
             self.cleared_altitude = value
         elif clearance_type == "heading":
@@ -154,45 +136,41 @@ class Aircraft:
             self.cleared_approach = value
         elif clearance_type == "runway":
             self.cleared_runway = value
-        
-        # Log clearance to comms history
         self.comms_history.append({
             "time": time.time(),
             "type": "clearance",
-            "message": f"Cleared {clearance_type}: {value}"
+            "message": f"Cleared {clearance_type}: {value}",
         })
-    
-    def add_communication(self, message, sender="ATC"):
-        """Add a communication with this aircraft"""
+
+    def add_communication(self, message: str, sender: str = "ATC") -> None:
+        """Append a communication to comms history."""
         self.comms_history.append({
             "time": time.time(),
             "type": "communication",
             "sender": sender,
-            "message": message
+            "message": message,
         })
-    
-    def get_status_duration(self):
-        """Get the duration in the current status"""
+
+    def get_status_duration(self) -> float:
+        """Return seconds in the current status."""
         return time.time() - self.status_changed_time
-    
-    def get_wake_category(self):
-        """Get the wake turbulence category of the aircraft"""
+
+    def get_wake_category(self) -> str:
+        """Return the wake turbulence category (L/M/H/J) of the aircraft type."""
         return self.aircraft_type.wake_category
-    
-    def get_display_string(self):
-        """Get a string representation for display in lists"""
+
+    def get_display_string(self) -> str:
+        """Return a string for display in lists (callsign, type, location, status/altitude)."""
         if self.position == AircraftPosition.GATE:
             return f"{self.callsign} - {self.aircraft_type.display_name} - {self.location_details} - {self.status.value}"
-        elif self.position == AircraftPosition.TAXIWAY:
+        if self.position == AircraftPosition.TAXIWAY:
             return f"{self.callsign} - {self.aircraft_type.display_name} - {self.location_details} - {self.status.value}"
-        elif self.position == AircraftPosition.RUNWAY:
+        if self.position == AircraftPosition.RUNWAY:
             return f"{self.callsign} - {self.aircraft_type.display_name} - Runway {self.location_details} - {self.status.value}"
-        elif self.position == AircraftPosition.PATTERN:
+        if self.position == AircraftPosition.PATTERN:
             return f"{self.callsign} - {self.aircraft_type.display_name} - {self.status.value} - Runway {self.location_details}"
-        elif self.position == AircraftPosition.ARRIVAL:
+        if self.position == AircraftPosition.ARRIVAL:
             if self.altitude > 0:
                 return f"{self.callsign} - {self.aircraft_type.display_name} - {self.location_details} - {self.altitude}ft"
-            else:
-                return f"{self.callsign} - {self.aircraft_type.display_name} - {self.location_details}"
-        else:
-            return f"{self.callsign} - {self.aircraft_type.display_name} - {self.status.value}" 
+            return f"{self.callsign} - {self.aircraft_type.display_name} - {self.location_details}"
+        return f"{self.callsign} - {self.aircraft_type.display_name} - {self.status.value}"
