@@ -8,7 +8,9 @@ import math
 import re
 import os
 import json
-from typing import Optional
+from typing import Dict, Optional, Tuple
+
+from utils.trainee_situation import build_atc_traffic_strip_line
 from utils.ai_response_handler import AIResponseHandler
 from utils.logging_config import get_logger
 from utils.simulator_bridge import SimulatorBridge, SimState
@@ -16,6 +18,13 @@ from data.scenarios.scenario_engine import ScenarioEngine, DifficultyLevel, Scen
 from assessment.assessment_engine import AssessmentEngine
 from utils.progress_tracker import ProgressTracker
 from utils.report_generator import ReportGenerator
+from utils.airport_path_graph import AirportPathGraph
+from utils.atc_npc_system import ATCNpcController
+from utils.airport_diagram_theme import (
+    DEFAULT_DIAGRAM_THEME,
+    compute_diagram_layout,
+    runway_centerline_dash,
+)
 
 logger = get_logger(__name__)
 
@@ -37,8 +46,6 @@ class ATCWindow:
         self.ai_handler.set_ui_update_callback(self.on_ai_response_generated)
         logger.debug("AI callback set: %s", self.ai_handler.ui_update_callback)
         logger.debug("Callback method: %s", self.on_ai_response_generated)
-        # Lock to prevent duplicate callbacks
-        self.callback_lock = threading.Lock()
         
         # Initialize scenario engine
         try:
@@ -67,6 +74,8 @@ class ATCWindow:
         self.current_scenario = None
         self.session_start_time = None
         self.active_aircraft = {}  # Dictionary of aircraft in the scenario
+        self._npc_controller: Optional[ATCNpcController] = None
+        self._npc_tick_id: Optional[str] = None
         self.communication_history = []  # Track all communications for assessment
         self.atc_training_metrics = {
             "clearances_issued": 0,
@@ -78,6 +87,21 @@ class ATCWindow:
         
         # Enrich airport data with dynamic content
         self.enrich_airport_data()
+
+        # Editable taxi/runway path graph (per ICAO, saved under data/airports/path_graphs/)
+        self._path_graph_cached_icao: Optional[str] = None
+        self._path_graph_obj: Optional[AirportPathGraph] = None
+        self._path_link_first: Optional[str] = None
+        self.path_edit_mode_var = tk.StringVar(value="off")
+        self.path_node_label_var = tk.StringVar(value="")
+        self.path_show_schematic_var = tk.BooleanVar(value=True)
+        self._traffic_anim: Dict[str, dict] = {}
+        self._traffic_prev_xy: Dict[str, Tuple[float, float]] = {}
+        self._traffic_anim_job: Optional[str] = None
+
+        # ATC trainee: Ground tab strip tracks **selected traffic**, not "your" pilot position
+        self._atc_strip_last_ground_tx: str = ""
+        self._atc_strip_last_pilot_log_line: str = ""
 
         # X-Plane / FlyWithLua simulator bridge (optional)
         self.sim_bridge: Optional[SimulatorBridge] = None
@@ -161,6 +185,23 @@ class ATCWindow:
             foreground="gray"
         )
         self.ai_status_label.pack(side=tk.LEFT, padx=(10, 0))
+
+        ttk.Label(airport_frame, text="Your role:").pack(side=tk.LEFT, padx=(12, 4))
+        self.training_role_var = tk.StringVar(
+            value="Tower (combined — surface + runway)"
+        )
+        self.training_role_combo = ttk.Combobox(
+            airport_frame,
+            textvariable=self.training_role_var,
+            state="readonly",
+            width=36,
+            values=(
+                "Tower (combined — surface + runway)",
+                "Ground (surface / taxi only)",
+                "Approach / Arrival (radar / sequence)",
+            ),
+        )
+        self.training_role_combo.pack(side=tk.LEFT, padx=(0, 4))
         
         # Weather display (right side of header)
         self.weather_frame = ttk.LabelFrame(header_frame, text="Current Weather")
@@ -482,11 +523,12 @@ class ATCWindow:
         aircraft_list_frame = ttk.Frame(aircraft_frame)
         aircraft_list_frame.pack(fill=tk.BOTH, expand=True)
 
-        columns = ("Callsign", "Type", "Status", "Position")
+        columns = ("Callsign", "Type", "Airline", "Status", "Position")
         self.aircraft_tree = ttk.Treeview(aircraft_list_frame, columns=columns, show="headings", height=10)
+        widths = {"Callsign": 72, "Type": 76, "Airline": 88, "Status": 96, "Position": 110}
         for col in columns:
             self.aircraft_tree.heading(col, text=col)
-            self.aircraft_tree.column(col, width=70, anchor="w")
+            self.aircraft_tree.column(col, width=widths.get(col, 72), anchor="w")
         
         aircraft_scrollbar = ttk.Scrollbar(aircraft_list_frame, orient="vertical", command=self.aircraft_tree.yview)
         self.aircraft_tree.configure(yscrollcommand=aircraft_scrollbar.set)
@@ -503,10 +545,14 @@ class ATCWindow:
         view_frame = ttk.LabelFrame(parent, text="Airport View / Radar", padding=5)
         view_frame.pack(fill=tk.BOTH, expand=True)
 
+        self._setup_path_editor_toolbar(view_frame)
+
         # Canvas for airport diagram/radar
         self.airport_canvas = tk.Canvas(view_frame, bg="#1a1a2e", highlightthickness=1)
         self.airport_canvas.pack(fill=tk.BOTH, expand=True)
         self.airport_canvas.bind("<Configure>", lambda event: self.draw_airport_diagram(event.widget))
+        self.airport_canvas.bind("<Button-1>", self._on_path_canvas_click)
+        self.airport_canvas.bind("<Button-3>", self._on_path_canvas_right_click)
 
         # Control buttons below canvas
         control_frame = ttk.Frame(view_frame)
@@ -539,13 +585,13 @@ class ATCWindow:
 
         ttk.Label(input_frame, text="Aircraft:").pack(anchor=tk.W, pady=(0, 2))
         self.selected_aircraft_var = tk.StringVar()
-        aircraft_combo = ttk.Combobox(
+        self.aircraft_combo = ttk.Combobox(
             input_frame,
             textvariable=self.selected_aircraft_var,
             state="readonly",
             width=25,
         )
-        aircraft_combo.pack(fill=tk.X, pady=(0, 5))
+        self.aircraft_combo.pack(fill=tk.X, pady=(0, 5))
 
         ttk.Label(input_frame, text="Clearance:").pack(anchor=tk.W, pady=(0, 2))
         self.clearance_input = scrolledtext.ScrolledText(
@@ -703,20 +749,11 @@ class ATCWindow:
                 }
             )
         
-        # Load aircraft from scenario
-        self.active_aircraft = {}
-        for traffic_ac in self.current_scenario.traffic_aircraft:
-            self.active_aircraft[traffic_ac.callsign] = {
-                'callsign': traffic_ac.callsign,
-                'type': traffic_ac.aircraft_type,
-                'position': traffic_ac.position,
-                'status': traffic_ac.status,
-                'altitude': traffic_ac.altitude,
-                'heading': traffic_ac.heading,
-                'speed': traffic_ac.speed,
-                'destination': traffic_ac.destination
-            }
-        
+        self._cancel_npc_tick()
+        self._npc_controller = ATCNpcController.from_scenario(self.current_scenario)
+        pg = self._path_graph()
+        self.active_aircraft = self._npc_controller.as_active_aircraft(pg)
+
         # Set session state
         self.current_session_active = True
         self.session_start_time = time.time()
@@ -740,10 +777,36 @@ class ATCWindow:
         self._log_system_message(f"Training session started: {self.current_scenario.name}")
         self._log_system_message(f"Airport: {self.current_scenario.airport_icao}")
         self._log_system_message(f"Aircraft in scenario: {len(self.active_aircraft)}")
-        
+        if self._npc_controller:
+            ctx = self._npc_controller.npc_scenario_context
+            self._log_system_message(
+                f"NPC training context: flow={ctx.primary_flow}, type={ctx.scenario_type}, "
+                f"difficulty={ctx.difficulty}. {ctx.npc_brief[:200]}"
+            )
+        if pg.nodes:
+            self._log_system_message(
+                f"Map: traffic blips use your path graph ({len(pg.nodes)} nodes) — "
+                "taxi/vacate on taxiway nodes; add Holding nodes (or taxi linked to runway) "
+                "for hold-short; NPC taxi routes use shortest path on your links."
+            )
+            self._log_system_message(
+                "Departures: outbound traffic holds at the gate / short of runway until you issue "
+                "taxi, line-up, and takeoff clearances; blips animate between graph positions."
+            )
+        self._log_system_message(
+            f"Training role: {self.training_role_var.get()} — "
+            "Use the header dropdown to match who you are simulating; clearances still train phraseology."
+        )
+        if not self.current_scenario.traffic_aircraft:
+            self._log_system_message(
+                "NPC traffic: scenario had no predefined aircraft — procedural traffic spawned. "
+                "Ground tab 'Add Aircraft' is separate (manual surface traffic)."
+            )
+        self._schedule_npc_tick()
+
         # Update session summary
         self.update_session_summary()
-        
+
         self.status_bar.config(text="Status: Training session active - Manage traffic and issue clearances")
         self._refresh_operational_insights()
 
@@ -771,6 +834,9 @@ class ATCWindow:
                 self.current_session_active = False
                 self.session_start_time = None
                 self.active_aircraft = {}
+                self._npc_controller = None
+                self._cancel_npc_tick()
+                self._cancel_traffic_blip_anim()
                 self.communication_history = []
                 self.atc_training_metrics = {
                     "clearances_issued": 0,
@@ -803,20 +869,66 @@ class ATCWindow:
         # Run heavy assessment in a background thread to avoid UI freezing
         import threading
         threading.Thread(target=finish_session, daemon=True).start()
+    def _cancel_npc_tick(self) -> None:
+        if self._npc_tick_id is not None:
+            try:
+                self.root.after_cancel(self._npc_tick_id)
+            except tk.TclError:
+                pass
+            self._npc_tick_id = None
+
+    def _schedule_npc_tick(self) -> None:
+        """Advance NPC flight phases on a timer while a session is active."""
+        self._cancel_npc_tick()
+        if not self.current_session_active or self._npc_controller is None:
+            return
+        self._npc_tick_id = self.root.after(4000, self._on_npc_tick)
+
+    def _on_npc_tick(self) -> None:
+        self._npc_tick_id = None
+        if not self.current_session_active or self._npc_controller is None:
+            return
+        try:
+            for msg in self._npc_controller.tick():
+                self._log_system_message(msg)
+        except Exception as exc:
+            logger.warning("NPC tick failed: %s", exc)
+        self.active_aircraft = self._npc_controller.as_active_aircraft(
+            self._path_graph()
+        )
+        self.update_aircraft_tree()
+        self._redraw_all_airport_canvases()
+        self._refresh_operational_insights()
+        self._npc_tick_id = self.root.after(4000, self._on_npc_tick)
+
     def update_aircraft_tree(self):
         """Update the aircraft tree view with current aircraft"""
         # Clear existing items
         for item in self.aircraft_tree.get_children():
             self.aircraft_tree.delete(item)
-        
-        # Add aircraft from active scenario
+
+        callsigns: list[str] = []
         for callsign, ac_data in self.active_aircraft.items():
-            self.aircraft_tree.insert("", tk.END, values=(
-                ac_data['callsign'],
-                ac_data['type'],
-                ac_data['status'],
-                ac_data['position']
-            ))
+            callsigns.append(callsign)
+            self.aircraft_tree.insert(
+                "",
+                tk.END,
+                values=(
+                    ac_data["callsign"],
+                    ac_data["type"],
+                    ac_data.get("airline", ""),
+                    ac_data["status"],
+                    ac_data["position"],
+                ),
+            )
+        if hasattr(self, "aircraft_combo"):
+            self.aircraft_combo["values"] = callsigns
+            cur = self.selected_aircraft_var.get()
+            if callsigns and cur not in callsigns:
+                self.selected_aircraft_var.set(callsigns[0])
+            elif not callsigns:
+                self.selected_aircraft_var.set("")
+        self._sync_traffic_anim_from_active()
 
     def on_aircraft_select(self, event=None):
         """Handle aircraft selection"""
@@ -844,6 +956,20 @@ class ATCWindow:
         
         # Log the clearance
         self._log_atc_message(f"{callsign}, {clearance_text}")
+
+        readback_text = ""
+        if self._npc_controller:
+            npc_lines, _ok = self._npc_controller.apply_clearance(
+                callsign, clearance_text, self._path_graph()
+            )
+            for line in npc_lines:
+                self._log_pilot_message(line)
+            readback_text = npc_lines[0] if npc_lines else ""
+            self.active_aircraft = self._npc_controller.as_active_aircraft(
+                self._path_graph()
+            )
+            self.update_aircraft_tree()
+            self._redraw_all_airport_canvases()
         
         # Assess the clearance
         assessment = None
@@ -854,7 +980,7 @@ class ATCWindow:
             # Record in assessment engine for session assessment
             self.assessment_engine.communication_history.append({
                 "instruction": clearance_text,  # ATC clearance
-                "readback": "",  # ATC doesn't have readback
+                "readback": readback_text,
                 "timestamp": time.time(),
                 "response_time": None,
                 "score": assessment['score']
@@ -972,20 +1098,27 @@ class ATCWindow:
         conflicts = self._collect_runway_conflicts()
 
         self.workload_label.config(text=f"Workload: {workload} ({workload_score})")
+        ctx_note = ""
+        if getattr(self, "_npc_controller", None):
+            c = self._npc_controller.npc_scenario_context
+            ctx_note = f"[{c.primary_flow}] {c.name}. "
         if conflicts:
             self.conflict_label.config(text=f"Runway Conflicts: {len(conflicts)}", foreground="red")
             self.recommendation_label.config(
-                text="Recommendation: Sequence arrivals before departures on shared runways and use hold instructions."
+                text=ctx_note
+                + "Recommendation: Sequence arrivals before departures on shared runways and use hold instructions."
             )
         else:
             self.conflict_label.config(text="Runway Conflicts: None", foreground="green")
             if workload == "High":
                 self.recommendation_label.config(
-                    text="Recommendation: Slow pace with 'standby' calls and prioritize separation-critical clearances."
+                    text=ctx_note
+                    + "Recommendation: Slow pace with 'standby' calls and prioritize separation-critical clearances."
                 )
             else:
                 self.recommendation_label.config(
-                    text="Recommendation: Maintain concise readback/hearback loops for each clearance."
+                    text=ctx_note
+                    + "Recommendation: Maintain concise readback/hearback loops for each clearance."
                 )
 
     def _assess_atc_clearance(self, clearance, callsign):
@@ -1117,6 +1250,15 @@ class ATCWindow:
         self.communication_log.see(tk.END)
         self.communication_log.config(state=tk.DISABLED)
 
+    def _log_pilot_message(self, message: str) -> None:
+        """Log a simulated pilot readback (NPC)."""
+        self.communication_log.config(state=tk.NORMAL)
+        timestamp = time.strftime("%H:%M:%S")
+        self.communication_log.insert(tk.END, f"[{timestamp}] ", "system")
+        self.communication_log.insert(tk.END, f"PILOT: {message}\n\n", "pilot")
+        self.communication_log.see(tk.END)
+        self.communication_log.config(state=tk.DISABLED)
+
     def update_session_summary(self):
         """Update the session summary display"""
         self.session_summary.config(state=tk.NORMAL)
@@ -1212,7 +1354,14 @@ class ATCWindow:
 
     def refresh_airport_view(self):
         """Refresh the airport view/radar"""
-        self.draw_airport_diagram(self.airport_canvas)
+        self._redraw_all_airport_canvases()
+
+    def _redraw_all_airport_canvases(self) -> None:
+        if hasattr(self, "airport_canvas"):
+            self.draw_airport_diagram(self.airport_canvas)
+        if hasattr(self, "ground_canvas"):
+            self.draw_airport_diagram(self.ground_canvas)
+        self._refresh_path_connectivity_display()
 
     def zoom_in(self):
         """Zoom in on airport view"""
@@ -1257,6 +1406,10 @@ class ATCWindow:
         aircraft_scrollbar = ttk.Scrollbar(aircraft_frame, orient="vertical", command=self.ground_aircraft_tree.yview)
         self.ground_aircraft_tree.configure(yscrollcommand=aircraft_scrollbar.set)
         aircraft_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.ground_aircraft_tree.bind(
+            "<<TreeviewSelect>>",
+            lambda _e: self._refresh_atc_traffic_strip(),
+        )
 
         control_frame = ttk.Frame(aircraft_section)
         control_frame.pack(fill=tk.X, pady=5)
@@ -1311,6 +1464,31 @@ class ATCWindow:
         # Add separator
         separator = ttk.Separator(comm_section, orient='horizontal')
         separator.pack(fill=tk.X, pady=10)
+
+        trainee_frame = ttk.LabelFrame(
+            comm_section,
+            text="Selected traffic (ATC trainee — you are the controller)",
+            padding=4,
+        )
+        trainee_frame.pack(fill=tk.X, pady=(0, 6))
+        self.atc_mode_role_hint = ttk.Label(
+            trainee_frame,
+            text="This window is for ATC training. The row you select is traffic you are working. "
+            "Pilot Message + AI below simulate pilot-side comms for phraseology practice only.",
+            font=("Arial", 8),
+            foreground="gray",
+            wraplength=560,
+            justify=tk.LEFT,
+        )
+        self.atc_mode_role_hint.pack(anchor=tk.W, pady=(0, 4))
+        self.atc_traffic_strip_label = ttk.Label(
+            trainee_frame,
+            text="Select an aircraft in the list to see list state and recent comms to that callsign.",
+            font=("Consolas", 9),
+            wraplength=560,
+            justify=tk.LEFT,
+        )
+        self.atc_traffic_strip_label.pack(anchor=tk.W)
         
         # Communication log label
         ttk.Label(comm_section, text="Communication Log:", font=("Arial", 10, "bold")).pack(anchor="w", pady=(10, 5))
@@ -1333,9 +1511,20 @@ class ATCWindow:
 
         diagram_frame = ttk.LabelFrame(right_frame, text="Airport Diagram")
         diagram_frame.pack(fill=tk.BOTH, expand=True)
-        self.airport_canvas = tk.Canvas(diagram_frame, bg="lightgrey")
-        self.airport_canvas.pack(fill=tk.BOTH, expand=True)
-        self.airport_canvas.bind("<Configure>", lambda event: self.draw_airport_diagram(event.widget))
+        self.atc_diagram_traffic_hint = ttk.Label(
+            diagram_frame,
+            text="",
+            font=("Arial", 8),
+            foreground="#333333",
+            wraplength=320,
+            justify=tk.LEFT,
+        )
+        self.atc_diagram_traffic_hint.pack(anchor=tk.W, padx=4, pady=(2, 0))
+        self.ground_canvas = tk.Canvas(diagram_frame, bg="lightgrey")
+        self.ground_canvas.pack(fill=tk.BOTH, expand=True)
+        self.ground_canvas.bind("<Configure>", lambda event: self.draw_airport_diagram(event.widget))
+        self.ground_canvas.bind("<Button-1>", self._on_path_canvas_click)
+        self.ground_canvas.bind("<Button-3>", self._on_path_canvas_right_click)
 
     def refresh_current_airport_weather(self):
         """Refresh weather for current airport"""
@@ -1720,6 +1909,7 @@ class ATCWindow:
             # Add to the Treeview
             self.ground_aircraft_tree.insert("", tk.END, values=(callsign, aircraft_type, location, status))
             self.status_bar.config(text=f"Status: Added aircraft {callsign} to ground control")
+            self._refresh_atc_traffic_strip()
             add_dialog.destroy()
         def cancel():
             add_dialog.destroy()
@@ -1804,6 +1994,7 @@ class ATCWindow:
             self.ground_aircraft_tree.item(selected, values=new_aircraft_info)
             self.ground_aircraft_tree.selection_set(selected)
             self.status_bar.config(text=f"Status: Updated status for {callsign}")
+            self._refresh_atc_traffic_strip()
             edit_dialog.destroy()
         def cancel():
             edit_dialog.destroy()
@@ -1848,6 +2039,11 @@ class ATCWindow:
         # Add runways
         for runway in runways:
             location_options.append(f"Runway {runway}")
+
+        try:
+            location_options.extend(self._path_graph().location_choices())
+        except Exception:
+            pass
             
         if not location_options:
             return ["Gate A1", "Gate A2", "Taxiway A", "Runway 27"] # Fallback
@@ -2677,9 +2873,13 @@ class ATCWindow:
             self.update_runway_frame()
         self.update_frequency_display()
         
+        # Path graph is per-ICAO — reload when airport changes
+        self._path_graph_cached_icao = None
+        self._path_graph_obj = None
+        self._path_link_first = None
+
         # Update any diagrams or visualizations
-        if hasattr(self, "ground_canvas"):
-            self.draw_airport_diagram(self.ground_canvas)
+        self._redraw_all_airport_canvases()
             
         # Clear and update aircraft lists based on current airport
         if hasattr(self, "ground_aircraft_list"):
@@ -3173,9 +3373,44 @@ class ATCWindow:
 
         airport_data = self.airports.get(self.current_airport, {})
 
-        # Draw a subtle background gradient
-        canvas.create_rectangle(0, 0, canvas_width, canvas_height, fill="#E0E4E8", outline="")
-        canvas.create_rectangle(0, canvas_height * 0.6, canvas_width, canvas_height, fill="#D0D5DC", outline="")
+        if not self.path_show_schematic_var.get():
+            try:
+                bg = canvas.cget("bg")
+            except tk.TclError:
+                bg = "#2b2b3a"
+            canvas.create_rectangle(0, 0, canvas_width, canvas_height, fill=bg, outline="")
+            canvas.create_text(
+                canvas_width / 2,
+                14,
+                text="Airport schematic hidden — path graph only",
+                font=("Arial", 9, "italic"),
+                fill="#95a5a6",
+                tags="schematic_hint",
+            )
+            self._draw_path_graph_overlay(canvas)
+            self._draw_session_traffic_blips(canvas)
+            return
+
+        theme = DEFAULT_DIAGRAM_THEME
+        canvas.create_rectangle(
+            0, 0, canvas_width, canvas_height, fill=theme.grass_top, outline=""
+        )
+        canvas.create_rectangle(
+            0,
+            canvas_height * 0.55,
+            canvas_width,
+            canvas_height,
+            fill=theme.grass_horizon,
+            outline="",
+        )
+        canvas.create_rectangle(
+            0,
+            canvas_height * 0.72,
+            canvas_width,
+            canvas_height,
+            fill=theme.grass_bottom,
+            outline="",
+        )
 
         runways = airport_data.get("runways", [])
         taxiways = airport_data.get("taxiways", [])
@@ -3183,94 +3418,627 @@ class ATCWindow:
 
         if not runways:
             self._draw_no_diagram_message(canvas, canvas_width, canvas_height)
+            self._draw_path_graph_overlay(canvas)
+            self._draw_session_traffic_blips(canvas)
             return
 
-        # --- Define layout parameters based on percentages ---
-        runway_length = canvas_width * 0.9
-        runway_width = 20
-        runway_y = canvas_height * 0.88
-        main_taxiway_y = runway_y - 55
-        apron_top_y = main_taxiway_y - 15
-        apron_bottom_y = canvas_height * 0.15  # 15% margin from top
+        n_rwys = min(len(runways), 4)
+        layout = compute_diagram_layout(canvas_width, canvas_height, n_rwys)
+        runway_length = layout["runway_length"]
+        runway_width = layout["runway_width"]
+        runway_ys = layout["runway_ys"]
+        main_taxiway_y = layout["main_taxiway_y"]
+        apron_top_y = layout["apron_top_y"]
+        apron_bottom_y = layout["apron_bottom_y"]
 
-        # --- Draw Components ---
-        self._draw_runway(canvas, canvas_width, runway_y, runway_length, runway_width, runways[0])
-        self._draw_taxiways(canvas, canvas_width, runway_length, runway_y, main_taxiway_y, taxiways)
-        self._draw_aprons_and_gates(canvas, canvas_width, apron_top_y, apron_bottom_y, gates)
-        self._draw_diagram_labels(canvas, canvas_width, canvas_height, airport_data)
+        for i in range(n_rwys):
+            self._draw_runway(
+                canvas,
+                canvas_width,
+                runway_ys[i],
+                runway_length,
+                runway_width,
+                runways[i],
+                theme,
+            )
 
-    def _draw_runway(self, canvas, c_width, r_y, r_length, r_width, rwy_name):
+        self._draw_taxiways(
+            canvas,
+            canvas_width,
+            runway_length,
+            runway_ys,
+            main_taxiway_y,
+            taxiways,
+            runway_width,
+            (airport_data.get("icao") or "").upper(),
+            theme,
+            layout["taxi_main_width"],
+            layout["taxi_conn_width"],
+        )
+        self._draw_aprons_and_gates(
+            canvas, canvas_width, apron_top_y, apron_bottom_y, gates, theme
+        )
+        self._draw_diagram_labels(canvas, canvas_width, canvas_height, airport_data, theme)
+        self._draw_path_graph_overlay(canvas)
+        self._draw_session_traffic_blips(canvas)
+
+    def _traffic_anim_smooth(self, u: float) -> float:
+        u = max(0.0, min(1.0, u))
+        return u * u * (3.0 - 2.0 * u)
+
+    def _sync_traffic_anim_from_active(self) -> None:
+        """Interpolate blips when map_nx/map_ny changes (node-to-node movement)."""
+        if not getattr(self, "current_session_active", False):
+            return
+        for cs in list(self._traffic_prev_xy):
+            if cs not in self.active_aircraft:
+                self._traffic_prev_xy.pop(cs, None)
+                self._traffic_anim.pop(cs, None)
+        started = False
+        for cs, ac in self.active_aircraft.items():
+            nx = float(ac.get("map_nx", 0.5))
+            ny = float(ac.get("map_ny", 0.5))
+            if cs not in self._traffic_prev_xy:
+                self._traffic_prev_xy[cs] = (nx, ny)
+                continue
+            px, py = self._traffic_prev_xy[cs]
+            if abs(px - nx) > 1e-5 or abs(py - ny) > 1e-5:
+                self._traffic_anim[cs] = {
+                    "sx": px,
+                    "sy": py,
+                    "tx": nx,
+                    "ty": ny,
+                    "t0": time.monotonic(),
+                    "dur": 0.65,
+                }
+                self._traffic_prev_xy[cs] = (nx, ny)
+                started = True
+        if started or (self._traffic_anim and self._traffic_anim_job is None):
+            self._schedule_traffic_blip_anim()
+
+    def _schedule_traffic_blip_anim(self) -> None:
+        if self._traffic_anim_job is not None:
+            return
+        self._traffic_anim_job = self.root.after(30, self._traffic_blip_anim_tick)
+
+    def _traffic_blip_anim_tick(self) -> None:
+        self._traffic_anim_job = None
+        if not getattr(self, "current_session_active", False):
+            self._traffic_anim.clear()
+            return
+        now = time.monotonic()
+        alive = False
+        for cs, st in list(self._traffic_anim.items()):
+            if (now - st["t0"]) < st["dur"]:
+                alive = True
+                break
+        for w in self._path_canvas_widgets():
+            w.delete("traffic_blip")
+            self._draw_session_traffic_blips(w)
+        if alive:
+            self._traffic_anim_job = self.root.after(30, self._traffic_blip_anim_tick)
+
+    def _cancel_traffic_blip_anim(self) -> None:
+        if self._traffic_anim_job is not None:
+            try:
+                self.root.after_cancel(self._traffic_anim_job)
+            except tk.TclError:
+                pass
+            self._traffic_anim_job = None
+        self._traffic_anim.clear()
+        self._traffic_prev_xy.clear()
+
+    def _draw_session_traffic_blips(self, canvas: tk.Canvas) -> None:
+        """Draw active session aircraft on the diagram (tags above path graph redraw)."""
+        if not getattr(self, "current_session_active", False) or not self.active_aircraft:
+            return
+        cw = canvas.winfo_width()
+        ch = canvas.winfo_height()
+        if cw <= 1 or ch <= 1:
+            return
+        light_bg = self.path_show_schematic_var.get()
+        text_fill = "#1a2433" if light_bg else "#ecf0f1"
+        now = time.monotonic()
+        for cs, ac in self.active_aircraft.items():
+            nx = float(ac.get("map_nx", 0.5))
+            ny = float(ac.get("map_ny", 0.5))
+            anim = self._traffic_anim.get(cs)
+            if anim:
+                elapsed = now - anim["t0"]
+                u = self._traffic_anim_smooth(elapsed / anim["dur"]) if anim["dur"] > 0 else 1.0
+                nx = anim["sx"] + (anim["tx"] - anim["sx"]) * u
+                ny = anim["sy"] + (anim["ty"] - anim["sy"]) * u
+                if elapsed >= anim["dur"]:
+                    self._traffic_anim.pop(cs, None)
+            x, y = nx * cw, ny * ch
+            fill = "#e74c3c" if ac.get("emergency") else "#f39c12"
+            r = 6
+            canvas.create_oval(
+                x - r, y - r, x + r, y + r,
+                fill=fill, outline="#ecf0f1", width=2, tags="traffic_blip",
+            )
+            label = ac.get("callsign", "?")
+            canvas.create_text(
+                x + r + 4, y,
+                text=label,
+                anchor=tk.W,
+                font=("Arial", 8, "bold"),
+                fill=text_fill,
+                tags="traffic_blip",
+            )
+
+    def _icao_from_current_airport(self) -> str:
+        ap = self.current_airport or ""
+        if " - " in ap:
+            return ap.split(" - ")[0].strip().upper() or "XXXX"
+        return "XXXX"
+
+    def _path_graph(self) -> AirportPathGraph:
+        icao = self._icao_from_current_airport()
+        if self._path_graph_obj is None or self._path_graph_cached_icao != icao:
+            self._path_graph_obj = AirportPathGraph.load_for_icao(
+                icao, self._get_data_directory()
+            )
+            self._path_graph_cached_icao = icao
+        return self._path_graph_obj
+
+    def _setup_path_editor_toolbar(self, parent: ttk.Frame) -> None:
+        """Toolbar for placing runway / taxiway / gate nodes and linking edges on the diagram."""
+        edit = ttk.LabelFrame(
+            parent,
+            text="Path graph (click diagram — aircraft can use [path:…] locations)",
+            padding=4,
+        )
+        edit.pack(fill=tk.X)
+        row1 = ttk.Frame(edit)
+        row1.pack(fill=tk.X)
+        ttk.Label(row1, text="Mode:").pack(side=tk.LEFT, padx=(0, 4))
+        modes = [
+            ("off", "View"),
+            ("runway", "Runway node"),
+            ("taxiway", "Taxiway node"),
+            ("holding", "Holding (short of rwy)"),
+            ("gate", "Gate node"),
+            ("link", "Link nodes"),
+        ]
+        for val, txt in modes:
+            ttk.Radiobutton(
+                row1,
+                text=txt,
+                value=val,
+                variable=self.path_edit_mode_var,
+                command=self._on_path_mode_changed,
+            ).pack(side=tk.LEFT, padx=2)
+        row2 = ttk.Frame(edit)
+        row2.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(row2, text="Label:").pack(side=tk.LEFT)
+        ttk.Entry(row2, textvariable=self.path_node_label_var, width=16).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Button(row2, text="Undo node", command=self._path_undo_node).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Button(row2, text="Clear graph", command=self._path_clear_graph).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Button(row2, text="Save", command=self._path_save_graph).pack(side=tk.LEFT, padx=4)
+        ttk.Checkbutton(
+            row2,
+            text="Show airport schematic",
+            variable=self.path_show_schematic_var,
+            command=self._redraw_all_airport_canvases,
+        ).pack(side=tk.LEFT, padx=(12, 0))
+        ttk.Label(
+            edit,
+            text="LMB: place or link (A then B)  •  RMB: delete nearest node",
+            font=("Arial", 8),
+            foreground="#555",
+        ).pack(anchor=tk.W, pady=(2, 0))
+
+        sum_lf = ttk.LabelFrame(
+            edit, text="Connectivity — what links to what", padding=2
+        )
+        sum_lf.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+        self.path_connectivity_text = scrolledtext.ScrolledText(
+            sum_lf,
+            height=6,
+            wrap=tk.WORD,
+            font=("Consolas", 9),
+            state=tk.DISABLED,
+            background="#f8f9fa",
+        )
+        self.path_connectivity_text.pack(fill=tk.BOTH, expand=True)
+
+    def _refresh_path_connectivity_display(self) -> None:
+        if not hasattr(self, "path_connectivity_text"):
+            return
+        tb = self.path_connectivity_text
+        try:
+            lines = self._path_graph().connectivity_summary_lines()
+        except Exception:
+            lines = []
+        tb.config(state=tk.NORMAL)
+        tb.delete("1.0", tk.END)
+        if lines:
+            tb.insert(tk.END, "\n".join(lines))
+        else:
+            tb.insert(
+                tk.END,
+                "(No path nodes yet — add nodes with Runway/Taxiway/Gate mode, "
+                "then use Link mode to connect them.)",
+            )
+        tb.config(state=tk.DISABLED)
+
+    def _on_path_mode_changed(self) -> None:
+        self._path_link_first = None
+        self._redraw_all_airport_canvases()
+        mode = self.path_edit_mode_var.get()
+        tips = {
+            "off": "Path editor off (view only)",
+            "runway": "Left-click diagram to add a runway node",
+            "taxiway": "Left-click diagram to add a taxiway node",
+            "gate": "Left-click diagram to add a gate / stand node",
+            "holding": "Left-click to add a hold-short point (link to taxi + runway)",
+            "link": "Left-click node A, then node B to add a taxi segment",
+        }
+        self.status_bar.config(text=f"Status: {tips.get(mode, '')}")
+
+    def _path_canvas_widgets(self):
+        w = []
+        if getattr(self, "airport_canvas", None) is not None:
+            w.append(self.airport_canvas)
+        if getattr(self, "ground_canvas", None) is not None:
+            w.append(self.ground_canvas)
+        return w
+
+    def _on_path_canvas_click(self, event: tk.Event) -> None:
+        if event.widget not in self._path_canvas_widgets():
+            return
+        mode = self.path_edit_mode_var.get()
+        if mode == "off":
+            return
+        w, h = event.widget.winfo_width(), event.widget.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+        nx, ny = event.x / w, event.y / h
+        g = self._path_graph()
+        if mode == "link":
+            hit = g.find_node_at_normalized(nx, ny)
+            if not hit:
+                self._path_link_first = None
+                self._redraw_all_airport_canvases()
+                self.status_bar.config(text="Status: Link cancelled (no node here)")
+                return
+            if self._path_link_first is None:
+                self._path_link_first = hit
+                self._redraw_all_airport_canvases()
+                self.status_bar.config(text="Status: Link — pick second node")
+                return
+            if self._path_link_first == hit:
+                self._path_link_first = None
+                self._redraw_all_airport_canvases()
+                self.status_bar.config(text="Status: Link cancelled (same node)")
+                return
+            if g.add_edge(self._path_link_first, hit):
+                self.status_bar.config(text="Status: Path segment added")
+            else:
+                self.status_bar.config(text="Status: Segment already exists")
+            self._path_link_first = None
+            self._redraw_all_airport_canvases()
+            return
+        kind = mode
+        if kind not in ("runway", "taxiway", "gate", "holding"):
+            return
+        lbl = self.path_node_label_var.get().strip()
+        g.add_node(kind, nx, ny, lbl)
+        self.path_node_label_var.set("")
+        self._redraw_all_airport_canvases()
+        self.status_bar.config(text=f"Status: Added {kind} node")
+
+    def _on_path_canvas_right_click(self, event: tk.Event) -> None:
+        if event.widget not in self._path_canvas_widgets():
+            return
+        if self.path_edit_mode_var.get() == "off":
+            return
+        w, h = event.widget.winfo_width(), event.widget.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+        nx, ny = event.x / w, event.y / h
+        g = self._path_graph()
+        hit = g.find_node_at_normalized(nx, ny)
+        if hit:
+            g.remove_node(hit)
+            if self._path_link_first == hit:
+                self._path_link_first = None
+            self._redraw_all_airport_canvases()
+            self.status_bar.config(text="Status: Node removed")
+
+    def _path_undo_node(self) -> None:
+        g = self._path_graph()
+        if g.pop_last_node():
+            self._redraw_all_airport_canvases()
+            self.status_bar.config(text="Status: Removed last placed node")
+        else:
+            self.status_bar.config(text="Status: Nothing to undo")
+
+    def _path_clear_graph(self) -> None:
+        if not messagebox.askyesno("Clear path graph", "Remove all nodes and edges for this airport?"):
+            return
+        g = self._path_graph()
+        g.nodes.clear()
+        g.edges.clear()
+        self._path_link_first = None
+        self._redraw_all_airport_canvases()
+        self.status_bar.config(text="Status: Path graph cleared (not saved yet)")
+
+    def _path_save_graph(self) -> None:
+        path = self._path_graph().save(self._get_data_directory())
+        self.status_bar.config(text=f"Status: Path graph saved to {path}")
+
+    @staticmethod
+    def _path_edge_strip_coords(
+        x1: float, y1: float, x2: float, y2: float, half_width: float
+    ) -> Optional[tuple]:
+        """Quad coords for a strip along (x1,y1)-(x2,y2), perpendicular width 2*half_width."""
+        dx, dy = x2 - x1, y2 - y1
+        L = math.hypot(dx, dy)
+        if L < 1.0:
+            return None
+        px = (-dy / L) * half_width
+        py = (dx / L) * half_width
+        return (
+            x1 + px,
+            y1 + py,
+            x2 + px,
+            y2 + py,
+            x2 - px,
+            y2 - py,
+            x1 - px,
+            y1 - py,
+        )
+
+    def _draw_path_graph_overlay(self, canvas: tk.Canvas) -> None:
+        """Draw user-defined nodes and edges on top of the schematic diagram."""
+        try:
+            g = self._path_graph()
+        except Exception:
+            return
+        w, h = canvas.winfo_width(), canvas.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+        t = DEFAULT_DIAGRAM_THEME
+        colors = {
+            "runway": t.path_node_runway,
+            "taxiway": t.path_node_taxiway,
+            "gate": t.path_node_gate,
+            "holding": t.path_node_holding,
+        }
+        scale = min(w, h)
+        hw_runway = max(10.0, scale * 0.02)
+        hw_taxi = max(5.0, scale * 0.009)
+        for e in g.edges:
+            na, nb = g.node_by_id(e.get("a", "")), g.node_by_id(e.get("b", ""))
+            if not na or not nb:
+                continue
+            x1, y1 = float(na["nx"]) * w, float(na["ny"]) * h
+            x2, y2 = float(nb["nx"]) * w, float(nb["ny"]) * h
+            ta = str(na.get("type", "")).lower()
+            tb = str(nb.get("type", "")).lower()
+            if ta == "runway" and tb == "runway":
+                coords = self._path_edge_strip_coords(x1, y1, x2, y2, hw_runway)
+                if coords:
+                    canvas.create_polygon(
+                        *coords,
+                        fill=t.path_runway_strip_fill,
+                        outline=t.path_runway_strip_outline,
+                        width=2,
+                        tags="pathgraph",
+                    )
+            elif ta == "taxiway" and tb == "taxiway":
+                coords = self._path_edge_strip_coords(x1, y1, x2, y2, hw_taxi)
+                if coords:
+                    canvas.create_polygon(
+                        *coords,
+                        fill=t.path_taxi_strip_fill,
+                        outline=t.path_taxi_strip_outline,
+                        width=2,
+                        tags="pathgraph",
+                    )
+            else:
+                canvas.create_line(
+                    x1, y1, x2, y2,
+                    fill=t.path_other_edge,
+                    width=3,
+                    tags="pathgraph",
+                )
+        r = max(7, int(scale * 0.012))
+        for n in g.nodes:
+            cx, cy = float(n["nx"]) * w, float(n["ny"]) * h
+            col = colors.get(str(n.get("type", "")), t.path_node_default)
+            canvas.create_oval(
+                cx - r, cy - r, cx + r, cy + r,
+                fill=col,
+                outline=t.path_node_outline,
+                width=2,
+                tags="pathgraph",
+            )
+            if self._path_link_first and n.get("id") == self._path_link_first:
+                canvas.create_oval(
+                    cx - r - 5, cy - r - 5, cx + r + 5, cy + r + 5,
+                    outline=t.path_link_highlight,
+                    width=2,
+                    tags="pathgraph",
+                )
+            canvas.create_text(
+                cx,
+                cy - r - 12,
+                text=g.visible_label(n),
+                font=("Arial", 8, "bold"),
+                fill=t.path_node_outline,
+                tags="pathgraph",
+            )
+
+    def _draw_runway(self, canvas, c_width, r_y, r_length, r_width, rwy_name, theme):
         """Draws the runway with more details."""
         x_start = (c_width - r_length) / 2
         x_end = x_start + r_length
+        margin = max(50.0, r_length * 0.06)
+        key_w = max(3.0, r_width * 0.12)
+        key_gap = max(3.0, r_width * 0.08)
+        dash = runway_centerline_dash(r_length)
 
-        # Runway asphalt
         canvas.create_rectangle(
             x_start, r_y - r_width / 2, x_end, r_y + r_width / 2,
-            fill="#4a4a4a", outline="#6e6e6e", width=2, tags="runway"
+            fill=theme.runway_fill, outline=theme.runway_outline, width=2, tags="runway"
         )
-        # Centerline
         canvas.create_line(
-            x_start + 70, r_y, x_end - 70, r_y,
-            fill="white", width=2, dash=(30, 20), tags="runway_marking"
+            x_start + margin, r_y, x_end - margin, r_y,
+            fill=theme.runway_centerline, width=2, dash=dash, tags="runway_marking"
         )
-        
-        # Threshold markings (piano keys)
-        for i in range(5):
-            offset = i * 4
-            canvas.create_rectangle(x_start + 15 + offset, r_y - r_width/3, x_start + 20 + offset, r_y + r_width/3, fill="white", outline="")
-            canvas.create_rectangle(x_end - 15 - offset, r_y - r_width/3, x_end - 20 - offset, r_y + r_width/3, fill="white", outline="")
 
-        # Runway labels
+        for i in range(5):
+            offset = i * (key_w + key_gap)
+            canvas.create_rectangle(
+                x_start + 15 + offset, r_y - r_width / 3,
+                x_start + 15 + offset + key_w, r_y + r_width / 3,
+                fill=theme.runway_centerline, outline="",
+            )
+            canvas.create_rectangle(
+                x_end - 15 - offset - key_w, r_y - r_width / 3,
+                x_end - 15 - offset, r_y + r_width / 3,
+                fill=theme.runway_centerline, outline="",
+            )
+
         rwy_labels = rwy_name.split('/')
         canvas.create_text(
-            x_start + 45, r_y, text=rwy_labels[0], fill="white",
+            x_start + 45, r_y, text=rwy_labels[0], fill=theme.runway_centerline,
             font=("Consolas", 14, "bold"), anchor="center"
         )
         if len(rwy_labels) > 1:
             canvas.create_text(
-                x_end - 45, r_y, text=rwy_labels[1], fill="white",
+                x_end - 45, r_y, text=rwy_labels[1], fill=theme.runway_centerline,
                 font=("Consolas", 14, "bold"), anchor="center"
             )
 
-    def _draw_taxiways(self, canvas, c_width, r_length, r_y, t_y, taxiways):
-        """Draws a more complex taxiway system."""
+    def _taxi_segment_h(self, canvas, x1, x2, y, pavement_w, theme):
+        canvas.create_line(
+            x1, y, x2, y,
+            fill=theme.taxiway_pavement, width=pavement_w, capstyle=tk.ROUND, tags="taxiway",
+        )
+        canvas.create_line(
+            x1, y, x2, y,
+            fill=theme.taxiway_centerline, width=2, dash=(14, 10), tags="taxiway_marking",
+        )
+
+    def _taxi_segment_v(self, canvas, x, y1, y2, pavement_w, theme):
+        canvas.create_line(
+            x, y1, x, y2,
+            fill=theme.taxiway_pavement, width=pavement_w, capstyle=tk.ROUND, tags="taxiway",
+        )
+        canvas.create_line(
+            x, y1, x, y2,
+            fill=theme.taxiway_centerline, width=2, dash=(14, 10), tags="taxiway_marking",
+        )
+
+    def _draw_taxiways(
+        self,
+        canvas,
+        c_width,
+        r_length,
+        runway_ys,
+        north_tw_y,
+        taxiways,
+        runway_width,
+        icao: str,
+        theme,
+        tw_main: int,
+        tw_conn: int,
+    ):
+        """Draw taxi schematic: single-runway uses named connectors; multi-runway avoids fake TWY IDs."""
         x_start = (c_width - r_length) / 2
         x_end = x_start + r_length
-        taxiway_width = 12
+        lbl_fill = theme.taxiway_edge_line
 
-        # Main parallel taxiway
-        canvas.create_line(
-            x_start, t_y, x_end, t_y,
-            fill="#a08b5f", width=taxiway_width, capstyle=tk.ROUND, tags="taxiway"
-        )
-        canvas.create_line(
-            x_start, t_y, x_end, t_y,
-            fill="#796841", width=1, tags="taxiway_edge"
+        if len(runway_ys) <= 1:
+            r_y = runway_ys[0]
+            t_y = north_tw_y
+            self._taxi_segment_h(canvas, x_start, x_end, t_y, tw_main, theme)
+            main_lbl = (taxiways[0] if taxiways else "A")[:14]
+            canvas.create_text(
+                x_start - 12, t_y, text=main_lbl,
+                fill=lbl_fill, font=("Arial", 9, "bold"), anchor="e",
+            )
+            num_connectors = 5
+            pad = (taxiways[1:] + [""] * (num_connectors - 1))[: num_connectors - 1]
+            for i in range(1, num_connectors):
+                conn_x = x_start + (r_length / num_connectors) * i
+                self._taxi_segment_v(
+                    canvas, conn_x, t_y, r_y - runway_width / 2, tw_conn, theme,
+                )
+                lbl = pad[i - 1]
+                if lbl:
+                    canvas.create_text(
+                        conn_x, t_y + 14, text=str(lbl)[:10],
+                        fill=lbl_fill, font=("Arial", 8, "bold"),
+                    )
+            return
+
+        southmost = max(runway_ys)
+        south_tw_y = southmost + runway_width / 2 + 28
+
+        def band(y):
+            self._taxi_segment_h(canvas, x_start, x_end, y, tw_main, theme)
+
+        band(north_tw_y)
+        band(south_tw_y)
+
+        north_caption = "Parallel taxi (north)"
+        south_caption = "Parallel taxi (south)"
+        if icao == "WSSS":
+            north_caption = "Terminal / north parallel (schematic)"
+            south_caption = "South parallel (schematic)"
+
+        canvas.create_text(
+            x_start - 8, north_tw_y, text=north_caption,
+            fill=lbl_fill, font=("Arial", 8, "bold"), anchor="e",
         )
         canvas.create_text(
-            x_start - 15, t_y, text=taxiways[0] if taxiways else 'A', 
-            fill="#796841", font=("Arial", 9, "bold"), anchor="e"
+            x_start - 8, south_tw_y, text=south_caption,
+            fill=lbl_fill, font=("Arial", 8, "bold"), anchor="e",
         )
-        
-        # Perpendicular connectors to runway
-        num_connectors = 5
-        connector_labels = (taxiways[1:] + ["", "", "", ""])[:num_connectors-1] # Pad list to avoid index errors
 
-        for i in range(1, num_connectors):
-            conn_x = x_start + (r_length / num_connectors) * i
-            canvas.create_line(
-                conn_x, t_y, conn_x, r_y - (20 / 2),
-                fill="#a08b5f", width=taxiway_width-2, capstyle=tk.ROUND, tags="taxiway"
-            )
-            label = connector_labels[i-1]
-            if label:
-                canvas.create_text(
-                    conn_x, t_y + 15, text=label,
-                    fill="#796841", font=("Arial", 8, "bold")
+        corridor_xs = [
+            x_start + r_length * 0.18,
+            x_start + r_length * 0.82,
+        ]
+        for cx in corridor_xs:
+            self._taxi_segment_v(canvas, cx, north_tw_y, south_tw_y, tw_conn, theme)
+
+        stub_w = max(4, tw_conn // 2)
+        for cx in corridor_xs:
+            for i in range(len(runway_ys) - 1):
+                y_hi = runway_ys[i]
+                y_lo = runway_ys[i + 1]
+                mid = (y_hi + y_lo) / 2
+                canvas.create_line(
+                    cx - 14, mid, cx + 14, mid,
+                    fill=theme.taxiway_stub, width=stub_w, capstyle=tk.ROUND, tags="taxiway",
+                )
+                canvas.create_line(
+                    cx - 14, mid, cx + 14, mid,
+                    fill=theme.taxiway_centerline, width=1, dash=(6, 4), tags="taxiway_marking",
                 )
 
-    def _draw_aprons_and_gates(self, canvas, c_width, top_y, bottom_y, gates):
+        note = "Taxi routes illustrative — use AIP / airport chart for real TWYs"
+        canvas.create_text(
+            (x_start + x_end) / 2,
+            north_tw_y - 14,
+            text=note,
+            fill=theme.text_note,
+            font=("Arial", 7, "italic"),
+        )
+
+    def _draw_aprons_and_gates(self, canvas, c_width, top_y, bottom_y, gates, theme):
         """Lays out aprons horizontally to avoid overlap."""
         # Classify gates
         main_bays = sorted([g for g in gates if g.isdigit() or g.endswith(('R', 'L', 'C'))])
@@ -3290,19 +4058,44 @@ class ATCWindow:
 
         for section in sections:
             section_width = c_width * section['width_ratio']
-            self._draw_apron_section(canvas, section['name'], section['bays'], current_x, top_y, section_width, top_y - bottom_y)
+            self._draw_apron_section(
+                canvas,
+                section["name"],
+                section["bays"],
+                current_x,
+                top_y,
+                section_width,
+                top_y - bottom_y,
+                theme,
+            )
             current_x += section_width
 
-    def _draw_diagram_labels(self, canvas, c_width, c_height, airport_data):
+    def _draw_diagram_labels(self, canvas, c_width, c_height, airport_data, theme):
         """Draws the airport name and other diagram labels."""
         airport_name = airport_data.get("name", "Unknown Airport")
         canvas.create_text(
-            c_width / 2, c_height * 0.07, text=airport_name,
-            font=("Arial", 18, "bold"), fill="#2c3e50"
+            c_width / 2,
+            c_height * 0.06,
+            text=airport_name,
+            font=("Arial", 18, "bold"),
+            fill=theme.text_title,
         )
+        icao = (airport_data.get("icao") or "").upper()
+        if icao == "WSSS":
+            canvas.create_text(
+                c_width / 2,
+                c_height * 0.10,
+                text="Three parallel runways (02L/20R, 02C/20C, 02R/20L) — schematic per ICAO layout",
+                font=("Arial", 9),
+                fill=theme.text_subtitle,
+            )
         canvas.create_text(
-            c_width - 10, c_height - 10, text="Diagram not to scale",
-            anchor="se", font=("Arial", 8, "italic"), fill="grey"
+            c_width - 10,
+            c_height - 10,
+            text="Diagram not to scale",
+            anchor="se",
+            font=("Arial", 8, "italic"),
+            fill=theme.text_diagram_footer,
         )
 
     def _draw_no_diagram_message(self, canvas, width, height):
@@ -3314,17 +4107,15 @@ class ATCWindow:
             fill="#888888"
         )
 
-    def _draw_apron_section(self, canvas, name, gates, x_pos, y_pos, width, height):
+    def _draw_apron_section(self, canvas, name, gates, x_pos, y_pos, width, height, theme):
         """Draws a single apron section with gates, updated for new layout."""
-        # Apron background
         canvas.create_rectangle(
             x_pos, y_pos - height, x_pos + width, y_pos,
-            fill="#C8C8C8", outline="#A0A0A0", width=2, tags="apron"
+            fill=theme.apron_fill, outline=theme.apron_outline, width=2, tags="apron"
         )
-        # Apron label
         canvas.create_text(
-            x_pos + width / 2, y_pos - height + 20, text=name, 
-            font=("Arial", 11, "bold"), fill="#555555"
+            x_pos + width / 2, y_pos - height + 20, text=name,
+            font=("Arial", 11, "bold"), fill=theme.apron_label,
         )
         
         # Draw gates
@@ -3338,7 +4129,15 @@ class ATCWindow:
         for i, gate in enumerate(gates):
             gate_x = x_pos + gate_spacing * (i + 1)
             # Parking line
-            canvas.create_line(gate_x, gate_y_start, gate_x, gate_y_end, fill="#eac117", width=1.5, dash=(4, 4))
+            canvas.create_line(
+                gate_x,
+                gate_y_start,
+                gate_x,
+                gate_y_end,
+                fill=theme.taxiway_centerline,
+                width=1.5,
+                dash=(4, 4),
+            )
             # Gate label
             canvas.create_text(gate_x, gate_y_end + 8, text=gate, font=("Arial", 9, "bold"), anchor="n")
 
@@ -3498,6 +4297,64 @@ class ATCWindow:
         # Update status bar
         self.status_bar.config(text=f"Status: {callsign} transferred to Ground Control")
 
+    def _selected_ground_callsign(self) -> Optional[str]:
+        if not hasattr(self, "ground_aircraft_tree"):
+            return None
+        sel = self.ground_aircraft_tree.selection()
+        if not sel:
+            return None
+        vals = self.ground_aircraft_tree.item(sel[0], "values")
+        return str(vals[0]) if vals else None
+
+    def _message_callsign_prefix(self, message: str) -> Optional[str]:
+        if not message or "," not in message:
+            m = re.match(r"^(\S+)", message.strip())
+            return m.group(1) if m else None
+        return message.split(",", 1)[0].strip()
+
+    def _update_atc_traffic_strip_context(self, message: str, sender: str) -> None:
+        """Track last ATC/GROUND to selected callsign, and last pilot line in log (simulated / practice)."""
+        cs = self._selected_ground_callsign()
+        if not cs or not message:
+            return
+        if sender == "PILOT":
+            self._atc_strip_last_pilot_log_line = message.strip()
+            return
+        prefix = self._message_callsign_prefix(message)
+        if not prefix or prefix.upper() != cs.upper():
+            return
+        if sender in ("ATC", "GROUND"):
+            self._atc_strip_last_ground_tx = message.strip()
+
+    def _refresh_atc_traffic_strip(self) -> None:
+        if not hasattr(self, "atc_traffic_strip_label"):
+            return
+        cs = self._selected_ground_callsign()
+        if not cs:
+            self.atc_traffic_strip_label.config(
+                text="Select an aircraft in the list to see its list state and recent comms to that callsign."
+            )
+            if hasattr(self, "atc_diagram_traffic_hint"):
+                self.atc_diagram_traffic_hint.config(text="")
+            return
+        sel = self.ground_aircraft_tree.selection()
+        if not sel:
+            return
+        vals = self.ground_aircraft_tree.item(sel[0], "values")
+        loc = str(vals[2]) if len(vals) > 2 else ""
+        st = str(vals[3]) if len(vals) > 3 else ""
+        summary = build_atc_traffic_strip_line(
+            cs,
+            loc,
+            st,
+            self._atc_strip_last_ground_tx or "",
+            self._atc_strip_last_pilot_log_line or "",
+        )
+        self.atc_traffic_strip_label.config(text=summary)
+        if hasattr(self, "atc_diagram_traffic_hint"):
+            short = summary if len(summary) <= 140 else summary[:137] + "…"
+            self.atc_diagram_traffic_hint.config(text=short)
+
     def log_communication(self, text_widget, sender, message, clear=False):
         """Log communication messages to the specified text widget"""
         logger.debug("Logging communication - %s: %s", sender, message)
@@ -3522,6 +4379,14 @@ class ATCWindow:
         text_widget.insert(tk.END, formatted_message)
         text_widget.see(tk.END)  # Scroll to the end
         text_widget.config(state=tk.DISABLED)
+
+        gi = getattr(self, "ground_instructions", None)
+        if gi is not None and text_widget is gi:
+            if sender == "PILOT":
+                self._update_atc_traffic_strip_context(message, sender)
+            elif sender in ("ATC", "GROUND") and "standby" not in message.lower():
+                self._update_atc_traffic_strip_context(message, sender)
+            self._refresh_atc_traffic_strip()
 
     def _sort_treeview_column(self, tv, col, reverse):
         """Sort a treeview column when the heading is clicked."""
@@ -3640,6 +4505,11 @@ class ATCWindow:
         self.ground_instructions.config(state=tk.NORMAL)
         self.ground_instructions.delete(1.0, tk.END)
         self.ground_instructions.config(state=tk.DISABLED)
+        self._atc_strip_last_ground_tx = ""
+        self._atc_strip_last_pilot_log_line = ""
+        if hasattr(self, "ai_handler") and self.ai_handler:
+            self.ai_handler.clear_history()
+        self._refresh_atc_traffic_strip()
         self.status_bar.config(text="Status: Communication log cleared")
     
     def show_example_messages(self):
@@ -3803,13 +4673,10 @@ The AI considers:
         # Close button
         ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
     
-    def on_ai_response_generated(self, response, standby_index=None):
+    def on_ai_response_generated(self, response, standby_index=None, request_id=None):
         """Handle AI response generation callback (standby_index for in-place replacement)."""
-        # Use lock to prevent duplicate processing
-        with self.callback_lock:
-            if hasattr(self, '_last_ai_response') and self._last_ai_response == response:
-                return
-            self._last_ai_response = response
+        if request_id is not None and request_id != self.ai_handler.last_dispatch_seq:
+            return
 
         try:
             self.pending_ai_response = response
@@ -3885,6 +4752,8 @@ The AI considers:
                 self.ground_instructions.insert(1.0, new_content)
                 self.ground_instructions.config(state=tk.DISABLED)
                 self.ground_instructions.see(tk.END)
+                self._update_atc_traffic_strip_context(new_message.strip(), "ATC")
+                self._refresh_atc_traffic_strip()
             else:
                 self.log_communication(self.ground_instructions, "ATC", new_message)
 

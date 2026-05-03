@@ -3,8 +3,10 @@ Main GUI Window
 Provides the user interface for the pilot ATC training assistant.
 """
 
+import json
+import threading
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, messagebox, filedialog
 import time
 import os
 
@@ -13,7 +15,7 @@ from utils.logging_config import get_logger
 from utils.atis_decoder import ATISDecoder
 from utils.config import Config
 from utils.speech import SpeechEngine, AudioPlayer
-from data.scenarios.scenario_engine import ScenarioEngine, DifficultyLevel, ScenarioType
+from data.scenarios.scenario_engine import ScenarioEngine, DifficultyLevel, ScenarioType, debrief_benchmarks_for_scenario
 from assessment.assessment_engine import AssessmentEngine
 from utils.progress_tracker import ProgressTracker
 from utils.report_generator import ReportGenerator
@@ -99,6 +101,9 @@ class MainWindow:
         self.report_generator = ReportGenerator(self.progress_tracker) if self.progress_tracker else None
         self.last_debrief_text = ""
         self.last_debrief_path = ""
+        self.last_completed_session_id: Optional[str] = None
+        self.session_exchange_log: list = []
+        self.replay_step_index = 0
 
         # Session state
         self.current_session_active = False
@@ -106,7 +111,9 @@ class MainWindow:
         self.session_start_time = None
         self.last_atc_message = None
         self.last_atc_timestamp = None
-        
+        # Async AI ATC (pilot comms log): set before generate_atc_response; consumed in on_ai_response_generated
+        self._pending_atc_ui: Optional[dict] = None
+
         # Objective tracking
         self.completed_objectives = set()
         self.completed_communications = set()
@@ -130,6 +137,7 @@ class MainWindow:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Validate data...", command=self.open_data_validation)
+        tools_menu.add_command(label="Export last session JSON...", command=self.export_last_session_json)
         sim_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Simulator", menu=sim_menu)
         self.xplane_var = tk.BooleanVar(value=self._sim_bridge_enabled)
@@ -149,17 +157,23 @@ class MainWindow:
 
         # Create tabs
         self.atc_tab = ttk.Frame(self.notebook)
+        self.helper_tab = ttk.Frame(self.notebook)
         self.atis_tab = ttk.Frame(self.notebook)
         self.settings_tab = ttk.Frame(self.notebook)
 
         self.notebook.add(self.atc_tab, text="ATC Instructions")
+        self.notebook.add(self.helper_tab, text="Helper Tools")
         self.notebook.add(self.atis_tab, text="ATIS Decoder")
         self.notebook.add(self.settings_tab, text="Settings")
+        self.replay_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.replay_tab, text="Session Replay")
 
         # Set up each tab
         self.setup_atc_tab()
+        self.setup_helper_tab()
         self.setup_atis_tab()
         self.setup_settings_tab()
+        self.setup_session_replay_tab()
 
         # Add AI status indicator and settings button
         self.setup_ai_header()
@@ -500,7 +514,7 @@ class MainWindow:
         # Recent errors
         ttk.Label(assessment_frame, text="Recent Feedback:", font=("Arial", 9)).pack(anchor=tk.W, pady=(5, 2))
         self.assessment_feedback = scrolledtext.ScrolledText(
-            assessment_frame, height=5, wrap=tk.WORD, font=("Arial", 8), state=tk.DISABLED
+            assessment_frame, height=8, wrap=tk.WORD, font=("Arial", 8), state=tk.DISABLED
         )
         self.assessment_feedback.pack(fill=tk.X, pady=(0, 5))
 
@@ -533,6 +547,14 @@ class MainWindow:
         )
         self.save_debrief_btn.pack(fill=tk.X, pady=(5, 0))
 
+        self.export_session_json_btn = ttk.Button(
+            summary_frame,
+            text="Export session JSON",
+            command=self.export_last_session_json,
+            state=tk.DISABLED,
+        )
+        self.export_session_json_btn.pack(fill=tk.X, pady=(5, 0))
+
         # Initialize scenario list and available scenarios dict
         self.available_scenarios = {}
         self.update_scenario_list()
@@ -541,6 +563,233 @@ class MainWindow:
         
         # Update AI status
         self.root.after(500, self.update_ai_status_indicator)
+
+    def setup_helper_tab(self):
+        """Set up the Helper Tools tab"""
+        # Main container frame
+        main_frame = ttk.Frame(self.helper_tab, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create notebook for tabs
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        helper_1 = ttk.Frame(notebook)
+        notebook.add(helper_1, text="ATC translator")
+        helper_1_frame = ttk.Frame(helper_1)
+        helper_1_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        ttk.Label(
+            helper_1_frame,
+            text="Describe in plain language what you want to tell ATC. Translate turns it into standard pilot radio phraseology.",
+            wraplength=560,
+        ).pack(fill=tk.X, pady=(0, 8))
+
+        in_lf = ttk.LabelFrame(helper_1_frame, text="What you want to say", padding=5)
+        in_lf.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        self.atc_translator_input = scrolledtext.ScrolledText(
+            in_lf, wrap=tk.WORD, height=5, font=("Arial", 10)
+        )
+        self.atc_translator_input.pack(fill=tk.BOTH, expand=True)
+
+        cs_row = ttk.Frame(helper_1_frame)
+        cs_row.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(cs_row, text="Callsign (optional):").pack(side=tk.LEFT, padx=(0, 6))
+        self.atc_translator_callsign_var = tk.StringVar(
+            value=self.config.get("default_translator_callsign", "")
+        )
+        ttk.Entry(cs_row, textvariable=self.atc_translator_callsign_var, width=28).pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
+
+        out_lf = ttk.LabelFrame(helper_1_frame, text="Suggested pilot transmission", padding=5)
+        out_lf.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        self.atc_translator_output = scrolledtext.ScrolledText(
+            out_lf, wrap=tk.WORD, height=5, font=("Consolas", 10)
+        )
+        self.atc_translator_output.pack(fill=tk.BOTH, expand=True)
+
+        self.atc_translator_last_path = ""
+
+        btn_row = ttk.Frame(helper_1_frame)
+        btn_row.pack(fill=tk.X)
+        ttk.Button(btn_row, text="Translate", command=self.translate_atc).pack(
+            side=tk.LEFT, padx=(0, 6), pady=2
+        )
+        ttk.Button(btn_row, text="Clear", command=self.clear_atc_translation).pack(
+            side=tk.LEFT, padx=(0, 6), pady=2
+        )
+        ttk.Button(btn_row, text="Save", command=self.save_atc_translation).pack(
+            side=tk.LEFT, padx=(0, 6), pady=2
+        )
+        ttk.Button(btn_row, text="Load", command=self.load_atc_translation).pack(
+            side=tk.LEFT, padx=(0, 6), pady=2
+        )
+        ttk.Button(btn_row, text="Delete", command=self.delete_atc_translation).pack(
+            side=tk.LEFT, pady=2
+        )
+
+    def _atc_translator_notes_dir(self) -> str:
+        d = self.config.get("notes_directory", "atc_notes")
+        if not os.path.isabs(d):
+            d = os.path.join(os.path.dirname(os.path.dirname(__file__)), d)
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def translate_atc(self):
+        """Send plain-language intent to the AI and show suggested pilot phraseology."""
+        raw = self.atc_translator_input.get("1.0", tk.END).strip()
+        if not raw:
+            messagebox.showwarning("ATC translator", "Enter what you want to say first.")
+            return
+        if not self.ai_handler or not self.ai_handler.is_ai_available():
+            messagebox.showwarning(
+                "AI Not Available",
+                "Ollama is not reachable. Start Ollama or check Settings → AI.",
+            )
+            return
+
+        region = self.config.get("phraseology_region", "ICAO")
+        callsign = self.atc_translator_callsign_var.get().strip()
+        if callsign:
+            cs_block = (
+                f'Begin with this callsign exactly as given (spell out spoken numbers per {region} usage), '
+                f'then a comma: "{callsign}".'
+            )
+        else:
+            cs_block = (
+                "No callsign was provided; begin with the literal token <callsign> followed by a comma, "
+                "then the rest (the user will replace it)."
+            )
+
+        prompt = f"""Convert the pilot's casual intent into standard {region} pilot radio phraseology for a transmission to ATC.
+
+Rules:
+- Output ONLY the words the pilot would say on frequency (at most two short sentences).
+- {cs_block}
+- Use standard phraseology only. No small talk, no explanations, no labels like "Pilot:".
+- Do not simulate ATC replies; pilot side only.
+
+Plain-language intent:
+\"\"\"{raw}\"\"\"
+
+Pilot transmission:"""
+
+        self.status_var.set("Status: Translating with AI…")
+
+        def work():
+            try:
+                out = self.ai_handler.generate_response(prompt)
+            except Exception as e:
+                out = ""
+                err = str(e)
+            else:
+                err = ""
+
+            def apply():
+                self.atc_translator_output.delete("1.0", tk.END)
+                if out and out.strip():
+                    self.atc_translator_output.insert(tk.END, out.strip())
+                    self.status_var.set("Status: Translation ready")
+                elif err:
+                    self.atc_translator_output.insert(tk.END, f"(Error: {err})")
+                    self.status_var.set("Status: Translation failed")
+                else:
+                    self.atc_translator_output.insert(
+                        tk.END,
+                        "(No response from AI. Check Ollama and model settings.)",
+                    )
+                    self.status_var.set("Status: Translation failed")
+
+            self.root.after(0, apply)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def clear_atc_translation(self):
+        """Clear translator input and output."""
+        self.atc_translator_input.delete("1.0", tk.END)
+        self.atc_translator_output.delete("1.0", tk.END)
+        self.atc_translator_last_path = ""
+        self.status_var.set("Status: Translator cleared")
+
+    def save_atc_translation(self):
+        """Save plain + translated text as JSON."""
+        plain = self.atc_translator_input.get("1.0", tk.END).strip()
+        translated = self.atc_translator_output.get("1.0", tk.END).strip()
+        if not plain and not translated:
+            messagebox.showwarning("ATC translator", "Nothing to save.")
+            return
+        path = filedialog.asksaveasfilename(
+            initialdir=self._atc_translator_notes_dir(),
+            title="Save translation",
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        payload = {
+            "callsign": self.atc_translator_callsign_var.get().strip(),
+            "plain": plain,
+            "translated": translated,
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+            self.atc_translator_last_path = path
+            self.status_var.set(f"Status: Saved {os.path.basename(path)}")
+        except OSError as e:
+            messagebox.showerror("ATC translator", f"Could not save file:\n{e}")
+
+    def load_atc_translation(self):
+        """Load a previously saved translation JSON."""
+        path = filedialog.askopenfilename(
+            initialdir=self._atc_translator_notes_dir(),
+            title="Load translation",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            messagebox.showerror("ATC translator", f"Could not load file:\n{e}")
+            return
+        self.atc_translator_input.delete("1.0", tk.END)
+        self.atc_translator_output.delete("1.0", tk.END)
+        self.atc_translator_input.insert(tk.END, data.get("plain", ""))
+        self.atc_translator_output.insert(tk.END, data.get("translated", ""))
+        cs = data.get("callsign")
+        if cs is not None:
+            self.atc_translator_callsign_var.set(str(cs))
+        self.atc_translator_last_path = path
+        self.status_var.set(f"Status: Loaded {os.path.basename(path)}")
+
+    def delete_atc_translation(self):
+        """Delete a translation file from disk."""
+        last = self.atc_translator_last_path
+        if last and os.path.isfile(last):
+            initialdir = os.path.dirname(os.path.abspath(last))
+        else:
+            initialdir = self._atc_translator_notes_dir()
+        path = filedialog.askopenfilename(
+            initialdir=initialdir,
+            title="Select file to delete",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        if not messagebox.askyesno(
+            "ATC translator", f"Permanently delete this file?\n\n{path}"
+        ):
+            return
+        try:
+            os.remove(path)
+            if self.atc_translator_last_path == path:
+                self.atc_translator_last_path = ""
+            self.status_var.set("Status: File deleted")
+        except OSError as e:
+            messagebox.showerror("ATC translator", f"Could not delete:\n{e}")
 
     def update_scenario_list(self):
         """Update the scenario dropdown list based on filters"""
@@ -638,7 +887,12 @@ class MainWindow:
         # Reset assessment engine for new session
         if self.assessment_engine:
             self.assessment_engine.reset_session()
-        
+
+        self.session_exchange_log = []
+        self.replay_step_index = 0
+        if hasattr(self, "replay_detail"):
+            self._refresh_replay_display()
+
         # Start session with progress tracker
         if self.progress_tracker:
             pilot_id = self.callsign_var.get() or "PILOT"
@@ -713,22 +967,18 @@ class MainWindow:
         initial_prompt = f"Initialize scenario: {self.current_scenario.description}. Airport: {self.current_scenario.airport_icao}."
         
         aircraft_info = {
-            'callsign': self.callsign_var.get() or "PILOT",
-            'aircraft_type': self.aircraft_type_var.get() or "Aircraft"
+            "callsign": self.callsign_var.get() or "PILOT",
+            "aircraft_type": self.aircraft_type_var.get() or "Aircraft",
+            "training_mode": "pilot",
         }
-        
-        # Generate initial ATC message
-        initial_response = self.ai_handler.generate_atc_response(
+
+        self._pending_atc_ui = {"pilot_message": None, "scenario_init": True}
+        self.ai_handler.generate_atc_response(
             pilot_message=initial_prompt,
             aircraft_info=aircraft_info,
             airport_info=airport_info,
-            response_type="scenario_init"
+            response_type="scenario_init",
         )
-        
-        # Display initial message
-        self._log_atc_message(initial_response)
-        self.last_atc_message = initial_response
-        self.last_atc_timestamp = time.time()
 
     def end_training_session(self):
         """End the current training session"""
@@ -745,6 +995,9 @@ class MainWindow:
                     # Assess overall session (uses internal communication_history)
                     final_assessment = self.assessment_engine.assess_session()
                     completed_session_id = self.progress_tracker.complete_session(final_assessment)
+                    self.last_completed_session_id = completed_session_id
+                    if hasattr(self, "export_session_json_btn"):
+                        self.export_session_json_btn.config(state=tk.NORMAL)
                 except Exception as e:
                     # Log error but don't crash the session end
                     logger.warning("Failed to assess session: %s", e)
@@ -758,6 +1011,9 @@ class MainWindow:
                     )
                     try:
                         completed_session_id = self.progress_tracker.complete_session(final_assessment)
+                        self.last_completed_session_id = completed_session_id
+                        if hasattr(self, "export_session_json_btn"):
+                            self.export_session_json_btn.config(state=tk.NORMAL)
                     except Exception as e2:
                         logger.warning("Failed to complete session: %s", e2)
                 finally:
@@ -794,6 +1050,10 @@ class MainWindow:
             focus_area = "Readback accuracy and phraseology discipline"
             if final_assessment and getattr(final_assessment, "score", 0) >= 85:
                 focus_area = "Maintain consistency under workload and reduce response delay"
+            bench_score, bench_resp = debrief_benchmarks_for_scenario(self.current_scenario)
+            session_recs_list = (
+                list(final_assessment.recommendations)[:8] if final_assessment and final_assessment.recommendations else []
+            )
             debrief_text = self.report_generator.generate_trainee_debrief(
                 role="Pilot",
                 session_report=session_report,
@@ -801,8 +1061,21 @@ class MainWindow:
                 extra_metrics={
                     "focus_area": focus_area,
                     "insight": f"Scenario: {self.current_scenario.name if self.current_scenario else 'Unknown'}",
+                    "benchmark_score": bench_score,
+                    "benchmark_response_sec": bench_resp,
+                    "session_recommendations": session_recs_list,
                 },
             )
+            if self.session_exchange_log:
+                tail = self.session_exchange_log[-15:]
+                lines = []
+                for ex in tail:
+                    ts_short = time.strftime("%H:%M:%S", time.localtime(ex["time"]))
+                    sc = ex.get("score")
+                    tag = "" if sc is None else f" [{sc:.0f}]"
+                    text_preview = (ex.get("text") or "")[:160]
+                    lines.append(f"  [{ts_short}] {ex['role'].upper()}{tag}: {text_preview}")
+                debrief_text += "\n\n--- Recent exchanges ---\n" + "\n".join(lines)
             self.last_debrief_text = debrief_text
             self.last_debrief_path = self._autosave_debrief("pilot", completed_session_id, debrief_text)
             if self.last_debrief_path:
@@ -866,11 +1139,24 @@ class MainWindow:
         previous_atc_message = self.last_atc_message  # Store the ATC message being read back
         
         if self.assessment_engine and previous_atc_message:
+            cs = (self.callsign_var.get() or "").strip() or None
             assessment_result = self.assessment_engine.assess_communication(
                 instruction=previous_atc_message,
-                readback=pilot_message
+                readback=pilot_message,
+                response_time=response_time,
+                callsign=cs,
             )
-            
+
+            self.session_exchange_log.append(
+                {
+                    "time": time.time(),
+                    "role": "pilot",
+                    "text": pilot_message,
+                    "score": assessment_result.score,
+                }
+            )
+            self._refresh_replay_display()
+
             # Update assessment display
             self._update_assessment_display(assessment_result, response_time)
             
@@ -916,10 +1202,11 @@ class MainWindow:
             airport_info = self.airports.get(airport_name, {})
             
             aircraft_info = {
-                'callsign': self.callsign_var.get() or "PILOT",
-                'aircraft_type': self.aircraft_type_var.get() or "Aircraft"
+                "callsign": self.callsign_var.get() or "PILOT",
+                "aircraft_type": self.aircraft_type_var.get() or "Aircraft",
+                "training_mode": "pilot",
             }
-            
+
             # Add scenario context
             if self.current_scenario:
                 airport_info['scenario'] = {
@@ -937,45 +1224,22 @@ class MainWindow:
                         'ceiling': self.current_scenario.weather.ceiling,
                         'qnh': self.current_scenario.weather.qnh
                     }
-            
-            atc_response = self.ai_handler.generate_atc_response(
+
+            self._pending_atc_ui = {
+                "pilot_message": pilot_message,
+                "scenario_init": False,
+            }
+            self.ai_handler.generate_atc_response(
                 pilot_message=pilot_message,
                 aircraft_info=aircraft_info,
                 airport_info=airport_info,
-                response_type="atc_response"
+                response_type="atc_response",
             )
-            
-            # Log ATC response
-            self._log_atc_message(atc_response)
-            self.last_atc_message = atc_response
-            self.last_atc_timestamp = time.time()
-            
-            # Check for objective completion with new ATC response
-            # This checks if the pilot's request matches objectives
-            # self._check_objective_completion(pilot_message, atc_response)
-            self._check_object_completion_with_ollama(pilot_message, atc_response)
-            
-            # Update UI after new ATC response
-            self.update_situation_info()
-            
-            # Check if all objectives are complete after ATC response
-            if self._are_all_objectives_complete():
-                self.communication_log.config(state=tk.NORMAL)
-                self.communication_log.insert(tk.END, "\n[SYSTEM] ", "timestamp")
-                self.communication_log.insert(tk.END, "✓ Scenario objectives completed! Session ending...\n\n", "atc")
-                self.communication_log.see(tk.END)
-                self.communication_log.config(state=tk.DISABLED)
-                # Auto-end the session
-                self.end_training_session()
-                return
-            
-            # Update session summary
-            self.update_session_summary()
-            
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to get ATC response: {str(e)}")
-        finally:
             self.hide_ai_processing()
+            self._pending_atc_ui = None
 
     def _log_atc_message(self, message: str):
         """Log an ATC message to the communication log"""
@@ -985,6 +1249,11 @@ class MainWindow:
         self.communication_log.insert(tk.END, f"ATC: {message}\n\n", "atc")
         self.communication_log.see(tk.END)
         self.communication_log.config(state=tk.DISABLED)
+        if getattr(self, "current_session_active", False):
+            self.session_exchange_log.append(
+                {"time": time.time(), "role": "atc", "text": message, "score": None}
+            )
+            self._refresh_replay_display()
 
     def _log_pilot_message(self, message: str):
         """Log a pilot message to the communication log"""
@@ -1013,13 +1282,24 @@ class MainWindow:
         
         if assessment_result.errors:
             self.assessment_feedback.insert(tk.END, "Errors:\n", "error")
-            for error in assessment_result.errors[:3]:  # Show last 3 errors
-                self.assessment_feedback.insert(tk.END, f"• {error.message}\n", "error")
+            for error in assessment_result.errors[:5]:
+                et = getattr(error.error_type, "value", str(error.error_type))
+                self.assessment_feedback.insert(
+                    tk.END,
+                    f"• [{et}] {error.message}\n",
+                    "error",
+                )
             self.assessment_feedback.insert(tk.END, "\n")
-        
+
+        if assessment_result.recommendations:
+            self.assessment_feedback.insert(tk.END, "Recommendations:\n")
+            for rec in assessment_result.recommendations[:5]:
+                self.assessment_feedback.insert(tk.END, f"• {rec}\n")
+            self.assessment_feedback.insert(tk.END, "\n")
+
         if assessment_result.strengths:
             self.assessment_feedback.insert(tk.END, "Strengths:\n")
-            for strength in assessment_result.strengths[:2]:  # Show top 2 strengths
+            for strength in assessment_result.strengths[:2]:
                 self.assessment_feedback.insert(tk.END, f"✓ {strength}\n")
         
         self.assessment_feedback.config(state=tk.DISABLED)
@@ -1349,15 +1629,92 @@ Example: true,false,true,false
             return "Consistency in phraseology and timing under workload."
         return "Maintain standard phraseology and anticipate next clearance."
 
+    def export_last_session_json(self):
+        """Export the most recently completed session as JSON (instructor)."""
+        if not self.report_generator or not self.last_completed_session_id:
+            messagebox.showinfo(
+                "Export Session",
+                "No completed session available. Finish a training session first.",
+            )
+            return
+        path = filedialog.asksaveasfilename(
+            title="Export session JSON",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        ok = self.report_generator.export_session_report_json(self.last_completed_session_id, path)
+        if ok:
+            self.status_var.set(f"Status: Session exported to {path}")
+            messagebox.showinfo("Export Session", f"Session exported to:\n{path}")
+        else:
+            messagebox.showerror("Export Session", "Export failed (session missing or I/O error).")
+
+    def setup_session_replay_tab(self):
+        """Lightweight step-through of session exchange log."""
+        outer = ttk.Frame(self.replay_tab, padding=10)
+        outer.pack(fill=tk.BOTH, expand=True)
+        nav = ttk.Frame(outer)
+        nav.pack(fill=tk.X)
+        ttk.Button(nav, text="Prev", command=self._replay_prev).pack(side=tk.LEFT)
+        ttk.Button(nav, text="Next", command=self._replay_next).pack(side=tk.LEFT, padx=(8, 0))
+        self.replay_nav_label = ttk.Label(nav, text="Step — / —")
+        self.replay_nav_label.pack(side=tk.LEFT, padx=(16, 0))
+        self.replay_detail = scrolledtext.ScrolledText(outer, wrap=tk.WORD, font=("Consolas", 10), height=18)
+        self.replay_detail.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        self._refresh_replay_display()
+
+    def _refresh_replay_display(self):
+        if not hasattr(self, "replay_detail"):
+            return
+        log = self.session_exchange_log
+        if not log:
+            self.replay_nav_label.config(text="No exchanges yet.")
+            self.replay_detail.config(state=tk.NORMAL)
+            self.replay_detail.delete(1.0, tk.END)
+            self.replay_detail.insert(tk.END, "Start a session and transmit to record exchanges.")
+            self.replay_detail.config(state=tk.DISABLED)
+            return
+        self.replay_step_index = max(0, min(self.replay_step_index, len(log) - 1))
+        entry = log[self.replay_step_index]
+        ts_short = time.strftime("%H:%M:%S", time.localtime(entry["time"]))
+        sc = entry.get("score")
+        score_line = "" if sc is None else f"\nScore: {sc:.0f}/100"
+        body = f"{entry['role'].upper()} @ {ts_short}{score_line}\n\n{entry.get('text', '')}"
+        self.replay_detail.config(state=tk.NORMAL)
+        self.replay_detail.delete(1.0, tk.END)
+        self.replay_detail.insert(tk.END, body)
+        self.replay_detail.config(state=tk.DISABLED)
+        self.replay_nav_label.config(text=f"Step {self.replay_step_index + 1} / {len(log)}")
+
+    def _replay_prev(self):
+        if self.session_exchange_log:
+            self.replay_step_index = max(0, self.replay_step_index - 1)
+            self._refresh_replay_display()
+
+    def _replay_next(self):
+        if self.session_exchange_log:
+            self.replay_step_index = min(len(self.session_exchange_log) - 1, self.replay_step_index + 1)
+            self._refresh_replay_display()
+
     def view_progress(self):
-        """View detailed progress and reports"""
+        """Open progress dashboard for the current callsign / pilot id."""
         if not self.progress_tracker:
             messagebox.showinfo("Progress Tracker", "Progress tracking is not available.")
             return
-        
-        # This could open a separate progress dashboard window
-        messagebox.showinfo("Progress", "Progress dashboard feature coming soon. Check data/training_records/ for session files.")
-        
+        pilot_id = (self.callsign_var.get() or "").strip() or "PILOT"
+        try:
+            from views.progress_dashboard import ProgressDashboard
+
+            win = tk.Toplevel(self.root)
+            win.title(f"Training Progress — {pilot_id}")
+            win.geometry("900x640")
+            ProgressDashboard(win, self.progress_tracker, pilot_id)
+        except ImportError as e:
+            logger.warning("Progress dashboard unavailable: %s", e)
+            messagebox.showinfo("Progress", "Progress dashboard could not be loaded.")
+
     def setup_atis_tab(self):
         """Set up the ATIS Decoder tab"""
         # Create frames
@@ -2725,17 +3082,58 @@ ADVISE YOU HAVE INFORMATION ALPHA ON INITIAL CONTACT. CONTACT TOWER ON 118.1."""
             messagebox.showerror("Error", f"Failed to generate AI ATIS: {str(e)}")
             self.status_var.set("Status: Error generating AI ATIS")
 
-    def on_ai_response_generated(self, response, standby_index=None):
-        """Handle AI response generation callback (standby_index unused in main window)."""
-        # This method is called when AI generates a response asynchronously.
-        # For the new UI, responses are handled synchronously in transmit_message,
-        # but this callback can still be used for async updates if needed.
+    def on_ai_response_generated(self, response, standby_index=None, request_id=None):
+        """Apply AI ATC response to the pilot training comms log (async or sync from AIResponseHandler)."""
+        if (
+            self.ai_handler
+            and request_id is not None
+            and request_id != self.ai_handler.last_dispatch_seq
+        ):
+            return
+
+        def apply_atc_response():
+            if not getattr(self, "current_session_active", False):
+                self.hide_ai_processing()
+                return
+            pending = getattr(self, "_pending_atc_ui", None)
+            if pending is not None:
+                self._pending_atc_ui = None
+
+            if hasattr(self, "communication_log"):
+                self._log_atc_message(response)
+            self.last_atc_message = response
+            self.last_atc_timestamp = time.time()
+
+            pilot_msg = pending.get("pilot_message") if pending else None
+            if pilot_msg is not None:
+                try:
+                    self._check_object_completion_with_ollama(pilot_msg, response)
+                except Exception as exc:
+                    logger.warning("Objective check after ATC: %s", exc)
+
+            self.update_situation_info()
+
+            if self._are_all_objectives_complete():
+                self.communication_log.config(state=tk.NORMAL)
+                self.communication_log.insert(tk.END, "\n[SYSTEM] ", "timestamp")
+                self.communication_log.insert(
+                    tk.END, "✓ Scenario objectives completed! Session ending...\n\n", "atc"
+                )
+                self.communication_log.see(tk.END)
+                self.communication_log.config(state=tk.DISABLED)
+                self.hide_ai_processing()
+                self.end_training_session()
+                return
+
+            self.update_session_summary()
+            self.hide_ai_processing()
+
         try:
-            # If we have a communication log, update it
-            if hasattr(self, "communication_log") and self.current_session_active:
-                self.root.after(0, lambda: self._log_atc_message(response))
+            if hasattr(self, "communication_log"):
+                self.root.after(0, apply_atc_response)
         except Exception as e:
             logger.warning("Error in AI response callback: %s", e)
+            self.hide_ai_processing()
 
     def on_ai_mode_toggle(self):
         """Handle AI mode toggle"""
