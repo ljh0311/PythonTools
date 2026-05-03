@@ -1,3 +1,6 @@
-pillow==10.1.0
+pillow>=10.1.0,<13
 pyttsx3==2.90
-pygame==2.5.2 
+# Pygame publishes Windows wheels through 3.12 only; on 3.13+ use Python 3.12 (venv) until wheels exist.
+pygame>=2.5.2,<3
+requests==2.31.0
+ollama>=0.12.2,<0.13

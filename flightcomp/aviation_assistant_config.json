@@ -4,33 +4,36 @@
     "skip_role_selection": false,
     "experience_level": "advanced",
     "aircraft_type": "jet",
+    "default_aircraft_type": "A320",
     "voice_enabled": true,
     "voice_rate": 150,
-    "phraseology_region": "US",
+    "phraseology_region": "ICAO",
     "auto_save_notes": true,
     "notes_directory": "atc_notes",
-    "ui_theme": "light",
+    "ui_theme": "dark",
     "font_size": 12,
     "atc_role": "ground",
-    "airport_icao": "KXYZ",
-    "airport_name": "Example Airport",
+    "airport_icao": "WSSS",
+    "airport_name": "Singapore Changi Airport",
     "runways": [
-        "27",
-        "09",
-        "36",
-        "18"
+        "02C",
+        "02L",
+        "02R",
+        "20C",
+        "20L",
+        "20R"
     ],
     "active_runways": [
-        "27",
-        "36"
+        "02C",
+        "20C"
     ],
     "default_altimeter": "2992",
-    "controller_callsign": "Example Ground",
+    "controller_callsign": "Changi Ground",
     "frequencies": {
-        "ground": "121.9",
-        "tower": "118.7",
-        "approach": "119.1",
-        "departure": "125.5"
+        "ground": "121.7",
+        "tower": "118.1",
+        "approach": "119.7",
+        "departure": "123.45"
     },
     "airports": {
         "WSSS": {
@@ -428,5 +431,16 @@
                 "departure": "124.75"
             }
         }
-    }
+    },
+    "ai_enabled": true,
+    "ai_model": "llama2",
+    "ollama_url": "http://localhost:11434",
+    "ai_temperature": 0.7,
+    "response_type": "general",
+    "auto_response": false,
+    "max_history": 20,
+    "timeout": 30,
+    "xplane_bridge_enabled": false,
+    "xplane_bridge_listen_port": 49000,
+    "xplane_bridge_send_port": 49001
 }
