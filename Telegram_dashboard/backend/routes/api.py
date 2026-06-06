@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from backend.config import DASHBOARD_API_KEY
 from backend.models.store import store
+from backend.services.ai_service import ai_service
 from backend.services.telegram_service import telegram_service
 
 
@@ -123,6 +124,11 @@ async def send_message(body: SendMessageRequest) -> dict[str, Any]:
     store.add_message(int(body.chat_id), None, "outgoing", body.text)
     await ws_manager.broadcast("message_sent", {"chat_id": body.chat_id, "text": body.text})
     return result
+
+
+@router.get("/ai/status", dependencies=[Depends(verify_api_key)])
+async def ai_status() -> dict[str, Any]:
+    return await ai_service.provider_status()
 
 
 @router.get("/bot/status", dependencies=[Depends(verify_api_key)])

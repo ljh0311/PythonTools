@@ -1,139 +1,57 @@
-import json
-from typing import Any
-
-import httpx
-
-from backend.config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
-
-
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_metrics",
-            "description": "Retrieve dashboard metrics such as connected users and message counts.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_command_usage",
-            "description": "Analyze command usage trends over the last 7 days.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "webhook_notify",
-            "description": "Send a notification payload to an external webhook URL.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string"},
-                    "message": {"type": "string"},
-                },
-                "required": ["url", "message"],
-            },
-        },
-    },
-]
+from backend.services.providers.gemini import GeminiProvider
+from backend.services.providers.ollama import OllamaProvider
 
 
 class AIService:
-    def __init__(
-        self,
-        api_key: str = OPENAI_API_KEY,
-        base_url: str = OPENAI_BASE_URL,
-        model: str = OPENAI_MODEL,
-    ):
-        self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
-        self.model = model
+    def __init__(self):
+        self.gemini = GeminiProvider()
+        self.ollama = OllamaProvider()
 
     @property
     def configured(self) -> bool:
-        return bool(self.api_key)
+        return self.gemini.configured or self.ollama.configured
 
-    async def _call_tool(self, name: str, args: dict[str, Any], store) -> str:
-        from backend.models.store import DashboardStore
-
-        assert isinstance(store, DashboardStore)
-
-        if name == "get_metrics":
-            return json.dumps(store.metrics(), indent=2)
-        if name == "analyze_command_usage":
-            return json.dumps(store.command_usage_over_time(), indent=2)
-        if name == "webhook_notify":
-            url = args.get("url", "")
-            message = args.get("message", "")
-            if not url:
-                return "Webhook URL is required."
-            try:
-                async with httpx.AsyncClient(timeout=15) as client:
-                    response = await client.post(url, json={"message": message})
-                    return f"Webhook responded with status {response.status_code}"
-            except Exception as exc:
-                return f"Webhook failed: {exc}"
-        return f"Unknown tool: {name}"
-
-    async def _chat_completion(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
+    async def provider_status(self) -> dict:
+        return {
+            "gemini": {
+                "configured": self.gemini.configured,
+                "model": self.gemini.model,
+            },
+            "ollama": {
+                "configured": self.ollama.configured,
+                "model": self.ollama.model,
+                "available": await self.ollama.is_available(),
+                "base_url": self.ollama.base_url,
+            },
+            "fallback_commands": True,
         }
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "tools": TOOLS,
-            "tool_choice": "auto",
-        }
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions", headers=headers, json=payload
-            )
-            response.raise_for_status()
-            return response.json()
 
     async def process_message(self, user_text: str, store) -> str:
-        if not self.configured:
-            return self._fallback_response(user_text, store)
+        errors: list[str] = []
 
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a helpful Telegram assistant connected to a dashboard. "
-                    "Use tools when users ask for metrics, analytics, or external notifications."
-                ),
-            },
-            {"role": "user", "content": user_text},
-        ]
+        if self.gemini.configured:
+            try:
+                return await self.gemini.chat(user_text, store)
+            except Exception as exc:
+                errors.append(f"Gemini: {exc}")
 
-        try:
-            result = await self._chat_completion(messages)
-            choice = result["choices"][0]["message"]
+        if self.ollama.configured:
+            try:
+                if not await self.ollama.is_available():
+                    raise RuntimeError("Ollama is not reachable. Start it with: ollama serve")
+                return await self.ollama.chat(user_text, store)
+            except Exception as exc:
+                errors.append(f"Ollama: {exc}")
 
-            if choice.get("tool_calls"):
-                tool_messages = messages + [choice]
-                for tool_call in choice["tool_calls"]:
-                    fn = tool_call["function"]
-                    args = json.loads(fn.get("arguments") or "{}")
-                    tool_result = await self._call_tool(fn["name"], args, store)
-                    tool_messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call["id"],
-                            "content": tool_result,
-                        }
-                    )
-                final = await self._chat_completion(tool_messages)
-                return final["choices"][0]["message"]["content"]
+        if errors:
+            return (
+                "AI providers unavailable.\n"
+                + "\n".join(errors)
+                + "\n\n"
+                + self._fallback_response(user_text, store)
+            )
 
-            return choice.get("content") or "I could not generate a response."
-        except Exception as exc:
-            return f"AI processing error: {exc}. Falling back to local response.\n\n{self._fallback_response(user_text, store)}"
+        return self._fallback_response(user_text, store)
 
     def _fallback_response(self, user_text: str, store) -> str:
         lowered = user_text.lower().strip()
@@ -173,8 +91,8 @@ class AIService:
             store.add_feedback(None, "telegram_user", rating, comment)
             return "Thank you for your feedback!"
         return (
-            "I received your message. Configure OPENAI_API_KEY for full AI responses, "
-            "or try /help for available commands."
+            "I received your message. Configure GEMINI_API_KEY for cloud AI, "
+            "or run Ollama locally as a fallback. Try /help for built-in commands."
         )
 
 

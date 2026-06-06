@@ -6,7 +6,7 @@ A responsive Telegram bot dashboard with real-time metrics, chat logs, quick act
 
 - **Dashboard UI**: Dark/light theme, live metrics, message feed, events log, feedback panel
 - **Telegram integration**: Webhook receiver and secure send-message API
-- **AI routing**: OpenAI-compatible chat with tool calls for metrics, analytics, and webhooks
+- **AI routing**: Gemini primary with Ollama fallback, plus tool calls for metrics, analytics, and webhooks
 - **Real-time updates**: WebSocket push to the dashboard
 
 ## Project Structure
@@ -47,7 +47,30 @@ cp .env.example .env
 
 3. Set your Telegram bot token from [@BotFather](https://t.me/BotFather).
 
-4. Start the server:
+4. Configure AI providers in `.env`:
+
+**Gemini (primary)** — get a free API key from [Google AI Studio](https://aistudio.google.com/apikey):
+
+```env
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-2.0-flash
+```
+
+**Ollama (fallback)** — install from [ollama.ai](https://ollama.ai), pull a model, and start the service:
+
+```bash
+ollama pull llama3.2
+ollama serve
+```
+
+```env
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_MODEL=llama3.2
+```
+
+The bot tries Gemini first. If Gemini fails or is not configured, it falls back to Ollama. If both are unavailable, built-in `/help`, `/status`, `/analytics`, and `/feedback` commands still work.
+
+5. Start the server:
 
 ```bash
 python -m backend.main
@@ -94,14 +117,15 @@ The default development key is `dev-dashboard-key`.
 | POST | `/api/send` | Send a Telegram message |
 | POST | `/api/feedback` | Submit user feedback |
 | WS | `/api/ws?api_key=...` | Real-time dashboard updates |
+| GET | `/api/ai/status` | Gemini/Ollama provider status |
 | POST | `/webhook/telegram` | Telegram update webhook |
 
 ## AI Tools
 
-When `OPENAI_API_KEY` is set, the bot can call:
+When Gemini or Ollama is available, the bot can call:
 
 - `get_metrics` — dashboard counters
 - `analyze_command_usage` — 7-day command trends
 - `webhook_notify` — POST to an external webhook URL
 
-Without an API key, built-in `/help`, `/status`, `/analytics`, and `/feedback` commands still work.
+Without AI providers, built-in `/help`, `/status`, `/analytics`, and `/feedback` commands still work.
