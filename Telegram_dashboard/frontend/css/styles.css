@@ -235,11 +235,82 @@ body {
   border: 1px solid var(--border);
 }
 
+.ai-toggle-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ai-drawer-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 90;
+}
+
+.ai-drawer-backdrop:not([hidden]) {
+  display: block;
+}
+
 .inbox-side {
   position: sticky;
   top: 1rem;
   max-height: calc(100vh - 8rem);
   overflow: auto;
+  transition: transform 0.28s ease, opacity 0.28s ease;
+}
+
+.ai-drawer-close {
+  display: none;
+}
+
+.inbox-layout:not(.ai-panel-open) {
+  grid-template-columns: 1fr;
+}
+
+.inbox-layout:not(.ai-panel-open) .inbox-side {
+  opacity: 0;
+  pointer-events: none;
+  position: fixed;
+  right: 0;
+  top: 0;
+  height: 100vh;
+  max-height: 100vh;
+  width: min(360px, 92vw);
+  z-index: 100;
+  transform: translateX(100%);
+  border-radius: 0;
+  border-left: 1px solid var(--border);
+}
+
+.inbox-layout.ai-panel-open .inbox-side {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+@media (min-width: 1101px) {
+  .inbox-layout.ai-panel-open {
+    grid-template-columns: 1fr 320px;
+  }
+
+  .inbox-layout.ai-panel-open .inbox-side {
+    position: sticky;
+    top: 1rem;
+    width: auto;
+    height: auto;
+    max-height: calc(100vh - 8rem);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .inbox-layout:not(.ai-panel-open) .inbox-side {
+    border-radius: 0;
+  }
+
+  .ai-drawer-close {
+    display: none;
+  }
 }
 
 .compose-bar {
@@ -1094,8 +1165,24 @@ textarea {
   }
 
   .inbox-side {
-    position: static;
-    max-height: none;
+    position: fixed;
+    right: 0;
+    top: 0;
+    height: 100vh;
+    max-height: 100vh;
+    width: min(360px, 92vw);
+    z-index: 100;
+    border-radius: 0;
+    transform: translateX(100%);
+  }
+
+  .inbox-layout.ai-panel-open .inbox-side {
+    transform: translateX(0);
+    box-shadow: var(--shadow);
+  }
+
+  .ai-drawer-close {
+    display: inline-flex;
   }
 
   .analytics-grid,

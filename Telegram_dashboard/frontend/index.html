@@ -69,13 +69,17 @@
             <span id="inbox-count" class="stat-pill stat-muted">0 conversations</span>
           </div>
 
-          <div class="inbox-layout">
+          <div id="inbox-layout" class="inbox-layout ai-panel-open">
+            <div id="ai-drawer-backdrop" class="ai-drawer-backdrop" hidden aria-hidden="true"></div>
             <div class="inbox-main card">
               <div class="inbox-toolbar">
                 <input id="inbox-search" type="search" placeholder="Search messages…" aria-label="Search messages" />
                 <input id="inbox-topics" type="search" placeholder="Topic filter…" aria-label="Filter by topics" />
                 <button id="toggle-filters" class="btn btn-ghost btn-sm" type="button" aria-expanded="false" aria-controls="advanced-filters">
                   Filters
+                </button>
+                <button id="toggle-ai-panel" class="btn btn-ghost btn-sm ai-toggle-btn" type="button" aria-expanded="true" aria-controls="ai-drawer">
+                  AI panel
                 </button>
                 <button id="inbox-apply" class="btn btn-primary btn-sm" type="button">Apply</button>
               </div>
@@ -120,9 +124,10 @@
               <button id="inbox-load-more" class="btn btn-ghost load-more" type="button" hidden>Load more</button>
             </div>
 
-            <aside class="inbox-side card" aria-labelledby="ai-insights-title">
+            <aside id="ai-drawer" class="inbox-side card ai-drawer" aria-labelledby="ai-insights-title">
               <div class="card-header">
                 <h2 id="ai-insights-title">AI Assistant</h2>
+                <button id="close-ai-panel" class="btn btn-ghost btn-sm ai-drawer-close" type="button" aria-label="Close AI panel">✕</button>
               </div>
               <p class="filter-hint">Works on your current inbox filters</p>
               <div class="insight-toolbar">

@@ -339,6 +339,8 @@ export function bindInbox(onReply, onError) {
     toggleBtn.classList.toggle("active", open);
   });
 
+  initAiPanel();
+
   document.getElementById("inbox-apply").addEventListener("click", () => {
     collectFiltersFromForm();
     loadInbox().catch(onError);
@@ -421,4 +423,33 @@ export function bindInbox(onReply, onError) {
     link.click();
     URL.revokeObjectURL(url);
   });
+}
+
+function initAiPanel() {
+  const layout = document.getElementById("inbox-layout");
+  const toggleBtn = document.getElementById("toggle-ai-panel");
+  const closeBtn = document.getElementById("close-ai-panel");
+  const backdrop = document.getElementById("ai-drawer-backdrop");
+  if (!layout || !toggleBtn) return;
+
+  const isMobile = () => window.matchMedia("(max-width: 1100px)").matches;
+
+  function setOpen(open) {
+    layout.classList.toggle("ai-panel-open", open);
+    toggleBtn.setAttribute("aria-expanded", String(open));
+    toggleBtn.textContent = open ? "Hide AI" : "AI panel";
+    if (backdrop) {
+      backdrop.hidden = !(open && isMobile());
+      backdrop.setAttribute("aria-hidden", String(!(open && isMobile())));
+    }
+  }
+
+  toggleBtn.addEventListener("click", () => setOpen(!layout.classList.contains("ai-panel-open")));
+  closeBtn?.addEventListener("click", () => setOpen(false));
+  backdrop?.addEventListener("click", () => setOpen(false));
+  window.addEventListener("resize", () => {
+    if (!isMobile() && backdrop) backdrop.hidden = true;
+  });
+
+  setOpen(!isMobile());
 }
