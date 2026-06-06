@@ -31,7 +31,8 @@ function renderMetrics(metrics = {}) {
 
 function renderEvents(events = []) {
   const feed = document.getElementById("events-feed");
-  feed.innerHTML = events
+  const list = Array.isArray(events) ? events : [];
+  feed.innerHTML = list
     .map(
       (item) => `
       <li>
