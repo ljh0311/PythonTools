@@ -1,11 +1,6 @@
 import { api, connectWebSocket } from "./api.js";
 import { renderCommandChart } from "./chart.js";
-import {
-  bindInbox,
-  loadInbox,
-  renderInbox,
-  renderUserFilter,
-} from "./inbox.js";
+import { bindInbox, loadInbox, renderUserFilter } from "./inbox.js";
 import { initTheme } from "./theme.js";
 
 const state = {
@@ -43,22 +38,6 @@ function renderEvents(events = []) {
           <span>${formatTime(item.created_at)}</span>
         </div>
         <div>${escapeHtml(JSON.stringify(item.payload))}</div>
-      </li>`
-    )
-    .join("");
-}
-
-function renderFeedback(items = []) {
-  const feed = document.getElementById("feedback-feed");
-  feed.innerHTML = items
-    .map(
-      (item) => `
-      <li>
-        <div class="meta">
-          <span>${item.username || "Anonymous"} · ${item.rating}/5</span>
-          <span>${formatTime(item.created_at)}</span>
-        </div>
-        <div>${escapeHtml(item.comment)}</div>
       </li>`
     )
     .join("");
@@ -133,7 +112,7 @@ function prefillReply(chatId) {
 }
 
 async function refreshDashboard() {
-  const [metrics, users, inbox, events, analytics, quickActions, feedback, botStatus] =
+  const [metrics, users, inbox, events, analytics, quickActions, botStatus] =
     await Promise.all([
       api.getMetrics(),
       api.getUsers(),
@@ -141,17 +120,14 @@ async function refreshDashboard() {
       api.getEvents(),
       api.getAnalytics(),
       api.getQuickActions(),
-      api.getFeedback(),
       api.getBotStatus(),
     ]);
 
   renderMetrics(metrics);
   renderUserFilter(users);
-  renderInbox(inbox.items, inbox.total);
   renderEvents(events);
   renderCommandChart(document.getElementById("command-chart"), analytics);
   renderQuickActions(quickActions);
-  renderFeedback(feedback);
 
   const status = document.getElementById("bot-status");
   if (botStatus.configured && botStatus.bot) {
@@ -176,20 +152,6 @@ function bindForms() {
       await api.sendMessage(chatId, text);
       document.getElementById("message-text").value = "";
       showToast("Message sent.");
-      await refreshDashboard();
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-
-  document.getElementById("feedback-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const rating = Number(document.getElementById("feedback-rating").value);
-    const comment = document.getElementById("feedback-comment").value.trim();
-    try {
-      await api.submitFeedback({ rating, comment, username: "dashboard_user" });
-      document.getElementById("feedback-comment").value = "";
-      showToast("Feedback submitted.");
       await refreshDashboard();
     } catch (error) {
       showToast(error.message);
@@ -222,20 +184,14 @@ function handleRealtime(message) {
   const { event, data } = message;
   if (event === "snapshot") {
     renderMetrics(data.metrics);
-    renderInbox(data.messages, data.messages?.length || 0);
     renderEvents(data.events);
     renderQuickActions(data.quick_actions);
-    renderFeedback(data.feedback);
     renderCommandChart(document.getElementById("command-chart"), data.analytics);
     return;
   }
 
   if (event === "telegram_update" || event === "message_sent") {
     refreshDashboard().catch(() => {});
-  }
-
-  if (event === "feedback_received") {
-    renderFeedback([data, ...(state.feedback || [])]);
   }
 
   if (event === "quick_actions_updated") {

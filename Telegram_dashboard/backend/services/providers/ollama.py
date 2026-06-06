@@ -30,14 +30,17 @@ class OllamaProvider:
         except Exception:
             return False
 
-    async def _chat_completion(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
-        payload = {
+    async def _chat_completion(
+        self, messages: list[dict[str, Any]], *, use_tools: bool = True
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
-            "tools": openai_tools(),
-            "tool_choice": "auto",
             "stream": False,
         }
+        if use_tools:
+            payload["tools"] = openai_tools()
+            payload["tool_choice"] = "auto"
         async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(
                 f"{self.base_url}/chat/completions",
@@ -45,6 +48,14 @@ class OllamaProvider:
             )
             response.raise_for_status()
             return response.json()
+
+    async def generate_text(self, prompt: str, system: str = "") -> str:
+        messages: list[dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        result = await self._chat_completion(messages, use_tools=False)
+        return result["choices"][0]["message"].get("content") or "Unable to generate summary."
 
     async def chat(self, user_text: str, store) -> str:
         messages = [

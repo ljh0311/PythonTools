@@ -24,12 +24,20 @@ class GeminiProvider:
             f"{self.model}:generateContent"
         )
 
-    async def _generate(self, contents: list[dict[str, Any]]) -> dict[str, Any]:
-        payload = {
-            "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-            "contents": contents,
-            "tools": [{"function_declarations": gemini_tools()}],
-        }
+    async def _generate(
+        self,
+        contents: list[dict[str, Any]],
+        *,
+        use_tools: bool = True,
+        system: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"contents": contents}
+        instruction = system or (SYSTEM_PROMPT if use_tools else None)
+        if instruction:
+            payload["systemInstruction"] = {"parts": [{"text": instruction}]}
+        if use_tools:
+            payload["tools"] = [{"function_declarations": gemini_tools()}]
+
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 self._endpoint(),
@@ -38,6 +46,16 @@ class GeminiProvider:
             )
             response.raise_for_status()
             return response.json()
+
+    async def generate_text(self, prompt: str, system: str = "") -> str:
+        result = await self._generate(
+            [{"role": "user", "parts": [{"text": prompt}]}],
+            use_tools=False,
+            system=system or None,
+        )
+        parts = result["candidates"][0]["content"].get("parts", [])
+        text_parts = [part["text"] for part in parts if "text" in part]
+        return "\n".join(text_parts).strip() or "Unable to generate summary."
 
     async def chat(self, user_text: str, store) -> str:
         contents = [{"role": "user", "parts": [{"text": user_text}]}]

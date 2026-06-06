@@ -44,6 +44,14 @@ async def serve_dashboard():
     return {"message": "Telegram Dashboard API is running. Frontend not found."}
 
 
+@app.get("/feedback")
+async def serve_feedback():
+    page = frontend_path / "feedback.html"
+    if page.exists():
+        return FileResponse(page)
+    return {"message": "Feedback page not found."}
+
+
 if __name__ == "__main__":
     import uvicorn
 

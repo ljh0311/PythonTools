@@ -34,6 +34,12 @@ export const api = {
   getMetrics: () => request("/api/metrics"),
   getUsers: () => request("/api/users"),
   getMessages: (params = {}) => request(`/api/messages${buildQuery(params)}`),
+  getInboxThreads: (params = {}) => request(`/api/inbox/threads${buildQuery(params)}`),
+  summarizeThread: (chatId, messageIds) =>
+    request("/api/ai/summarize-thread", {
+      method: "POST",
+      body: JSON.stringify({ chat_id: chatId, message_ids: messageIds }),
+    }),
   getEvents: (limit = 50) => request(`/api/events?limit=${limit}`),
   getAnalytics: (days = 7) => request(`/api/analytics/commands?days=${days}`),
   getQuickActions: () => request("/api/quick-actions"),

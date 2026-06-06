@@ -17,6 +17,10 @@
           <p id="bot-status" class="subtitle">Checking bot connection…</p>
         </div>
       </div>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="/" class="nav-link active" aria-current="page">Dashboard</a>
+        <a href="/feedback" class="nav-link">Feedback</a>
+      </nav>
       <div class="topbar-actions">
         <button id="theme-toggle" class="btn btn-ghost" type="button" aria-label="Toggle dark and light mode">
           Toggle theme
@@ -44,19 +48,10 @@
         <p class="metric-hint">Tracked bot commands</p>
       </section>
 
-      <section class="card span-2" aria-labelledby="analytics-title">
-        <div class="card-header">
-          <h2 id="analytics-title">Command Usage Over Time</h2>
-        </div>
-        <div class="chart-wrap">
-          <canvas id="command-chart" aria-label="Command usage analytics chart"></canvas>
-        </div>
-      </section>
-
       <section class="card span-2 inbox-card" aria-labelledby="messages-title">
         <div class="card-header">
           <h2 id="messages-title">Inbox</h2>
-          <span id="inbox-count" class="subtitle">Showing 0 of 0</span>
+          <span id="inbox-count" class="subtitle">Showing 0 conversations</span>
         </div>
         <div class="inbox-filters">
           <input id="inbox-search" type="search" placeholder="Search message content…" aria-label="Search messages" />
@@ -84,8 +79,8 @@
             <button id="inbox-clear" class="btn btn-ghost btn-sm" type="button">Clear</button>
           </div>
         </div>
-        <ul id="messages-feed" class="feed inbox-feed" aria-live="polite"></ul>
-        <button id="inbox-load-more" class="btn btn-ghost load-more" type="button" hidden>Load more</button>
+        <div id="messages-feed" class="thread-list" aria-live="polite"></div>
+        <button id="inbox-load-more" class="btn btn-ghost load-more" type="button" hidden>Load more conversations</button>
       </section>
 
       <section class="card" aria-labelledby="events-title">
@@ -119,28 +114,13 @@
         </form>
       </section>
 
-      <section class="card span-2" aria-labelledby="feedback-title">
+      <section class="card span-2" aria-labelledby="analytics-title">
         <div class="card-header">
-          <h2 id="feedback-title">User Feedback</h2>
+          <h2 id="analytics-title">Command Usage Over Time</h2>
         </div>
-        <form id="feedback-form" class="feedback-form">
-          <label>
-            Rating
-            <select id="feedback-rating" required>
-              <option value="5">5 - Excellent</option>
-              <option value="4">4 - Good</option>
-              <option value="3">3 - Average</option>
-              <option value="2">2 - Poor</option>
-              <option value="1">1 - Bad</option>
-            </select>
-          </label>
-          <label>
-            Comment
-            <textarea id="feedback-comment" rows="2" placeholder="Share feedback" required></textarea>
-          </label>
-          <button class="btn btn-primary" type="submit">Submit feedback</button>
-        </form>
-        <ul id="feedback-feed" class="feed compact"></ul>
+        <div class="chart-wrap">
+          <canvas id="command-chart" aria-label="Command usage analytics chart"></canvas>
+        </div>
       </section>
     </main>
   </div>

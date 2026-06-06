@@ -39,6 +39,11 @@ class FeedbackRequest(BaseModel):
     username: str | None = None
 
 
+class SummarizeThreadRequest(BaseModel):
+    chat_id: int
+    message_ids: list[int] | None = None
+
+
 class WebSocketManager:
     def __init__(self):
         self.connections: list[WebSocket] = []
@@ -80,17 +85,13 @@ async def users() -> list[dict[str, Any]]:
     return store.list_users()
 
 
-@router.get("/messages", dependencies=[Depends(verify_api_key)])
-async def messages(
-    user_ids: str = "",
-    chat_type: str | None = None,
-    direction: str | None = None,
-    q: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
-) -> dict[str, Any]:
+def _parse_message_filters(
+    user_ids: str,
+    chat_type: str | None,
+    direction: str | None,
+    date_from: str | None,
+    date_to: str | None,
+) -> tuple[list[int] | None, str | None, str | None, str | None, str | None]:
     parsed_user_ids: list[int] | None = None
     if user_ids.strip():
         parsed_user_ids = [int(uid) for uid in user_ids.split(",") if uid.strip()]
@@ -106,6 +107,23 @@ async def messages(
     if date_to and len(date_to) == 10:
         date_to = f"{date_to}T23:59:59"
 
+    return parsed_user_ids, chat_type, direction, date_from, date_to
+
+
+@router.get("/messages", dependencies=[Depends(verify_api_key)])
+async def messages(
+    user_ids: str = "",
+    chat_type: str | None = None,
+    direction: str | None = None,
+    q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
+        user_ids, chat_type, direction, date_from, date_to
+    )
     return store.query_messages(
         user_ids=parsed_user_ids,
         chat_type=chat_type,
@@ -116,6 +134,44 @@ async def messages(
         limit=min(limit, 200),
         offset=offset,
     )
+
+
+@router.get("/inbox/threads", dependencies=[Depends(verify_api_key)])
+async def inbox_threads(
+    user_ids: str = "",
+    chat_type: str | None = None,
+    direction: str | None = None,
+    q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
+    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
+        user_ids, chat_type, direction, date_from, date_to
+    )
+    return store.query_threads(
+        user_ids=parsed_user_ids,
+        chat_type=chat_type,
+        direction=direction,
+        q=q,
+        date_from=date_from,
+        date_to=date_to,
+        thread_limit=min(limit, 50),
+        thread_offset=offset,
+    )
+
+
+@router.post("/ai/summarize-thread", dependencies=[Depends(verify_api_key)])
+async def summarize_thread(body: SummarizeThreadRequest) -> dict[str, Any]:
+    if body.message_ids:
+        messages = store.get_messages_by_ids(body.message_ids)
+    else:
+        messages = store.get_messages_by_chat_id(body.chat_id)
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages for this chat")
+    result = await ai_service.summarize_thread(messages)
+    return {"chat_id": body.chat_id, **result}
 
 
 @router.get("/events", dependencies=[Depends(verify_api_key)])

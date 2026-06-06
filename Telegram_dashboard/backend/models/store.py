@@ -332,6 +332,88 @@ class DashboardStore:
             "offset": offset,
         }
 
+    def get_messages_by_chat_id(self, chat_id: int) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC",
+                (chat_id,),
+            ).fetchall()
+        return [self._row_to_message(row) for row in rows]
+
+    def get_messages_by_ids(self, message_ids: list[int]) -> list[dict[str, Any]]:
+        if not message_ids:
+            return []
+        placeholders = ",".join("?" for _ in message_ids)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM messages WHERE id IN ({placeholders}) ORDER BY created_at ASC",
+                message_ids,
+            ).fetchall()
+        return [self._row_to_message(row) for row in rows]
+
+    def query_threads(
+        self,
+        *,
+        user_ids: list[int] | None = None,
+        chat_type: str | None = None,
+        direction: str | None = None,
+        q: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        thread_limit: int = 20,
+        thread_offset: int = 0,
+        message_cap: int = 500,
+    ) -> dict[str, Any]:
+        batch = self.query_messages(
+            user_ids=user_ids,
+            chat_type=chat_type,
+            direction=direction,
+            q=q,
+            date_from=date_from,
+            date_to=date_to,
+            limit=message_cap,
+            offset=0,
+        )
+        grouped: dict[str, dict[str, Any]] = {}
+        for msg in batch["items"]:
+            key = str(msg.get("chat_id") if msg.get("chat_id") is not None else f"msg-{msg['id']}")
+            if key not in grouped:
+                grouped[key] = {
+                    "chat_id": msg.get("chat_id"),
+                    "chat_type": msg.get("chat_type"),
+                    "chat_title": msg.get("chat_title"),
+                    "messages": [],
+                    "participants": set(),
+                    "latest_at": msg.get("created_at"),
+                }
+            thread = grouped[key]
+            thread["messages"].append(msg)
+            if msg.get("username"):
+                thread["participants"].add(f"@{msg['username']}")
+            elif msg.get("user_id"):
+                thread["participants"].add(f"User {msg['user_id']}")
+            if (msg.get("created_at") or "") > (thread.get("latest_at") or ""):
+                thread["latest_at"] = msg.get("created_at")
+
+        threads = []
+        for thread in grouped.values():
+            thread["messages"].sort(key=lambda m: m.get("created_at", ""))
+            thread["participants"] = sorted(thread["participants"])
+            thread["message_count"] = len(thread["messages"])
+            threads.append(thread)
+
+        threads.sort(key=lambda t: t.get("latest_at") or "", reverse=True)
+        total_threads = len(threads)
+        page = threads[thread_offset : thread_offset + thread_limit]
+
+        return {
+            "threads": page,
+            "total": total_threads,
+            "total_messages": batch["total"],
+            "limit": thread_limit,
+            "offset": thread_offset,
+        }
+
     def recent_messages(self, limit: int = 50) -> list[dict[str, Any]]:
         return self.query_messages(limit=limit, offset=0)["items"]
 

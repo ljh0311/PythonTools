@@ -27,9 +27,10 @@ def seed() -> None:
         (101, "alice", "outgoing", "Sure, I can help with billing.", 1001, None, "private", None, 1),
         (102, "bob_dev", "incoming", "Can we schedule a demo for the new feature?", 1002, 2001, "private", None, 3),
         (103, "carol", "incoming", "Team standup moved to 3pm today", 2001, 3001, "group", "Project Alpha", 4),
-        (102, "bob_dev", "incoming", "I'll join the standup", 2001, 3002, "group", "Project Alpha", 2),
+        (102, "bob_dev", "incoming", "I'll join the standup at 2pm", 2001, 3002, "group", "Project Alpha", 3),
+        (103, "carol", "incoming", "The standup is moved to 4pm instead", 2001, 3003, "group", "Project Alpha", 2),
         (101, "alice", "incoming", "Please send the updated pricing sheet", 1001, 2002, "private", None, 1),
-        (103, "carol", "incoming", "Budget approval needed before Friday", 2001, 3003, "group", "Project Alpha", 1),
+        (103, "carol", "incoming", "Budget approval needed before Friday", 2001, 3004, "group", "Project Alpha", 1),
     ]
 
     for user_id, username, direction, text, chat_id, msg_id, chat_type, chat_title, hours_ago in samples:

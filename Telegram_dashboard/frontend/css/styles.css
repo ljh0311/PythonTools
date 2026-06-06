@@ -55,6 +55,32 @@ body {
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.nav-links {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.nav-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 0.9rem;
+}
+
+.nav-link:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.nav-link.active {
+  color: var(--accent);
+  border-color: var(--border);
+  background: var(--bg-hover);
 }
 
 .brand {
@@ -171,6 +197,109 @@ h2 {
   margin: 0;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+.thread-list {
+  display: grid;
+  gap: 0.85rem;
+  max-height: 560px;
+  overflow: auto;
+}
+
+.thread-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-hover);
+  padding: 0.85rem;
+}
+
+.thread-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.thread-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.thread-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.thread-summary {
+  background: linear-gradient(135deg, rgba(42, 171, 238, 0.12), rgba(108, 92, 231, 0.1));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.65rem;
+  font-size: 0.9rem;
+}
+
+.thread-summary strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--accent);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.thread-summary p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.summary-provider {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.summary-loading {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.thread-messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.thread-message {
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.thread-message.incoming {
+  border-left: 3px solid var(--accent);
+}
+
+.thread-message.outgoing {
+  border-left: 3px solid var(--success);
+}
+
+.empty-thread {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 1rem;
+  text-align: center;
+}
+
+.feedback-page {
+  max-width: 900px;
+  margin: 0 auto;
 }
 
 .inbox-feed {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture Sprint 1 inbox demo screenshots."""
+"""Capture dashboard demo screenshots."""
 
 import asyncio
 import sys
@@ -15,22 +15,14 @@ OUT.mkdir(parents=True, exist_ok=True)
 async def main() -> None:
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        page = await browser.new_page(viewport={"width": 1400, "height": 900})
+        page = await browser.new_page(viewport={"width": 1400, "height": 1000})
         await page.goto(URL, wait_until="networkidle")
-        await page.wait_for_timeout(1500)
-        await page.screenshot(path=str(OUT / "sprint1-inbox-all.png"), full_page=True)
+        await page.wait_for_timeout(3000)
+        await page.screenshot(path=str(OUT / "inbox-threads-summary.png"), full_page=True)
 
-        await page.fill("#inbox-search", "billing")
-        await page.click("#inbox-apply")
+        await page.goto(f"{URL}/feedback", wait_until="networkidle")
         await page.wait_for_timeout(800)
-        await page.screenshot(path=str(OUT / "sprint1-filter-billing.png"), full_page=True)
-
-        await page.click("#inbox-clear")
-        await page.wait_for_timeout(500)
-        await page.select_option("#inbox-chat-type", "group")
-        await page.click("#inbox-apply")
-        await page.wait_for_timeout(800)
-        await page.screenshot(path=str(OUT / "sprint1-filter-group.png"), full_page=True)
+        await page.screenshot(path=str(OUT / "feedback-page.png"), full_page=True)
 
         await browser.close()
     print(f"Screenshots saved to {OUT}")

@@ -53,6 +53,57 @@ class AIService:
 
         return self._fallback_response(user_text, store)
 
+    def _format_transcript(self, messages: list[dict]) -> str:
+        lines = []
+        for msg in sorted(messages, key=lambda m: m.get("created_at", "")):
+            name = msg.get("username") or f"User {msg.get('user_id')}"
+            lines.append(f"{name}: {msg.get('text', '')}")
+        return "\n".join(lines)
+
+    def _fallback_thread_summary(self, messages: list[dict]) -> str:
+        if len(messages) == 1:
+            m = messages[0]
+            name = m.get("username") or f"User {m.get('user_id')}"
+            return f"{name} sent a message: {m.get('text', '')}"
+        parts = []
+        for msg in sorted(messages, key=lambda m: m.get("created_at", "")):
+            name = msg.get("username") or f"User {msg.get('user_id')}"
+            parts.append(f"{name} said \"{msg.get('text', '')}\"")
+        return "Conversation summary: " + " Then, ".join(parts)
+
+    async def summarize_thread(self, messages: list[dict]) -> dict:
+        if not messages:
+            return {"summary": "No messages in this conversation.", "provider": "none"}
+
+        transcript = self._format_transcript(messages)
+        system = (
+            "You summarize Telegram conversations for an operator dashboard. "
+            "Write 1-3 clear English sentences. Explain who said what, "
+            "note any updates, conflicts, or action items. Be concise."
+        )
+        prompt = f"Summarize this conversation:\n\n{transcript}"
+
+        errors: list[str] = []
+        if self.gemini.configured:
+            try:
+                summary = await self.gemini.generate_text(prompt, system=system)
+                return {"summary": summary, "provider": "gemini"}
+            except Exception as exc:
+                errors.append(str(exc))
+
+        if self.ollama.configured:
+            try:
+                if await self.ollama.is_available():
+                    summary = await self.ollama.generate_text(prompt, system=system)
+                    return {"summary": summary, "provider": "ollama"}
+            except Exception as exc:
+                errors.append(str(exc))
+
+        summary = self._fallback_thread_summary(messages)
+        if errors:
+            summary += f" (AI unavailable: {'; '.join(errors)})"
+        return {"summary": summary, "provider": "fallback"}
+
     def _fallback_response(self, user_text: str, store) -> str:
         lowered = user_text.lower().strip()
         if lowered.startswith("/help"):
