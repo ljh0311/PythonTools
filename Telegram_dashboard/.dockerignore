@@ -5,5 +5,4 @@ __pycache__
 data/
 .git
 *.md
-scripts/capture_*.py
 terminals/
