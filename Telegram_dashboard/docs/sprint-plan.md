@@ -104,7 +104,7 @@ Sprint length recommendation: **2 weeks** per sprint (adjust based on capacity).
 
 | Field | Value |
 |-------|-------|
-| Status | Planned |
+| Status | **✅ Complete** |
 | Goal | Organise messages by topic; operator controls auto-reply |
 | Epics | E4, E5 (partial) |
 | Stories | US-5.1, US-4.1, US-4.3, US-3.3 |

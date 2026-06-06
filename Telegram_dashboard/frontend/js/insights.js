@@ -17,12 +17,13 @@ function formatTime(iso) {
 
 function buildFilterPayload() {
   collectFiltersFromForm();
-  const { q, userIds, chatType, direction, dateFrom, dateTo } = inboxState.filters;
+  const { q, userIds, chatType, direction, topics, dateFrom, dateTo } = inboxState.filters;
   return {
     q: q || undefined,
     user_ids: userIds.length ? userIds.join(",") : undefined,
     chat_type: chatType || undefined,
     direction: direction || undefined,
+    topics: topics || undefined,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
   };
@@ -90,11 +91,16 @@ function priorityClass(priority) {
   return `priority-${priority || "medium"}`;
 }
 
-function renderSuggestions(result) {
+function statusBadge(status) {
+  if (!status || status === "pending") return "";
+  return `<span class="badge status-${status}">${escapeHtml(status)}</span>`;
+}
+
+function renderSuggestions(result, onSent) {
   const panel = document.getElementById("suggestions-panel");
   panel.hidden = false;
 
-  const suggestions = result.suggestions || [];
+  const suggestions = (result.suggestions || []).filter((item) => item.status !== "dismissed");
   panel.innerHTML = `
     <div class="insight-header">
       <strong>Suggested actions</strong>
@@ -107,25 +113,30 @@ function renderSuggestions(result) {
           ? suggestions
               .map(
                 (item, index) => `
-          <article class="suggestion-card ${priorityClass(item.priority)}" data-index="${index}">
+          <article class="suggestion-card ${priorityClass(item.priority)} ${item.status && item.status !== "pending" ? "is-handled" : ""}" data-index="${index}" data-id="${item.id || ""}">
             <div class="suggestion-meta">
               <span class="badge">${escapeHtml(item.type)}</span>
               <span class="badge">${escapeHtml(item.priority || "medium")}</span>
               ${item.confidence != null ? `<span class="badge">${Math.round(item.confidence * 100)}%</span>` : ""}
+              ${statusBadge(item.status)}
             </div>
             ${
               item.type === "reply"
                 ? `
               <p><strong>${escapeHtml(item.user || "Contact")}</strong>${item.chat_id ? ` · chat ${item.chat_id}` : ""}</p>
-              <textarea class="suggestion-draft" rows="3">${escapeHtml(item.draft || "")}</textarea>
+              <textarea class="suggestion-draft" rows="3" ${item.status === "sent" ? "disabled" : ""}>${escapeHtml(item.draft || "")}</textarea>
               <div class="suggestion-actions">
-                <button type="button" class="btn btn-primary btn-sm send-suggestion">Send</button>
-                <button type="button" class="btn btn-ghost btn-sm dismiss-suggestion">Dismiss</button>
+                <button type="button" class="btn btn-primary btn-sm send-suggestion" ${item.status === "sent" ? "disabled" : ""}>Send</button>
+                <button type="button" class="btn btn-ghost btn-sm mark-done" ${item.status === "done" ? "disabled" : ""}>Mark done</button>
+                <button type="button" class="btn btn-ghost btn-sm dismiss-suggestion" ${item.status === "dismissed" ? "disabled" : ""}>Dismiss</button>
               </div>`
                 : `
               <p>${escapeHtml(item.action || "")}</p>
               ${item.due_hint ? `<p class="summary-meta">Due: ${escapeHtml(item.due_hint)}</p>` : ""}
-              <button type="button" class="btn btn-ghost btn-sm dismiss-suggestion">Dismiss</button>`
+              <div class="suggestion-actions">
+                <button type="button" class="btn btn-ghost btn-sm mark-done" ${item.status === "done" ? "disabled" : ""}>Mark done</button>
+                <button type="button" class="btn btn-ghost btn-sm dismiss-suggestion" ${item.status === "dismissed" ? "disabled" : ""}>Dismiss</button>
+              </div>`
             }
           </article>`
               )
@@ -136,6 +147,32 @@ function renderSuggestions(result) {
 
   renderRedactionNotice(panel, result);
 
+  async function updateStatus(card, status) {
+    const id = Number(card.dataset.id);
+    if (!id) {
+      card.remove();
+      return;
+    }
+    await api.updateSuggestionStatus(id, status);
+    if (status === "dismissed") {
+      card.remove();
+      return;
+    }
+    const badge = card.querySelector(".suggestion-meta");
+    const existing = badge.querySelector(`.status-${status}`);
+    if (!existing) {
+      badge.insertAdjacentHTML("beforeend", statusBadge(status));
+    }
+    card.classList.add("is-handled");
+    card.querySelectorAll("button").forEach((btn) => {
+      if (status === "sent" && btn.classList.contains("send-suggestion")) btn.disabled = true;
+      if (status === "done" && btn.classList.contains("mark-done")) btn.disabled = true;
+    });
+    if (status === "sent") {
+      card.querySelector(".suggestion-draft")?.setAttribute("disabled", "disabled");
+    }
+  }
+
   panel.querySelectorAll(".send-suggestion").forEach((button) => {
     button.addEventListener("click", async (event) => {
       const card = event.target.closest(".suggestion-card");
@@ -144,14 +181,23 @@ function renderSuggestions(result) {
       const draft = card.querySelector(".suggestion-draft")?.value.trim();
       if (!item.chat_id || !draft) return;
       await api.sendMessage(item.chat_id, draft);
-      card.remove();
+      await updateStatus(card, "sent");
       onSent();
     });
   });
 
+  panel.querySelectorAll(".mark-done").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      const card = event.target.closest(".suggestion-card");
+      await updateStatus(card, "done");
+      onSent("Suggestion marked done.");
+    });
+  });
+
   panel.querySelectorAll(".dismiss-suggestion").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.target.closest(".suggestion-card")?.remove();
+    button.addEventListener("click", async (event) => {
+      const card = event.target.closest(".suggestion-card");
+      await updateStatus(card, "dismissed");
     });
   });
 }
@@ -177,14 +223,10 @@ export function bindInsights(onError, onSent = () => {}) {
     panel.innerHTML = `<p class="summary-loading">Generating suggestions…</p>`;
     try {
       const result = await api.suggestActions(buildFilterPayload());
-      renderSuggestions(result);
+      renderSuggestions(result, onSent);
     } catch (error) {
       panel.innerHTML = `<p class="error-text">${escapeHtml(error.message)}</p>`;
       onError(error.message);
     }
-  });
-
-  document.getElementById("suggestions-panel").addEventListener("suggestion-sent", () => {
-    onSent?.();
   });
 }

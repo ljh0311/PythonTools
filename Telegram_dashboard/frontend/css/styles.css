@@ -425,6 +425,80 @@ h2 {
   color: var(--danger);
 }
 
+.workflow-card .workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.workflow-card label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.per-chat-panel {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.per-chat-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.per-chat-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.chat-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-hover);
+}
+
+.topic-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0.35rem;
+}
+
+.topic-chip {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.topic-chip.ai {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge.status-sent,
+.badge.status-done {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.suggestion-card.is-handled {
+  opacity: 0.85;
+}
+
 .inbox-feed {
   max-height: 420px;
 }

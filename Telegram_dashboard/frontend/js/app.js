@@ -3,6 +3,7 @@ import { renderCommandChart } from "./chart.js";
 import { bindInsights } from "./insights.js";
 import { bindInbox, loadInbox, renderUserFilter } from "./inbox.js";
 import { initTheme } from "./theme.js";
+import { bindWorkflow, loadWorkflowSettings } from "./workflow.js";
 
 const state = {
   quickActions: [],
@@ -117,6 +118,7 @@ async function refreshDashboard() {
     await Promise.all([
       api.getMetrics(),
       api.getUsers(),
+      loadWorkflowSettings(),
       loadInbox(),
       api.getEvents(),
       api.getAnalytics(),
@@ -195,6 +197,10 @@ function handleRealtime(message) {
     refreshDashboard().catch(() => {});
   }
 
+  if (event === "reply_mode_updated" || event === "chat_reply_updated") {
+    loadWorkflowSettings().catch(() => {});
+  }
+
   if (event === "quick_actions_updated") {
     renderQuickActions(data.actions);
   }
@@ -204,9 +210,10 @@ async function init() {
   initTheme();
   bindForms();
   bindInbox(prefillReply, (error) => showToast(error.message));
+  bindWorkflow((message) => showToast(message), (error) => showToast(error));
   bindInsights(
     (error) => showToast(error),
-    () => showToast("Suggestion sent.")
+    (message) => showToast(message || "Suggestion updated.")
   );
 
   try {

@@ -19,6 +19,13 @@ def _normalize_chat_type(chat: dict[str, Any]) -> str | None:
     return None
 
 
+async def _maybe_assign_topics(message_id: int, text: str) -> list[str]:
+    if store.get_topic_mode() != "ai_assign":
+        return []
+    topics = await ai_service.assign_topics(text)
+    return store.add_message_topics(message_id, topics, source="ai")
+
+
 async def handle_telegram_update(update: dict[str, Any]) -> dict[str, Any] | None:
     message = update.get("message") or update.get("edited_message")
     if not message:
@@ -55,28 +62,36 @@ async def handle_telegram_update(update: dict[str, Any]) -> dict[str, Any] | Non
         chat_title=chat_title,
         reply_to_message_id=(message.get("reply_to_message") or {}).get("message_id"),
     )
+    topics = await _maybe_assign_topics(stored["id"], text)
     store.add_event(
         "message_received",
-        {"user_id": user_id, "chat_id": chat_id, "chat_type": chat_type, "text": text},
+        {
+            "user_id": user_id,
+            "chat_id": chat_id,
+            "chat_type": chat_type,
+            "text": text,
+            "topics": topics,
+        },
     )
 
     match = COMMAND_PATTERN.match(text)
     if match:
         store.track_command(f"/{match.group(1)}")
 
-    reply = await ai_service.process_message(text, store)
-    store.add_message(
-        user_id,
-        username,
-        "outgoing",
-        reply,
-        chat_id=chat_id,
-        chat_type=chat_type,
-        chat_title=chat_title,
-    )
-
-    if telegram_service.configured and chat_id:
-        await telegram_service.send_message(chat_id, reply)
+    reply: str | None = None
+    if store.should_auto_reply(chat_id):
+        reply = await ai_service.process_message(text, store)
+        store.add_message(
+            user_id,
+            username,
+            "outgoing",
+            reply,
+            chat_id=chat_id,
+            chat_type=chat_type,
+            chat_title=chat_title,
+        )
+        if telegram_service.configured and chat_id:
+            await telegram_service.send_message(chat_id, reply)
 
     return {
         "user_id": user_id,
@@ -84,4 +99,6 @@ async def handle_telegram_update(update: dict[str, Any]) -> dict[str, Any] | Non
         "chat_type": chat_type,
         "message": stored,
         "reply": reply,
+        "auto_replied": reply is not None,
+        "topics": topics,
     }

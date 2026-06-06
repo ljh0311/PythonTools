@@ -61,6 +61,38 @@ export const api = {
       body: JSON.stringify({ chat_id: chatId, text }),
     }),
   getBotStatus: () => request("/api/bot/status"),
+  getReplyMode: () => request("/api/settings/reply-mode"),
+  setReplyMode: (mode) =>
+    request("/api/settings/reply-mode", {
+      method: "PUT",
+      body: JSON.stringify({ mode }),
+    }),
+  setChatAutoReply: (chatId, enabled) =>
+    request(`/api/settings/chat-replies/${chatId}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+  getTopicMode: () => request("/api/settings/topic-mode"),
+  setTopicMode: (mode) =>
+    request("/api/settings/topic-mode", {
+      method: "PUT",
+      body: JSON.stringify({ mode }),
+    }),
+  getTopics: () => request("/api/topics"),
+  addMessageTopics: (messageId, topics) =>
+    request(`/api/messages/${messageId}/topics`, {
+      method: "POST",
+      body: JSON.stringify({ topics }),
+    }),
+  removeMessageTopic: (messageId, topicName) =>
+    request(`/api/messages/${messageId}/topics/${encodeURIComponent(topicName)}`, {
+      method: "DELETE",
+    }),
+  updateSuggestionStatus: (suggestionId, status) =>
+    request(`/api/suggestions/${suggestionId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
 };
 
 export function connectWebSocket(onMessage) {

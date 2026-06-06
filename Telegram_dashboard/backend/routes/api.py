@@ -50,8 +50,29 @@ class FilteredAiRequest(BaseModel):
     chat_type: str | None = None
     direction: str | None = None
     q: str | None = None
+    topics: str | None = None
     date_from: str | None = None
     date_to: str | None = None
+
+
+class ReplyModeRequest(BaseModel):
+    mode: str = Field(pattern="^(manual|auto|per_chat)$")
+
+
+class TopicModeRequest(BaseModel):
+    mode: str = Field(pattern="^(user_type|ai_assign)$")
+
+
+class ChatAutoReplyRequest(BaseModel):
+    enabled: bool
+
+
+class MessageTopicsRequest(BaseModel):
+    topics: list[str] = Field(min_length=1)
+
+
+class SuggestionStatusRequest(BaseModel):
+    status: str = Field(pattern="^(pending|sent|dismissed|done)$")
 
 
 def _fetch_filtered_messages(body: FilteredAiRequest, limit: int = 500) -> tuple[list[dict], dict]:
@@ -63,6 +84,7 @@ def _fetch_filtered_messages(body: FilteredAiRequest, limit: int = 500) -> tuple
         "chat_type": body.chat_type,
         "direction": body.direction,
         "q": body.q,
+        "topics": body.topics,
         "date_from": body.date_from,
         "date_to": body.date_to,
     }
@@ -71,6 +93,7 @@ def _fetch_filtered_messages(body: FilteredAiRequest, limit: int = 500) -> tuple
         chat_type=chat_type,
         direction=direction,
         q=body.q,
+        topics=body.topics,
         date_from=date_from,
         date_to=date_to,
         limit=limit,
@@ -151,6 +174,7 @@ async def messages(
     chat_type: str | None = None,
     direction: str | None = None,
     q: str | None = None,
+    topics: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     limit: int = 50,
@@ -164,6 +188,7 @@ async def messages(
         chat_type=chat_type,
         direction=direction,
         q=q,
+        topics=topics,
         date_from=date_from,
         date_to=date_to,
         limit=min(limit, 200),
@@ -177,6 +202,7 @@ async def inbox_threads(
     chat_type: str | None = None,
     direction: str | None = None,
     q: str | None = None,
+    topics: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     limit: int = 20,
@@ -190,6 +216,7 @@ async def inbox_threads(
         chat_type=chat_type,
         direction=direction,
         q=q,
+        topics=topics,
         date_from=date_from,
         date_to=date_to,
         thread_limit=min(limit, 50),
@@ -221,8 +248,101 @@ async def summarize_filtered(body: FilteredAiRequest) -> dict[str, Any]:
 
 @router.post("/ai/suggest-actions", dependencies=[Depends(verify_api_key)])
 async def suggest_actions(body: FilteredAiRequest) -> dict[str, Any]:
-    messages, _filters = _fetch_filtered_messages(body)
-    return await ai_service.suggest_actions(messages)
+    messages, filters = _fetch_filtered_messages(body)
+    result = await ai_service.suggest_actions(messages)
+    fhash = store.filter_hash(filters)
+    saved = store.save_suggestions(fhash, result.get("suggestions", []))
+    return {**result, "filter_hash": fhash, "suggestions": saved}
+
+
+@router.get("/settings/reply-mode", dependencies=[Depends(verify_api_key)])
+async def get_reply_mode() -> dict[str, Any]:
+    store.sync_chat_settings_from_messages()
+    return {
+        "mode": store.get_reply_mode(),
+        "chats": store.list_chat_settings(),
+    }
+
+
+@router.put("/settings/reply-mode", dependencies=[Depends(verify_api_key)])
+async def set_reply_mode(body: ReplyModeRequest) -> dict[str, Any]:
+    try:
+        store.set_reply_mode(body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    store.sync_chat_settings_from_messages()
+    payload = {"mode": body.mode, "chats": store.list_chat_settings()}
+    await ws_manager.broadcast("reply_mode_updated", payload)
+    return payload
+
+
+@router.put("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_api_key)])
+async def set_chat_auto_reply(chat_id: int, body: ChatAutoReplyRequest) -> dict[str, Any]:
+    saved = store.set_chat_auto_reply(chat_id, body.enabled)
+    await ws_manager.broadcast(
+        "chat_reply_updated",
+        {"chat_id": chat_id, "auto_reply_enabled": body.enabled},
+    )
+    return saved
+
+
+@router.get("/settings/topic-mode", dependencies=[Depends(verify_api_key)])
+async def get_topic_mode() -> dict[str, str]:
+    return {"mode": store.get_topic_mode()}
+
+
+@router.put("/settings/topic-mode", dependencies=[Depends(verify_api_key)])
+async def set_topic_mode(body: TopicModeRequest) -> dict[str, str]:
+    try:
+        mode = store.set_topic_mode(body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await ws_manager.broadcast("topic_mode_updated", {"mode": mode})
+    return {"mode": mode}
+
+
+@router.get("/topics", dependencies=[Depends(verify_api_key)])
+async def list_topics() -> list[dict[str, Any]]:
+    return store.list_topics()
+
+
+@router.post("/messages/{message_id}/topics", dependencies=[Depends(verify_api_key)])
+async def add_message_topics(message_id: int, body: MessageTopicsRequest) -> dict[str, Any]:
+    added = store.add_message_topics(message_id, body.topics, source="manual")
+    return {"message_id": message_id, "topics": added}
+
+
+@router.delete(
+    "/messages/{message_id}/topics/{topic_name}",
+    dependencies=[Depends(verify_api_key)],
+)
+async def remove_message_topic(message_id: int, topic_name: str) -> dict[str, Any]:
+    removed = store.remove_message_topic(message_id, topic_name)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Topic not found on message")
+    return {"message_id": message_id, "removed": topic_name}
+
+
+@router.get("/suggestions", dependencies=[Depends(verify_api_key)])
+async def list_suggestions(
+    filter_hash: str | None = None,
+    include_dismissed: bool = False,
+) -> list[dict[str, Any]]:
+    return store.list_suggestions(filter_hash, include_dismissed)
+
+
+@router.patch("/suggestions/{suggestion_id}", dependencies=[Depends(verify_api_key)])
+async def update_suggestion_status(
+    suggestion_id: int, body: SuggestionStatusRequest
+) -> dict[str, Any]:
+    try:
+        updated = store.update_suggestion_status(suggestion_id, body.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not updated:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    await ws_manager.broadcast("suggestion_updated", updated)
+    return updated
 
 
 @router.get("/events", dependencies=[Depends(verify_api_key)])

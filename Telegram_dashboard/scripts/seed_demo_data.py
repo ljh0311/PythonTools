@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed Sprint 1 demo messages for local testing."""
+"""Seed demo messages and Sprint 3 settings for local testing."""
 
 import sys
 from datetime import datetime, timedelta
@@ -12,6 +12,13 @@ from backend.models.store import store  # noqa: E402
 
 NOW = datetime.utcnow()
 
+TOPIC_MAP = {
+    "billing": [1],
+    "scheduling": [3, 4, 5, 6],
+    "budget": [8],
+    "pricing": [7],
+}
+
 
 def seed() -> None:
     users = [
@@ -21,6 +28,9 @@ def seed() -> None:
     ]
     for user in users:
         store.upsert_user(user)
+
+    store.set_reply_mode("manual")
+    store.set_topic_mode("user_type")
 
     samples = [
         (101, "alice", "incoming", "Hi, my NRIC is S1234567A and I need help with billing", 1001, 1001, "private", None, 2),
@@ -33,10 +43,11 @@ def seed() -> None:
         (103, "carol", "incoming", "Budget approval needed before Friday", 2001, 3004, "group", "Project Alpha", 1),
     ]
 
+    message_ids: list[int] = []
     for user_id, username, direction, text, chat_id, msg_id, chat_type, chat_title, hours_ago in samples:
         created = (NOW - timedelta(hours=hours_ago)).isoformat()
         with store._conn() as conn:
-            conn.execute(
+            cur = conn.execute(
                 """
                 INSERT INTO messages (
                     user_id, username, direction, text, created_at,
@@ -55,8 +66,17 @@ def seed() -> None:
                     chat_title,
                 ),
             )
+            message_ids.append(int(cur.lastrowid))
 
-    print(f"Seeded {len(samples)} messages for {len(users)} users.")
+    for topic, indexes in TOPIC_MAP.items():
+        for idx in indexes:
+            if idx <= len(message_ids):
+                store.add_message_topics(message_ids[idx - 1], [topic], source="ai")
+
+    store.set_chat_auto_reply(2001, True)
+    store.sync_chat_settings_from_messages()
+
+    print(f"Seeded {len(samples)} messages, topics, and workflow settings.")
 
 
 if __name__ == "__main__":

@@ -18,6 +18,13 @@ SUMMARY_PROMPTS = {
     ),
 }
 
+TOPIC_SYSTEM = (
+    "You classify Telegram messages for an operator dashboard. "
+    "Return ONLY valid JSON with no markdown fences. "
+    "Schema: {\"topics\": [string]} — 1-3 short lowercase topic tags "
+    "(e.g. billing, support, scheduling, budget)."
+)
+
 SUGGEST_SYSTEM = (
     "You are an assistant for a Telegram operator dashboard. "
     "Analyze conversations and return ONLY valid JSON with no markdown fences. "
@@ -256,6 +263,32 @@ class AIService:
             result["redaction_applied"] = redaction_applied
             result["redaction_count"] = redaction_count
             return result
+
+    async def assign_topics(self, text: str) -> list[str]:
+        redacted_text = redaction_service.redact(text).text
+        prompt = f"Assign topic tags to this message:\n\n{redacted_text}"
+
+        if not self.configured:
+            lowered = redacted_text.lower()
+            tags: list[str] = []
+            keywords = {
+                "billing": ("billing", "invoice", "payment", "pricing", "nric"),
+                "scheduling": ("schedule", "demo", "standup", "meeting", "pm"),
+                "budget": ("budget", "approval", "finance"),
+                "support": ("help", "issue", "problem"),
+            }
+            for tag, words in keywords.items():
+                if any(word in lowered for word in words):
+                    tags.append(tag)
+            return tags[:3] or ["general"]
+
+        try:
+            raw, _provider = await self._generate_text(prompt, TOPIC_SYSTEM)
+            parsed = self._parse_json_response(raw)
+            topics = parsed.get("topics", [])
+            return [str(t).strip().lower() for t in topics if str(t).strip()][:3]
+        except Exception:
+            return ["general"]
 
     async def process_message(self, user_text: str, store) -> str:
         errors: list[str] = []

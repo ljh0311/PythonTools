@@ -24,3 +24,8 @@ PORT = int(os.getenv("PORT", "8000"))
 
 SUMMARY_CACHE_TTL = int(os.getenv("SUMMARY_CACHE_TTL", "3600"))
 REDACTION_EXTRA_PATTERNS = os.getenv("REDACTION_EXTRA_PATTERNS", "")
+
+# D-01: default operator approves (manual). Options: manual | auto | per_chat
+AUTO_REPLY_MODE = os.getenv("AUTO_REPLY_MODE", "manual")
+# D-03: default user-typed topics. Options: user_type | ai_assign
+TOPIC_MODE = os.getenv("TOPIC_MODE", "user_type")

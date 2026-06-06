@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 from collections import defaultdict
@@ -6,7 +7,7 @@ from datetime import datetime, timedelta
 from threading import Lock
 from typing import Any
 
-from backend.config import DATABASE_PATH
+from backend.config import AUTO_REPLY_MODE, DATABASE_PATH, TOPIC_MODE
 
 MESSAGE_COLUMNS = (
     "id",
@@ -109,9 +110,43 @@ class DashboardStore:
                     command TEXT NOT NULL,
                     enabled INTEGER NOT NULL DEFAULT 1
                 );
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS chat_settings (
+                    chat_id INTEGER PRIMARY KEY,
+                    chat_title TEXT,
+                    chat_type TEXT,
+                    auto_reply_enabled INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS topics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    source TEXT NOT NULL DEFAULT 'manual'
+                );
+                CREATE TABLE IF NOT EXISTS message_topics (
+                    message_id INTEGER NOT NULL,
+                    topic_id INTEGER NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    PRIMARY KEY (message_id, topic_id),
+                    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+                    FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS suggestions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filter_hash TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_suggestions_filter_hash ON suggestions(filter_hash);
+                CREATE INDEX IF NOT EXISTS idx_suggestions_status ON suggestions(status);
                 """
             )
             self._migrate_messages(conn)
+            self._seed_defaults(conn)
             count = conn.execute("SELECT COUNT(*) FROM quick_actions").fetchone()[0]
             if count == 0:
                 defaults = [
@@ -124,6 +159,301 @@ class DashboardStore:
                     "INSERT INTO quick_actions (label, command) VALUES (?, ?)",
                     defaults,
                 )
+
+    def _seed_defaults(self, conn: sqlite3.Connection) -> None:
+        defaults = {
+            "reply_mode": AUTO_REPLY_MODE,
+            "topic_mode": TOPIC_MODE,
+        }
+        for key, value in defaults.items():
+            conn.execute(
+                """
+                INSERT INTO app_settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO NOTHING
+                """,
+                (key, value),
+            )
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> str:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO app_settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (key, value),
+            )
+        return value
+
+    def get_reply_mode(self) -> str:
+        mode = self.get_setting("reply_mode", AUTO_REPLY_MODE)
+        return mode if mode in ("manual", "auto", "per_chat") else "manual"
+
+    def set_reply_mode(self, mode: str) -> str:
+        if mode not in ("manual", "auto", "per_chat"):
+            raise ValueError("reply_mode must be manual, auto, or per_chat")
+        return self.set_setting("reply_mode", mode)
+
+    def get_topic_mode(self) -> str:
+        mode = self.get_setting("topic_mode", TOPIC_MODE)
+        return mode if mode in ("user_type", "ai_assign") else "user_type"
+
+    def set_topic_mode(self, mode: str) -> str:
+        if mode not in ("user_type", "ai_assign"):
+            raise ValueError("topic_mode must be user_type or ai_assign")
+        return self.set_setting("topic_mode", mode)
+
+    def should_auto_reply(self, chat_id: int | None) -> bool:
+        mode = self.get_reply_mode()
+        if mode == "manual":
+            return False
+        if mode == "auto":
+            return True
+        if chat_id is None:
+            return False
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT auto_reply_enabled FROM chat_settings WHERE chat_id = ?",
+                (chat_id,),
+            ).fetchone()
+        return bool(row and row["auto_reply_enabled"])
+
+    def list_chat_settings(self) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    cs.chat_id,
+                    cs.chat_title,
+                    cs.chat_type,
+                    cs.auto_reply_enabled,
+                    COUNT(m.id) AS message_count,
+                    MAX(m.created_at) AS last_message_at
+                FROM chat_settings cs
+                LEFT JOIN messages m ON m.chat_id = cs.chat_id
+                GROUP BY cs.chat_id
+                ORDER BY last_message_at DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def sync_chat_settings_from_messages(self) -> None:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT chat_id, chat_title, chat_type, MAX(created_at) AS last_at
+                FROM messages
+                WHERE chat_id IS NOT NULL
+                GROUP BY chat_id
+                """
+            ).fetchall()
+            for row in rows:
+                conn.execute(
+                    """
+                    INSERT INTO chat_settings (chat_id, chat_title, chat_type, auto_reply_enabled)
+                    VALUES (?, ?, ?, 0)
+                    ON CONFLICT(chat_id) DO UPDATE SET
+                        chat_title = COALESCE(excluded.chat_title, chat_settings.chat_title),
+                        chat_type = COALESCE(excluded.chat_type, chat_settings.chat_type)
+                    """,
+                    (row["chat_id"], row["chat_title"], row["chat_type"]),
+                )
+
+    def set_chat_auto_reply(self, chat_id: int, enabled: bool) -> dict[str, Any]:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT chat_id, chat_title, chat_type
+                FROM messages
+                WHERE chat_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (chat_id,),
+            ).fetchone()
+            title = row["chat_title"] if row else None
+            chat_type = row["chat_type"] if row else None
+            conn.execute(
+                """
+                INSERT INTO chat_settings (chat_id, chat_title, chat_type, auto_reply_enabled)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    auto_reply_enabled = excluded.auto_reply_enabled,
+                    chat_title = COALESCE(excluded.chat_title, chat_settings.chat_title),
+                    chat_type = COALESCE(excluded.chat_type, chat_settings.chat_type)
+                """,
+                (chat_id, title, chat_type, int(enabled)),
+            )
+            saved = conn.execute(
+                "SELECT * FROM chat_settings WHERE chat_id = ?", (chat_id,)
+            ).fetchone()
+        return dict(saved)
+
+    def _get_or_create_topic(self, conn: sqlite3.Connection, name: str, source: str) -> int:
+        normalized = name.strip().lower()
+        row = conn.execute("SELECT id FROM topics WHERE name = ?", (normalized,)).fetchone()
+        if row:
+            return int(row["id"])
+        cur = conn.execute(
+            "INSERT INTO topics (name, source) VALUES (?, ?)",
+            (normalized, source),
+        )
+        return int(cur.lastrowid)
+
+    def add_message_topics(
+        self, message_id: int, topic_names: list[str], source: str = "manual"
+    ) -> list[str]:
+        added: list[str] = []
+        with self._conn() as conn:
+            for name in topic_names:
+                normalized = name.strip().lower()
+                if not normalized:
+                    continue
+                topic_id = self._get_or_create_topic(conn, normalized, source)
+                conn.execute(
+                    """
+                    INSERT INTO message_topics (message_id, topic_id, source)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(message_id, topic_id) DO UPDATE SET source = excluded.source
+                    """,
+                    (message_id, topic_id, source),
+                )
+                added.append(normalized)
+        return added
+
+    def remove_message_topic(self, message_id: int, topic_name: str) -> bool:
+        normalized = topic_name.strip().lower()
+        with self._conn() as conn:
+            row = conn.execute("SELECT id FROM topics WHERE name = ?", (normalized,)).fetchone()
+            if not row:
+                return False
+            conn.execute(
+                "DELETE FROM message_topics WHERE message_id = ? AND topic_id = ?",
+                (message_id, row["id"]),
+            )
+        return True
+
+    def list_topics(self) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT t.id, t.name, t.source, COUNT(mt.message_id) AS message_count
+                FROM topics t
+                LEFT JOIN message_topics mt ON mt.topic_id = t.id
+                GROUP BY t.id
+                ORDER BY message_count DESC, t.name
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_message_topics(self, message_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+        if not message_ids:
+            return {}
+        placeholders = ",".join("?" for _ in message_ids)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT mt.message_id, t.name, mt.source
+                FROM message_topics mt
+                JOIN topics t ON t.id = mt.topic_id
+                WHERE mt.message_id IN ({placeholders})
+                ORDER BY t.name
+                """,
+                message_ids,
+            ).fetchall()
+        result: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            result[row["message_id"]].append(
+                {"name": row["name"], "source": row["source"]}
+            )
+        return dict(result)
+
+    @staticmethod
+    def filter_hash(filters: dict[str, Any]) -> str:
+        payload = json.dumps(filters, sort_keys=True, default=str)
+        return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+    def save_suggestions(
+        self, filter_hash: str, suggestions: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        created_at = datetime.utcnow().isoformat()
+        saved: list[dict[str, Any]] = []
+        with self._conn() as conn:
+            for item in suggestions:
+                cur = conn.execute(
+                    """
+                    INSERT INTO suggestions (filter_hash, type, payload, status, created_at)
+                    VALUES (?, ?, ?, 'pending', ?)
+                    """,
+                    (
+                        filter_hash,
+                        item.get("type", "next_action"),
+                        json.dumps(item),
+                        created_at,
+                    ),
+                )
+                saved.append(
+                    {
+                        "id": cur.lastrowid,
+                        "status": "pending",
+                        **item,
+                    }
+                )
+        return saved
+
+    def list_suggestions(
+        self,
+        filter_hash: str | None = None,
+        include_dismissed: bool = False,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if filter_hash:
+            clauses.append("filter_hash = ?")
+            params.append(filter_hash)
+        if not include_dismissed:
+            clauses.append("status != 'dismissed'")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id, filter_hash, type, payload, status, created_at
+                FROM suggestions {where}
+                ORDER BY id DESC
+                """,
+                params,
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = json.loads(item["payload"])
+            result.append(item)
+        return result
+
+    def update_suggestion_status(self, suggestion_id: int, status: str) -> dict[str, Any] | None:
+        if status not in ("pending", "sent", "dismissed", "done"):
+            raise ValueError("Invalid suggestion status")
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE suggestions SET status = ? WHERE id = ?",
+                (status, suggestion_id),
+            )
+            row = conn.execute(
+                "SELECT id, filter_hash, type, payload, status, created_at FROM suggestions WHERE id = ?",
+                (suggestion_id,),
+            ).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        item["payload"] = json.loads(item["payload"])
+        return item
 
     def upsert_user(self, user: dict[str, Any]) -> None:
         now = datetime.utcnow().isoformat()
@@ -183,10 +513,28 @@ class DashboardStore:
                     reply_to_message_id,
                 ),
             )
-            return self._row_to_message(
+            message = self._row_to_message(
                 conn.execute(
                     "SELECT * FROM messages WHERE id = ?", (cur.lastrowid,)
                 ).fetchone()
+            )
+        if chat_id is not None:
+            self._ensure_chat_setting(chat_id, chat_type, chat_title)
+        return message
+
+    def _ensure_chat_setting(
+        self, chat_id: int, chat_type: str | None, chat_title: str | None
+    ) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO chat_settings (chat_id, chat_title, chat_type, auto_reply_enabled)
+                VALUES (?, ?, ?, 0)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    chat_title = COALESCE(excluded.chat_title, chat_settings.chat_title),
+                    chat_type = COALESCE(excluded.chat_type, chat_settings.chat_type)
+                """,
+                (chat_id, chat_title, chat_type),
             )
 
     def _row_to_message(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -277,6 +625,8 @@ class DashboardStore:
         chat_type: str | None = None,
         direction: str | None = None,
         q: str | None = None,
+        topics: str | None = None,
+        topic_mode: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
         limit: int = 50,
@@ -284,49 +634,90 @@ class DashboardStore:
     ) -> dict[str, Any]:
         clauses: list[str] = []
         params: list[Any] = []
+        joins = ""
 
         if user_ids:
             placeholders = ",".join("?" for _ in user_ids)
-            clauses.append(f"user_id IN ({placeholders})")
+            clauses.append(f"m.user_id IN ({placeholders})")
             params.extend(user_ids)
 
         if chat_type:
-            clauses.append("chat_type = ?")
+            clauses.append("m.chat_type = ?")
             params.append(chat_type)
 
         if direction:
-            clauses.append("direction = ?")
+            clauses.append("m.direction = ?")
             params.append(direction)
 
         if q:
-            clauses.append("LOWER(text) LIKE ?")
+            clauses.append("LOWER(m.text) LIKE ?")
             params.append(f"%{q.lower()}%")
 
+        if topics:
+            topic_terms = [t.strip().lower() for t in topics.split(",") if t.strip()]
+            mode = topic_mode or self.get_topic_mode()
+            if topic_terms:
+                topic_clauses = []
+                for term in topic_terms:
+                    if mode == "ai_assign":
+                        topic_clauses.append(
+                            """
+                            EXISTS (
+                                SELECT 1 FROM message_topics mt
+                                JOIN topics t ON t.id = mt.topic_id
+                                WHERE mt.message_id = m.id
+                                  AND mt.source = 'ai'
+                                  AND t.name LIKE ?
+                            )
+                            """
+                        )
+                        params.append(f"%{term}%")
+                    else:
+                        topic_clauses.append(
+                            """
+                            (
+                                LOWER(m.text) LIKE ?
+                                OR EXISTS (
+                                    SELECT 1 FROM message_topics mt
+                                    JOIN topics t ON t.id = mt.topic_id
+                                    WHERE mt.message_id = m.id AND t.name LIKE ?
+                                )
+                            )
+                            """
+                        )
+                        params.extend([f"%{term}%", f"%{term}%"])
+                clauses.append(f"({' OR '.join(topic_clauses)})")
+
         if date_from:
-            clauses.append("created_at >= ?")
+            clauses.append("m.created_at >= ?")
             params.append(date_from)
 
         if date_to:
-            clauses.append("created_at <= ?")
+            clauses.append("m.created_at <= ?")
             params.append(date_to)
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
         with self._conn() as conn:
             total = conn.execute(
-                f"SELECT COUNT(*) FROM messages {where}", params
+                f"SELECT COUNT(*) FROM messages m {joins} {where}", params
             ).fetchone()[0]
             rows = conn.execute(
                 f"""
-                SELECT * FROM messages {where}
-                ORDER BY id DESC
+                SELECT m.* FROM messages m {joins} {where}
+                ORDER BY m.id DESC
                 LIMIT ? OFFSET ?
                 """,
                 [*params, limit, offset],
             ).fetchall()
 
+        items = [self._row_to_message(row) for row in rows]
+        topic_map = self.get_message_topics([m["id"] for m in items])
+        for item in items:
+            item["topics"] = topic_map.get(item["id"], [])
+
         return {
-            "items": [self._row_to_message(row) for row in rows],
+            "items": items,
             "total": total,
             "limit": limit,
             "offset": offset,
@@ -358,6 +749,8 @@ class DashboardStore:
         chat_type: str | None = None,
         direction: str | None = None,
         q: str | None = None,
+        topics: str | None = None,
+        topic_mode: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
         thread_limit: int = 20,
@@ -369,6 +762,8 @@ class DashboardStore:
             chat_type=chat_type,
             direction=direction,
             q=q,
+            topics=topics,
+            topic_mode=topic_mode,
             date_from=date_from,
             date_to=date_to,
             limit=message_cap,

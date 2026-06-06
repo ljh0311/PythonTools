@@ -5,14 +5,17 @@ const DEFAULT_LIMIT = 10;
 export const inboxState = {
   users: [],
   threads: [],
+  messages: [],
   total: 0,
   offset: 0,
   limit: DEFAULT_LIMIT,
+  view: "threads",
   filters: {
     q: "",
     userIds: [],
     chatType: "",
     direction: "",
+    topics: "",
     dateFrom: "",
     dateTo: "",
   },
@@ -44,6 +47,16 @@ function threadTitle(thread) {
   return first ? displayName(first) : `Chat ${thread.chat_id}`;
 }
 
+function renderTopicChips(topics = []) {
+  if (!topics.length) return "";
+  return `<div class="topic-chips">${topics
+    .map(
+      (topic) =>
+        `<span class="topic-chip ${topic.source || "manual"}">${escapeHtml(topic.name)}</span>`
+    )
+    .join("")}</div>`;
+}
+
 function buildFilterParams() {
   return {
     limit: inboxState.limit,
@@ -51,6 +64,7 @@ function buildFilterParams() {
     q: inboxState.filters.q || undefined,
     chat_type: inboxState.filters.chatType || undefined,
     direction: inboxState.filters.direction || undefined,
+    topics: inboxState.filters.topics || undefined,
     date_from: inboxState.filters.dateFrom || undefined,
     date_to: inboxState.filters.dateTo || undefined,
     user_ids: inboxState.filters.userIds.length
@@ -64,8 +78,10 @@ export function readFiltersFromUrl() {
   inboxState.filters.q = params.get("q") || "";
   inboxState.filters.chatType = params.get("chat_type") || "";
   inboxState.filters.direction = params.get("direction") || "";
+  inboxState.filters.topics = params.get("topics") || "";
   inboxState.filters.dateFrom = params.get("from") || "";
   inboxState.filters.dateTo = params.get("to") || "";
+  inboxState.view = params.get("view") === "flat" ? "flat" : "threads";
   const userIds = params.get("user_ids");
   inboxState.filters.userIds = userIds ? userIds.split(",").filter(Boolean) : [];
   inboxState.offset = Number(params.get("offset") || 0);
@@ -73,13 +89,15 @@ export function readFiltersFromUrl() {
 
 export function writeFiltersToUrl() {
   const params = new URLSearchParams();
-  const { q, userIds, chatType, direction, dateFrom, dateTo } = inboxState.filters;
+  const { q, userIds, chatType, direction, topics, dateFrom, dateTo } = inboxState.filters;
   if (q) params.set("q", q);
   if (userIds.length) params.set("user_ids", userIds.join(","));
   if (chatType) params.set("chat_type", chatType);
   if (direction) params.set("direction", direction);
+  if (topics) params.set("topics", topics);
   if (dateFrom) params.set("from", dateFrom);
   if (dateTo) params.set("to", dateTo);
+  if (inboxState.view === "flat") params.set("view", "flat");
   if (inboxState.offset) params.set("offset", String(inboxState.offset));
   const query = params.toString();
   const next = query ? `?${query}` : window.location.pathname;
@@ -88,10 +106,12 @@ export function writeFiltersToUrl() {
 
 export function syncFilterForm() {
   document.getElementById("inbox-search").value = inboxState.filters.q;
+  document.getElementById("inbox-topics").value = inboxState.filters.topics;
   document.getElementById("inbox-chat-type").value = inboxState.filters.chatType;
   document.getElementById("inbox-direction").value = inboxState.filters.direction;
   document.getElementById("inbox-date-from").value = inboxState.filters.dateFrom;
   document.getElementById("inbox-date-to").value = inboxState.filters.dateTo;
+  document.getElementById("inbox-view").value = inboxState.view;
 
   const select = document.getElementById("inbox-users");
   [...select.options].forEach((option) => {
@@ -121,10 +141,38 @@ function renderThreadMessages(messages) {
           <span>${escapeHtml(displayName(item))} · ${item.direction}</span>
           <span>${formatTime(item.created_at)}</span>
         </div>
+        ${renderTopicChips(item.topics)}
         <div class="message-text">${escapeHtml(item.text)}</div>
       </li>`
     )
     .join("");
+}
+
+function renderFlatMessages(messages = []) {
+  const feed = document.getElementById("messages-feed");
+  if (!messages.length) {
+    feed.innerHTML = `<div class="empty-thread">No messages match your filters.</div>`;
+    return;
+  }
+
+  feed.innerHTML = `<ul class="feed inbox-feed">${messages
+    .map(
+      (item) => `
+      <li class="${item.direction}">
+        <div class="meta">
+          <span>${escapeHtml(displayName(item))} · ${item.chat_type || "chat"} · ${item.direction}</span>
+          <span>${formatTime(item.created_at)}</span>
+        </div>
+        ${renderTopicChips(item.topics)}
+        <div class="message-text">${escapeHtml(item.text)}</div>
+        ${
+          item.chat_id
+            ? `<div class="message-actions"><button type="button" class="btn btn-ghost btn-sm reply-btn" data-chat-id="${item.chat_id}">Reply</button></div>`
+            : ""
+        }
+      </li>`
+    )
+    .join("")}</ul>`;
 }
 
 export function renderInboxThreads(threads = [], total = 0) {
@@ -164,13 +212,20 @@ export function renderInboxThreads(threads = [], total = 0) {
       .join("");
   }
 
+  updateInboxCount(total, threads.length);
+}
+
+function updateInboxCount(total, shownCount) {
   const countEl = document.getElementById("inbox-count");
-  const showing = Math.min(inboxState.offset + threads.length, total);
-  countEl.textContent = `Showing ${showing} of ${total} conversations`;
+  const showing = Math.min(inboxState.offset + shownCount, total);
+  const label = inboxState.view === "flat" ? "messages" : "conversations";
+  countEl.textContent = `Showing ${showing} of ${total} ${label}`;
 
   const loadMoreBtn = document.getElementById("inbox-load-more");
-  loadMoreBtn.disabled = inboxState.offset + threads.length >= total;
-  loadMoreBtn.hidden = inboxState.offset + threads.length >= total;
+  loadMoreBtn.textContent =
+    inboxState.view === "flat" ? "Load more messages" : "Load more conversations";
+  loadMoreBtn.disabled = inboxState.offset + shownCount >= total;
+  loadMoreBtn.hidden = inboxState.offset + shownCount >= total;
 }
 
 async function loadThreadSummary(thread, index) {
@@ -208,18 +263,32 @@ export function collectFiltersFromForm() {
   const selected = [...select.selectedOptions].map((o) => o.value);
   inboxState.filters = {
     q: document.getElementById("inbox-search").value.trim(),
+    topics: document.getElementById("inbox-topics").value.trim(),
     userIds: selected,
     chatType: document.getElementById("inbox-chat-type").value,
     direction: document.getElementById("inbox-direction").value,
     dateFrom: document.getElementById("inbox-date-from").value,
     dateTo: document.getElementById("inbox-date-to").value,
   };
+  inboxState.view = document.getElementById("inbox-view").value;
 }
 
 export async function loadInbox({ append = false } = {}) {
   if (!append) inboxState.offset = 0;
 
-  const result = await api.getInboxThreads(buildFilterParams());
+  const params = buildFilterParams();
+
+  if (inboxState.view === "flat") {
+    const result = await api.getMessages(params);
+    const messages = append ? [...inboxState.messages, ...result.items] : result.items;
+    inboxState.messages = messages;
+    renderFlatMessages(messages);
+    updateInboxCount(result.total, messages.length);
+    writeFiltersToUrl();
+    return result;
+  }
+
+  const result = await api.getInboxThreads(params);
   const threads = append ? [...inboxState.threads, ...result.threads] : result.threads;
   renderInboxThreads(threads, result.total);
   writeFiltersToUrl();
@@ -239,6 +308,7 @@ export function bindInbox(onReply, onError) {
   document.getElementById("inbox-clear").addEventListener("click", () => {
     inboxState.filters = {
       q: "",
+      topics: "",
       userIds: [],
       chatType: "",
       direction: "",
@@ -254,6 +324,18 @@ export function bindInbox(onReply, onError) {
       collectFiltersFromForm();
       loadInbox().catch(onError);
     }
+  });
+
+  document.getElementById("inbox-topics").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      collectFiltersFromForm();
+      loadInbox().catch(onError);
+    }
+  });
+
+  document.getElementById("inbox-view").addEventListener("change", () => {
+    collectFiltersFromForm();
+    loadInbox().catch(onError);
   });
 
   document.getElementById("inbox-load-more").addEventListener("click", () => {
