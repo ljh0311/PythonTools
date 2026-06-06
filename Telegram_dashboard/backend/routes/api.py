@@ -75,9 +75,47 @@ async def metrics() -> dict[str, Any]:
     return store.metrics()
 
 
+@router.get("/users", dependencies=[Depends(verify_api_key)])
+async def users() -> list[dict[str, Any]]:
+    return store.list_users()
+
+
 @router.get("/messages", dependencies=[Depends(verify_api_key)])
-async def messages(limit: int = 50) -> list[dict[str, Any]]:
-    return store.recent_messages(limit)
+async def messages(
+    user_ids: str = "",
+    chat_type: str | None = None,
+    direction: str | None = None,
+    q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    parsed_user_ids: list[int] | None = None
+    if user_ids.strip():
+        parsed_user_ids = [int(uid) for uid in user_ids.split(",") if uid.strip()]
+
+    if chat_type and chat_type not in ("private", "group"):
+        raise HTTPException(status_code=400, detail="chat_type must be private or group")
+
+    if direction and direction not in ("incoming", "outgoing"):
+        raise HTTPException(status_code=400, detail="direction must be incoming or outgoing")
+
+    if date_from and len(date_from) == 10:
+        date_from = f"{date_from}T00:00:00"
+    if date_to and len(date_to) == 10:
+        date_to = f"{date_to}T23:59:59"
+
+    return store.query_messages(
+        user_ids=parsed_user_ids,
+        chat_type=chat_type,
+        direction=direction,
+        q=q,
+        date_from=date_from,
+        date_to=date_to,
+        limit=min(limit, 200),
+        offset=offset,
+    )
 
 
 @router.get("/events", dependencies=[Depends(verify_api_key)])
@@ -121,8 +159,18 @@ async def send_message(body: SendMessageRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Telegram bot token not configured")
 
     result = await telegram_service.send_message(body.chat_id, body.text)
-    store.add_message(int(body.chat_id), None, "outgoing", body.text)
-    await ws_manager.broadcast("message_sent", {"chat_id": body.chat_id, "text": body.text})
+    chat_id_int = int(body.chat_id)
+    store.add_message(
+        0,
+        "operator",
+        "outgoing",
+        body.text,
+        chat_id=chat_id_int,
+        chat_type="private",
+    )
+    await ws_manager.broadcast(
+        "message_sent", {"chat_id": body.chat_id, "text": body.text}
+    )
     return result
 
 

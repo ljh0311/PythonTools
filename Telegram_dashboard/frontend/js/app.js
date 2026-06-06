@@ -1,5 +1,11 @@
 import { api, connectWebSocket } from "./api.js";
 import { renderCommandChart } from "./chart.js";
+import {
+  bindInbox,
+  loadInbox,
+  renderInbox,
+  renderUserFilter,
+} from "./inbox.js";
 import { initTheme } from "./theme.js";
 
 const state = {
@@ -24,22 +30,6 @@ function renderMetrics(metrics = {}) {
   document.getElementById("connected-users").textContent = metrics.connected_users ?? 0;
   document.getElementById("total-messages").textContent = metrics.total_messages ?? 0;
   document.getElementById("total-commands").textContent = metrics.total_commands ?? 0;
-}
-
-function renderMessages(messages = []) {
-  const feed = document.getElementById("messages-feed");
-  feed.innerHTML = messages
-    .map(
-      (item) => `
-      <li class="${item.direction}">
-        <div class="meta">
-          <span>${item.username || `User ${item.user_id}`} · ${item.direction}</span>
-          <span>${formatTime(item.created_at)}</span>
-        </div>
-        <div>${escapeHtml(item.text)}</div>
-      </li>`
-    )
-    .join("");
 }
 
 function renderEvents(events = []) {
@@ -101,7 +91,7 @@ function renderQuickActions(actions = []) {
       try {
         await api.sendMessage(chatId, command);
         showToast(`Sent ${command}`);
-        await refreshAll();
+        await refreshDashboard();
       } catch (error) {
         showToast(error.message);
       }
@@ -134,11 +124,20 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-async function refreshAll() {
-  const [metrics, messages, events, analytics, quickActions, feedback, botStatus] =
+function prefillReply(chatId) {
+  const field = document.getElementById("chat-id");
+  field.value = chatId;
+  field.focus();
+  document.getElementById("send-form").scrollIntoView({ behavior: "smooth", block: "center" });
+  showToast(`Chat ID ${chatId} ready for reply.`);
+}
+
+async function refreshDashboard() {
+  const [metrics, users, inbox, events, analytics, quickActions, feedback, botStatus] =
     await Promise.all([
       api.getMetrics(),
-      api.getMessages(),
+      api.getUsers(),
+      loadInbox(),
       api.getEvents(),
       api.getAnalytics(),
       api.getQuickActions(),
@@ -147,7 +146,8 @@ async function refreshAll() {
     ]);
 
   renderMetrics(metrics);
-  renderMessages(messages);
+  renderUserFilter(users);
+  renderInbox(inbox.items, inbox.total);
   renderEvents(events);
   renderCommandChart(document.getElementById("command-chart"), analytics);
   renderQuickActions(quickActions);
@@ -165,7 +165,7 @@ async function refreshAll() {
 
 function bindForms() {
   document.getElementById("refresh-btn").addEventListener("click", () => {
-    refreshAll().catch((error) => showToast(error.message));
+    refreshDashboard().catch((error) => showToast(error.message));
   });
 
   document.getElementById("send-form").addEventListener("submit", async (event) => {
@@ -176,7 +176,7 @@ function bindForms() {
       await api.sendMessage(chatId, text);
       document.getElementById("message-text").value = "";
       showToast("Message sent.");
-      await refreshAll();
+      await refreshDashboard();
     } catch (error) {
       showToast(error.message);
     }
@@ -190,7 +190,7 @@ function bindForms() {
       await api.submitFeedback({ rating, comment, username: "dashboard_user" });
       document.getElementById("feedback-comment").value = "";
       showToast("Feedback submitted.");
-      await refreshAll();
+      await refreshDashboard();
     } catch (error) {
       showToast(error.message);
     }
@@ -211,7 +211,7 @@ function bindForms() {
       const actions = collectQuickActionsFromDom();
       await api.saveQuickActions(actions);
       showToast("Quick actions saved.");
-      await refreshAll();
+      await refreshDashboard();
     } catch (error) {
       showToast(error.message);
     }
@@ -222,7 +222,7 @@ function handleRealtime(message) {
   const { event, data } = message;
   if (event === "snapshot") {
     renderMetrics(data.metrics);
-    renderMessages(data.messages);
+    renderInbox(data.messages, data.messages?.length || 0);
     renderEvents(data.events);
     renderQuickActions(data.quick_actions);
     renderFeedback(data.feedback);
@@ -231,11 +231,11 @@ function handleRealtime(message) {
   }
 
   if (event === "telegram_update" || event === "message_sent") {
-    refreshAll().catch(() => {});
+    refreshDashboard().catch(() => {});
   }
 
   if (event === "feedback_received") {
-    renderFeedback([data, ...state.feedback || []]);
+    renderFeedback([data, ...(state.feedback || [])]);
   }
 
   if (event === "quick_actions_updated") {
@@ -246,9 +246,10 @@ function handleRealtime(message) {
 async function init() {
   initTheme();
   bindForms();
+  bindInbox(prefillReply, (error) => showToast(error.message));
 
   try {
-    await refreshAll();
+    await refreshDashboard();
   } catch (error) {
     showToast(error.message);
   }

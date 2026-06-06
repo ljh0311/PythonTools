@@ -19,9 +19,21 @@ async function request(path, options = {}) {
   return response.json();
 }
 
+function buildQuery(params = {}) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      search.set(key, value);
+    }
+  });
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}
+
 export const api = {
   getMetrics: () => request("/api/metrics"),
-  getMessages: (limit = 50) => request(`/api/messages?limit=${limit}`),
+  getUsers: () => request("/api/users"),
+  getMessages: (params = {}) => request(`/api/messages${buildQuery(params)}`),
   getEvents: (limit = 50) => request(`/api/events?limit=${limit}`),
   getAnalytics: (days = 7) => request(`/api/analytics/commands?days=${days}`),
   getQuickActions: () => request("/api/quick-actions"),

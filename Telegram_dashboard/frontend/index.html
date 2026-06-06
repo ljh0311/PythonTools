@@ -53,11 +53,39 @@
         </div>
       </section>
 
-      <section class="card span-2" aria-labelledby="messages-title">
+      <section class="card span-2 inbox-card" aria-labelledby="messages-title">
         <div class="card-header">
-          <h2 id="messages-title">Recent Messages</h2>
+          <h2 id="messages-title">Inbox</h2>
+          <span id="inbox-count" class="subtitle">Showing 0 of 0</span>
         </div>
-        <ul id="messages-feed" class="feed" aria-live="polite"></ul>
+        <div class="inbox-filters">
+          <input id="inbox-search" type="search" placeholder="Search message content…" aria-label="Search messages" />
+          <select id="inbox-users" multiple size="3" aria-label="Filter by users">
+          </select>
+          <p class="filter-hint">Hold Ctrl/Cmd to select multiple users. Leave empty for everyone.</p>
+          <div class="filter-row">
+            <select id="inbox-chat-type" aria-label="Chat type">
+              <option value="">All chat types</option>
+              <option value="private">Private</option>
+              <option value="group">Group</option>
+            </select>
+            <select id="inbox-direction" aria-label="Direction">
+              <option value="">All directions</option>
+              <option value="incoming">Incoming</option>
+              <option value="outgoing">Outgoing</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <input id="inbox-date-from" type="date" aria-label="From date" />
+            <input id="inbox-date-to" type="date" aria-label="To date" />
+          </div>
+          <div class="filter-actions">
+            <button id="inbox-apply" class="btn btn-primary btn-sm" type="button">Apply filters</button>
+            <button id="inbox-clear" class="btn btn-ghost btn-sm" type="button">Clear</button>
+          </div>
+        </div>
+        <ul id="messages-feed" class="feed inbox-feed" aria-live="polite"></ul>
+        <button id="inbox-load-more" class="btn btn-ghost load-more" type="button" hidden>Load more</button>
       </section>
 
       <section class="card" aria-labelledby="events-title">

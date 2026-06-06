@@ -7,6 +7,16 @@ from backend.services.telegram_service import telegram_service
 
 
 COMMAND_PATTERN = re.compile(r"^/(\w+)")
+SUPPORTED_CHAT_TYPES = {"private", "group"}
+
+
+def _normalize_chat_type(chat: dict[str, Any]) -> str | None:
+    chat_type = chat.get("type", "")
+    if chat_type == "channel":
+        return None
+    if chat_type in SUPPORTED_CHAT_TYPES:
+        return chat_type
+    return None
 
 
 async def handle_telegram_update(update: dict[str, Any]) -> dict[str, Any] | None:
@@ -17,23 +27,61 @@ async def handle_telegram_update(update: dict[str, Any]) -> dict[str, Any] | Non
 
     user = message.get("from", {})
     chat = message.get("chat", {})
-    text = (message.get("text") or "").strip()
+    chat_type = _normalize_chat_type(chat)
+
+    if chat_type is None:
+        store.add_event("unsupported_chat_type", {"chat": chat, "update": update})
+        return None
+
+    text = (message.get("text") or message.get("caption") or "").strip()
+    if not text:
+        store.add_event("empty_message", {"message_id": message.get("message_id")})
+        return None
+
     user_id = user.get("id")
     chat_id = chat.get("id")
     username = user.get("username")
+    chat_title = chat.get("title") if chat_type == "group" else None
 
     store.upsert_user(user)
-    store.add_message(user_id, username, "incoming", text)
-    store.add_event("message_received", {"user_id": user_id, "text": text})
+    stored = store.add_message(
+        user_id,
+        username,
+        "incoming",
+        text,
+        chat_id=chat_id,
+        message_id=message.get("message_id"),
+        chat_type=chat_type,
+        chat_title=chat_title,
+        reply_to_message_id=(message.get("reply_to_message") or {}).get("message_id"),
+    )
+    store.add_event(
+        "message_received",
+        {"user_id": user_id, "chat_id": chat_id, "chat_type": chat_type, "text": text},
+    )
 
     match = COMMAND_PATTERN.match(text)
     if match:
         store.track_command(f"/{match.group(1)}")
 
     reply = await ai_service.process_message(text, store)
-    store.add_message(user_id, username, "outgoing", reply)
+    store.add_message(
+        user_id,
+        username,
+        "outgoing",
+        reply,
+        chat_id=chat_id,
+        chat_type=chat_type,
+        chat_title=chat_title,
+    )
 
     if telegram_service.configured and chat_id:
         await telegram_service.send_message(chat_id, reply)
 
-    return {"user_id": user_id, "chat_id": chat_id, "reply": reply}
+    return {
+        "user_id": user_id,
+        "chat_id": chat_id,
+        "chat_type": chat_type,
+        "message": stored,
+        "reply": reply,
+    }

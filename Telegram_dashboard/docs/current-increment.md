@@ -83,13 +83,35 @@ Establish a working Telegram bot backend and operator dashboard with message ing
 
 ---
 
+## Sprint 1 increment — Inbox & Filtering ✅
+
+**Status:** Delivered
+
+### New capabilities
+
+| Story | Delivered |
+|-------|-----------|
+| US-1.1 Rich message storage | `chat_id`, `message_id`, `chat_type`, `chat_title`, `reply_to_message_id`; channels ignored |
+| US-1.2 User directory | `GET /api/users` |
+| US-1.3 Filtered messages API | `GET /api/messages` with filters + pagination |
+| US-1.4 Inbox UI | Search, user multi-select, chat type, direction, dates, load more, URL params |
+| US-1.5 Reply targeting | Reply button pre-fills chat ID |
+
+### Demo
+
+```bash
+cd Telegram_dashboard
+PYTHONPATH=$(pwd) python3 scripts/seed_demo_data.py
+PYTHONPATH=$(pwd) python3 -m backend.main
+# Open http://localhost:8000
+```
+
+---
+
 ## Known limitations (drives backlog)
 
 | Gap | Impact | Addressed in |
 |-----|--------|--------------|
-| No message filters (user, content, date) | Cannot narrow inbox | Sprint 1 |
-| No pagination beyond 50 messages | Cannot browse history | Sprint 1 |
-| No `chat_id` / `message_id` on stored messages | Reply targeting incomplete | Sprint 1 |
 | AI responds to users, not operator | No summaries or suggestions | Sprint 2 |
 | No topic tagging | Cannot filter by theme | Sprint 3 |
 | Bot auto-replies to every message | Conflicts with review workflow | Sprint 3 |

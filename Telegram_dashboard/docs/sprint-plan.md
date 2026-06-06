@@ -20,7 +20,7 @@ Sprint length recommendation: **2 weeks** per sprint (adjust based on capacity).
 
 | Field | Value |
 |-------|-------|
-| Status | **Planned — next** |
+| Status | **✅ Complete** |
 | Goal | Operator can browse and filter all recent messages |
 | Epic | E1 |
 | Stories | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5 |
@@ -37,7 +37,15 @@ Sprint length recommendation: **2 weeks** per sprint (adjust based on capacity).
 ### Sprint 1 definition of ready
 
 - [x] Client confirms message scope: **private + group chats; no channels** (D-02 — [risks-and-decisions.md](risks-and-decisions.md))
-- [ ] Sprint 0 code merged and runnable locally
+- [x] Sprint 0 code merged and runnable locally
+
+### Sprint 1 retrospective
+
+| Question | Notes |
+|----------|-------|
+| What went well? | Filtered API, inbox UI, and demo seed script delivered in one increment |
+| What didn't go well? | — |
+| What will we change in Sprint 2? | Add redaction layer before AI features |
 
 ### Sprint 1 review demo script
 

@@ -8,6 +8,20 @@ from typing import Any
 
 from backend.config import DATABASE_PATH
 
+MESSAGE_COLUMNS = (
+    "id",
+    "user_id",
+    "username",
+    "direction",
+    "text",
+    "created_at",
+    "chat_id",
+    "message_id",
+    "chat_type",
+    "chat_title",
+    "reply_to_message_id",
+)
+
 
 class DashboardStore:
     def __init__(self, db_path: str = str(DATABASE_PATH)):
@@ -24,6 +38,32 @@ class DashboardStore:
             conn.commit()
         finally:
             conn.close()
+
+    def _migrate_messages(self, conn: sqlite3.Connection) -> None:
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(messages)")}
+        additions = {
+            "chat_id": "INTEGER",
+            "message_id": "INTEGER",
+            "chat_type": "TEXT",
+            "chat_title": "TEXT",
+            "reply_to_message_id": "INTEGER",
+        }
+        for column, col_type in additions.items():
+            if column not in existing:
+                conn.execute(f"ALTER TABLE messages ADD COLUMN {column} {col_type}")
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_chat_type ON messages(chat_type)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)"
+        )
 
     def _init_db(self) -> None:
         with self._conn() as conn:
@@ -71,6 +111,7 @@ class DashboardStore:
                 );
                 """
             )
+            self._migrate_messages(conn)
             count = conn.execute("SELECT COUNT(*) FROM quick_actions").fetchone()[0]
             if count == 0:
                 defaults = [
@@ -107,25 +148,49 @@ class DashboardStore:
             )
 
     def add_message(
-        self, user_id: int, username: str | None, direction: str, text: str
+        self,
+        user_id: int,
+        username: str | None,
+        direction: str,
+        text: str,
+        *,
+        chat_id: int | None = None,
+        message_id: int | None = None,
+        chat_type: str | None = None,
+        chat_title: str | None = None,
+        reply_to_message_id: int | None = None,
     ) -> dict[str, Any]:
         created_at = datetime.utcnow().isoformat()
         with self._conn() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO messages (user_id, username, direction, text, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO messages (
+                    user_id, username, direction, text, created_at,
+                    chat_id, message_id, chat_type, chat_title, reply_to_message_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, username, direction, text, created_at),
+                (
+                    user_id,
+                    username,
+                    direction,
+                    text,
+                    created_at,
+                    chat_id,
+                    message_id,
+                    chat_type,
+                    chat_title,
+                    reply_to_message_id,
+                ),
             )
-            return {
-                "id": cur.lastrowid,
-                "user_id": user_id,
-                "username": username,
-                "direction": direction,
-                "text": text,
-                "created_at": created_at,
-            }
+            return self._row_to_message(
+                conn.execute(
+                    "SELECT * FROM messages WHERE id = ?", (cur.lastrowid,)
+                ).fetchone()
+            )
+
+    def _row_to_message(self, row: sqlite3.Row) -> dict[str, Any]:
+        return dict(row)
 
     def add_event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         created_at = datetime.utcnow().isoformat()
@@ -177,16 +242,98 @@ class DashboardStore:
             ).fetchone()
             return int(row["c"])
 
-    def recent_messages(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_users(self) -> list[dict[str, Any]]:
         with self._conn() as conn:
             rows = conn.execute(
                 """
-                SELECT id, user_id, username, direction, text, created_at
-                FROM messages ORDER BY id DESC LIMIT ?
-                """,
-                (limit,),
+                SELECT
+                    u.user_id,
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    u.last_seen,
+                    COUNT(m.id) AS message_count
+                FROM users u
+                LEFT JOIN messages m ON m.user_id = u.user_id
+                GROUP BY u.user_id
+                ORDER BY u.last_seen DESC
+                """
             ).fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for row in rows:
+            item = dict(row)
+            parts = [item.get("first_name") or "", item.get("last_name") or ""]
+            display = " ".join(p for p in parts if p).strip()
+            if not display:
+                display = item.get("username") or f"User {item['user_id']}"
+            item["display_name"] = display
+            result.append(item)
+        return result
+
+    def query_messages(
+        self,
+        *,
+        user_ids: list[int] | None = None,
+        chat_type: str | None = None,
+        direction: str | None = None,
+        q: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        clauses: list[str] = []
+        params: list[Any] = []
+
+        if user_ids:
+            placeholders = ",".join("?" for _ in user_ids)
+            clauses.append(f"user_id IN ({placeholders})")
+            params.extend(user_ids)
+
+        if chat_type:
+            clauses.append("chat_type = ?")
+            params.append(chat_type)
+
+        if direction:
+            clauses.append("direction = ?")
+            params.append(direction)
+
+        if q:
+            clauses.append("LOWER(text) LIKE ?")
+            params.append(f"%{q.lower()}%")
+
+        if date_from:
+            clauses.append("created_at >= ?")
+            params.append(date_from)
+
+        if date_to:
+            clauses.append("created_at <= ?")
+            params.append(date_to)
+
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+        with self._conn() as conn:
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM messages {where}", params
+            ).fetchone()[0]
+            rows = conn.execute(
+                f"""
+                SELECT * FROM messages {where}
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+                """,
+                [*params, limit, offset],
+            ).fetchall()
+
+        return {
+            "items": [self._row_to_message(row) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def recent_messages(self, limit: int = 50) -> list[dict[str, Any]]:
+        return self.query_messages(limit=limit, offset=0)["items"]
 
     def recent_events(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._conn() as conn:
