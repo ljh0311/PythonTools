@@ -60,9 +60,11 @@ function renderEvents(events = []) {
 }
 
 function renderQuickActions(actions = []) {
-  state.quickActions = actions;
   const panel = document.getElementById("quick-actions");
-  panel.innerHTML = actions
+  if (!panel) return;
+  const list = Array.isArray(actions) ? actions : [];
+  state.quickActions = list;
+  panel.innerHTML = list
     .map(
       (action, index) => `
       <div class="action-row" data-index="${index}">
