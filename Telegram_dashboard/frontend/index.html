@@ -79,6 +79,24 @@
             <button id="inbox-clear" class="btn btn-ghost btn-sm" type="button">Clear</button>
           </div>
         </div>
+        <section class="ai-insights" aria-labelledby="ai-insights-title">
+          <div class="card-header">
+            <h3 id="ai-insights-title">AI Insights</h3>
+            <p class="filter-hint">Uses your active inbox filters</p>
+          </div>
+          <div class="insight-toolbar">
+            <select id="summary-type" aria-label="Summary type">
+              <option value="brief">Brief</option>
+              <option value="detailed">Detailed</option>
+              <option value="bullets">Bullet points</option>
+              <option value="unanswered">Unanswered questions</option>
+            </select>
+            <button id="btn-summarize" class="btn btn-primary btn-sm" type="button">Summarize</button>
+            <button id="btn-suggest" class="btn btn-ghost btn-sm" type="button">Suggest actions</button>
+          </div>
+          <div id="summary-panel" class="insight-panel" hidden></div>
+          <div id="suggestions-panel" class="insight-panel" hidden></div>
+        </section>
         <div id="messages-feed" class="thread-list" aria-live="polite"></div>
         <button id="inbox-load-more" class="btn btn-ghost load-more" type="button" hidden>Load more conversations</button>
       </section>

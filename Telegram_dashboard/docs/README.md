@@ -39,5 +39,5 @@ We follow a lightweight Scrum-inspired process:
 - **Active branch:** `cursor/telegram-dashboard-98e1`
 - **Completed:** Sprint 0 — Foundation (see [current-increment.md](current-increment.md))
 - **Client decisions:** All 5 open items resolved (see [risks-and-decisions.md](risks-and-decisions.md))
-- **Completed:** Sprint 1 — Inbox & Filtering
-- **Next up:** Sprint 2 — AI Summaries & Suggested Actions (see [sprint-plan.md](sprint-plan.md))
+- **Completed:** Sprint 1 — Inbox & Filtering · Sprint 2 — AI Summaries & Suggested Actions
+- **Next up:** Sprint 3 — Topics & Operator Workflow (see [sprint-plan.md](sprint-plan.md))

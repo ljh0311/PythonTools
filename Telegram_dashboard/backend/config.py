@@ -21,3 +21,6 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
+
+SUMMARY_CACHE_TTL = int(os.getenv("SUMMARY_CACHE_TTL", "3600"))
+REDACTION_EXTRA_PATTERNS = os.getenv("REDACTION_EXTRA_PATTERNS", "")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture dashboard demo screenshots."""
+"""Capture Sprint 2 demo screenshots."""
 
 import asyncio
 import sys
@@ -15,14 +15,24 @@ OUT.mkdir(parents=True, exist_ok=True)
 async def main() -> None:
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        page = await browser.new_page(viewport={"width": 1400, "height": 1000})
+        page = await browser.new_page(viewport={"width": 1400, "height": 1100})
         await page.goto(URL, wait_until="networkidle")
-        await page.wait_for_timeout(3000)
-        await page.screenshot(path=str(OUT / "inbox-threads-summary.png"), full_page=True)
+        await page.wait_for_timeout(2500)
 
-        await page.goto(f"{URL}/feedback", wait_until="networkidle")
-        await page.wait_for_timeout(800)
-        await page.screenshot(path=str(OUT / "feedback-page.png"), full_page=True)
+        await page.click("#btn-summarize")
+        await page.wait_for_timeout(2000)
+        await page.screenshot(path=str(OUT / "sprint2-summary.png"), full_page=True)
+
+        await page.click("#btn-suggest")
+        await page.wait_for_timeout(2000)
+        await page.screenshot(path=str(OUT / "sprint2-suggestions.png"), full_page=True)
+
+        await page.select_option("#inbox-chat-type", "group")
+        await page.click("#inbox-apply")
+        await page.wait_for_timeout(1500)
+        await page.click("#btn-summarize")
+        await page.wait_for_timeout(2000)
+        await page.screenshot(path=str(OUT / "sprint2-group-summary.png"), full_page=True)
 
         await browser.close()
     print(f"Screenshots saved to {OUT}")

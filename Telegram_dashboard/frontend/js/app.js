@@ -1,5 +1,6 @@
 import { api, connectWebSocket } from "./api.js";
 import { renderCommandChart } from "./chart.js";
+import { bindInsights } from "./insights.js";
 import { bindInbox, loadInbox, renderUserFilter } from "./inbox.js";
 import { initTheme } from "./theme.js";
 
@@ -203,6 +204,10 @@ async function init() {
   initTheme();
   bindForms();
   bindInbox(prefillReply, (error) => showToast(error.message));
+  bindInsights(
+    (error) => showToast(error),
+    () => showToast("Suggestion sent.")
+  );
 
   try {
     await refreshDashboard();

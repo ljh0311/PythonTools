@@ -44,6 +44,41 @@ class SummarizeThreadRequest(BaseModel):
     message_ids: list[int] | None = None
 
 
+class FilteredAiRequest(BaseModel):
+    summary_type: str = "brief"
+    user_ids: str = ""
+    chat_type: str | None = None
+    direction: str | None = None
+    q: str | None = None
+    date_from: str | None = None
+    date_to: str | None = None
+
+
+def _fetch_filtered_messages(body: FilteredAiRequest, limit: int = 500) -> tuple[list[dict], dict]:
+    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
+        body.user_ids, body.chat_type, body.direction, body.date_from, body.date_to
+    )
+    filters = {
+        "user_ids": body.user_ids,
+        "chat_type": body.chat_type,
+        "direction": body.direction,
+        "q": body.q,
+        "date_from": body.date_from,
+        "date_to": body.date_to,
+    }
+    result = store.query_messages(
+        user_ids=parsed_user_ids,
+        chat_type=chat_type,
+        direction=direction,
+        q=body.q,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=0,
+    )
+    return result["items"], filters
+
+
 class WebSocketManager:
     def __init__(self):
         self.connections: list[WebSocket] = []
@@ -172,6 +207,22 @@ async def summarize_thread(body: SummarizeThreadRequest) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="No messages for this chat")
     result = await ai_service.summarize_thread(messages)
     return {"chat_id": body.chat_id, **result}
+
+
+@router.post("/ai/summarize", dependencies=[Depends(verify_api_key)])
+async def summarize_filtered(body: FilteredAiRequest) -> dict[str, Any]:
+    if body.summary_type not in ("brief", "detailed", "bullets", "unanswered"):
+        raise HTTPException(status_code=400, detail="Invalid summary_type")
+    messages, filters = _fetch_filtered_messages(body)
+    return await ai_service.summarize_messages(
+        messages, summary_type=body.summary_type, filters={**filters, "summary_type": body.summary_type}
+    )
+
+
+@router.post("/ai/suggest-actions", dependencies=[Depends(verify_api_key)])
+async def suggest_actions(body: FilteredAiRequest) -> dict[str, Any]:
+    messages, _filters = _fetch_filtered_messages(body)
+    return await ai_service.suggest_actions(messages)
 
 
 @router.get("/events", dependencies=[Depends(verify_api_key)])

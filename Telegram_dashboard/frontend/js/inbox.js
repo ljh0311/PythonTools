@@ -186,8 +186,12 @@ async function loadThreadSummary(thread, index) {
   try {
     const messageIds = thread.messages.map((m) => m.id);
     const result = await api.summarizeThread(thread.chat_id, messageIds);
+    const redaction = result.redaction_applied
+      ? `<p class="redaction-notice">Sensitive data redacted (${result.redaction_count}) before AI.</p>`
+      : "";
     summaryEl.innerHTML = `
       <strong>AI Summary</strong>
+      ${redaction}
       <p>${escapeHtml(result.summary)}</p>
       <span class="summary-provider">via ${escapeHtml(result.provider)}</span>`;
   } catch {

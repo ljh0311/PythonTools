@@ -23,7 +23,7 @@ def seed() -> None:
         store.upsert_user(user)
 
     samples = [
-        (101, "alice", "incoming", "Hi, I need help with my billing invoice", 1001, 1001, "private", None, 2),
+        (101, "alice", "incoming", "Hi, my NRIC is S1234567A and I need help with billing", 1001, 1001, "private", None, 2),
         (101, "alice", "outgoing", "Sure, I can help with billing.", 1001, None, "private", None, 1),
         (102, "bob_dev", "incoming", "Can we schedule a demo for the new feature?", 1002, 2001, "private", None, 3),
         (103, "carol", "incoming", "Team standup moved to 3pm today", 2001, 3001, "group", "Project Alpha", 4),

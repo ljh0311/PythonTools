@@ -40,6 +40,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ chat_id: chatId, message_ids: messageIds }),
     }),
+  summarize: (payload) =>
+    request("/api/ai/summarize", { method: "POST", body: JSON.stringify(payload) }),
+  suggestActions: (payload) =>
+    request("/api/ai/suggest-actions", { method: "POST", body: JSON.stringify(payload) }),
   getEvents: (limit = 50) => request(`/api/events?limit=${limit}`),
   getAnalytics: (days = 7) => request(`/api/analytics/commands?days=${days}`),
   getQuickActions: () => request("/api/quick-actions"),

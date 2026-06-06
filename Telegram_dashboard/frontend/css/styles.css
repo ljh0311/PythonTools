@@ -302,6 +302,129 @@ h2 {
   margin: 0 auto;
 }
 
+.ai-insights {
+  margin-bottom: 0.85rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.ai-insights h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.insight-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.65rem 0;
+}
+
+.insight-panel {
+  margin-top: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-hover);
+}
+
+.insight-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.insight-text {
+  margin: 0 0 0.5rem;
+  line-height: 1.5;
+}
+
+.summary-meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.redaction-notice {
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  background: rgba(240, 113, 120, 0.12);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.toggle-originals {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.originals-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.originals-list li {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.suggestion-cards {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.suggestion-card {
+  padding: 0.65rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.suggestion-card.priority-high {
+  border-left: 3px solid var(--danger);
+}
+
+.suggestion-card.priority-medium {
+  border-left: 3px solid var(--accent);
+}
+
+.suggestion-card.priority-low {
+  border-left: 3px solid var(--text-muted);
+}
+
+.suggestion-meta {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.suggestion-draft {
+  width: 100%;
+  margin: 0.35rem 0;
+}
+
+.suggestion-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.error-text {
+  color: var(--danger);
+}
+
 .inbox-feed {
   max-height: 420px;
 }
