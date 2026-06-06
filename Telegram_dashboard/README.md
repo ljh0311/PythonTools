@@ -41,6 +41,14 @@ Telegram_dashboard/
 └── .env.example
 ```
 
+## Run modes
+
+| Mode | Guide |
+|------|-------|
+| **Local (no Docker)** | [local_mode.md](local_mode.md) |
+| **Docker** | [docker_mode.md](docker_mode.md) |
+| **OpenClaw agent** | [docs/openclaw-integration.md](docs/openclaw-integration.md) |
+
 ## Setup
 
 1. Create a virtual environment and install dependencies:

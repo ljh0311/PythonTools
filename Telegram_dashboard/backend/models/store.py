@@ -154,6 +154,17 @@ class DashboardStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_suggestions_filter_hash ON suggestions(filter_hash);
                 CREATE INDEX IF NOT EXISTS idx_suggestions_status ON suggestions(status);
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token TEXT PRIMARY KEY,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS filter_presets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    filters_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             self._migrate_messages(conn)
@@ -983,6 +994,73 @@ class DashboardStore:
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def create_session(self, token: str, expires_at: str) -> None:
+        created_at = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO sessions (token, expires_at, created_at) VALUES (?, ?, ?)",
+                (token, expires_at, created_at),
+            )
+
+    def session_valid(self, token: str) -> bool:
+        now = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT expires_at FROM sessions WHERE token = ?", (token,)
+            ).fetchone()
+        if not row:
+            return False
+        if row["expires_at"] < now:
+            self.delete_session(token)
+            return False
+        return True
+
+    def delete_session(self, token: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+
+    def purge_expired_sessions(self) -> None:
+        now = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
+
+    def list_filter_presets(self) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, name, filters_json, created_at FROM filter_presets ORDER BY name"
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["filters"] = json.loads(item.pop("filters_json"))
+            result.append(item)
+        return result
+
+    def save_filter_preset(self, name: str, filters: dict[str, Any]) -> dict[str, Any]:
+        created_at = datetime.utcnow().isoformat()
+        payload = json.dumps(filters, sort_keys=True)
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO filter_presets (name, filters_json, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET filters_json = excluded.filters_json
+                """,
+                (name.strip(), payload, created_at),
+            )
+            row = conn.execute(
+                "SELECT id, name, filters_json, created_at FROM filter_presets WHERE name = ?",
+                (name.strip(),),
+            ).fetchone()
+        item = dict(row)
+        item["filters"] = json.loads(item.pop("filters_json"))
+        return item
+
+    def delete_filter_preset(self, preset_id: int) -> bool:
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM filter_presets WHERE id = ?", (preset_id,))
+        return cur.rowcount > 0
 
     def metrics(self) -> dict[str, Any]:
         with self._conn() as conn:

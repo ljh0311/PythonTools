@@ -296,9 +296,39 @@ export async function loadInbox({ append = false } = {}) {
   return result;
 }
 
+async function loadPresets() {
+  const select = document.getElementById("inbox-presets");
+  if (!select) return;
+  const presets = await api.getPresets();
+  select.innerHTML =
+    `<option value="">Load preset…</option>` +
+    presets.map((p) => `<option value="${p.id}">${p.name}</option>`).join("");
+  select.dataset.presets = JSON.stringify(presets);
+}
+
+function applyPreset(presetId) {
+  const select = document.getElementById("inbox-presets");
+  const presets = JSON.parse(select.dataset.presets || "[]");
+  const preset = presets.find((p) => String(p.id) === String(presetId));
+  if (!preset) return;
+  const f = preset.filters || {};
+  inboxState.filters = {
+    q: f.q || "",
+    topics: f.topics || "",
+    userIds: f.userIds || (f.user_ids ? String(f.user_ids).split(",") : []),
+    chatType: f.chatType || f.chat_type || "",
+    direction: f.direction || "",
+    dateFrom: f.dateFrom || f.date_from || "",
+    dateTo: f.dateTo || f.date_to || "",
+  };
+  inboxState.view = f.view || "threads";
+  syncFilterForm();
+}
+
 export function bindInbox(onReply, onError) {
   readFiltersFromUrl();
   syncFilterForm();
+  loadPresets().catch(onError);
 
   document.getElementById("inbox-apply").addEventListener("click", () => {
     collectFiltersFromForm();
@@ -347,5 +377,39 @@ export function bindInbox(onReply, onError) {
     const button = event.target.closest(".reply-btn");
     if (!button) return;
     onReply(button.dataset.chatId);
+  });
+
+  document.getElementById("inbox-presets")?.addEventListener("change", (event) => {
+    if (!event.target.value) return;
+    applyPreset(event.target.value);
+    loadInbox().catch(onError);
+  });
+
+  document.getElementById("inbox-save-preset")?.addEventListener("click", async () => {
+    const name = window.prompt("Preset name (e.g. VIP today)");
+    if (!name) return;
+    collectFiltersFromForm();
+    await api.savePreset(name, { ...inboxState.filters, view: inboxState.view });
+    await loadPresets();
+  });
+
+  document.getElementById("inbox-delete-preset")?.addEventListener("click", async () => {
+    const select = document.getElementById("inbox-presets");
+    if (!select.value) return;
+    await api.deletePreset(Number(select.value));
+    await loadPresets();
+  });
+
+  document.getElementById("inbox-export")?.addEventListener("click", async () => {
+    collectFiltersFromForm();
+    const params = buildFilterParams();
+    const csv = await api.exportMessages(params);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "messages-export.csv";
+    link.click();
+    URL.revokeObjectURL(url);
   });
 }

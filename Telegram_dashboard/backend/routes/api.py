@@ -1,20 +1,20 @@
+import csv
+import io
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.config import DASHBOARD_API_KEY
 from backend.models.store import store
+from backend.routes.deps import verify_operator
 from backend.services.ai_service import ai_service
+from backend.services.auth_service import validate_token
 from backend.services.telegram_service import telegram_service
 
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
-
-
-def verify_api_key(x_api_key: str = Header(default="")) -> None:
-    if x_api_key != DASHBOARD_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 class SendMessageRequest(BaseModel):
@@ -76,6 +76,11 @@ class SuggestionStatusRequest(BaseModel):
     status: str = Field(pattern="^(pending|sent|dismissed|done)$")
 
 
+class FilterPresetRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    filters: dict[str, Any]
+
+
 def _fetch_filtered_messages(body: FilteredAiRequest, limit: int = 500) -> tuple[list[dict], dict]:
     parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
         body.user_ids, body.chat_type, body.direction, body.date_from, body.date_to
@@ -134,12 +139,12 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/metrics", dependencies=[Depends(verify_api_key)])
+@router.get("/metrics", dependencies=[Depends(verify_operator)])
 async def metrics() -> dict[str, Any]:
     return store.metrics()
 
 
-@router.get("/users", dependencies=[Depends(verify_api_key)])
+@router.get("/users", dependencies=[Depends(verify_operator)])
 async def users() -> list[dict[str, Any]]:
     return store.list_users()
 
@@ -169,7 +174,7 @@ def _parse_message_filters(
     return parsed_user_ids, chat_type, direction, date_from, date_to
 
 
-@router.get("/messages", dependencies=[Depends(verify_api_key)])
+@router.get("/messages", dependencies=[Depends(verify_operator)])
 async def messages(
     user_ids: str = "",
     chat_type: str | None = None,
@@ -197,7 +202,7 @@ async def messages(
     )
 
 
-@router.get("/inbox/threads", dependencies=[Depends(verify_api_key)])
+@router.get("/inbox/threads", dependencies=[Depends(verify_operator)])
 async def inbox_threads(
     user_ids: str = "",
     chat_type: str | None = None,
@@ -225,7 +230,7 @@ async def inbox_threads(
     )
 
 
-@router.post("/ai/summarize-thread", dependencies=[Depends(verify_api_key)])
+@router.post("/ai/summarize-thread", dependencies=[Depends(verify_operator)])
 async def summarize_thread(body: SummarizeThreadRequest) -> dict[str, Any]:
     if body.message_ids:
         messages = store.get_messages_by_ids(body.message_ids)
@@ -237,7 +242,7 @@ async def summarize_thread(body: SummarizeThreadRequest) -> dict[str, Any]:
     return {"chat_id": body.chat_id, **result}
 
 
-@router.post("/ai/summarize", dependencies=[Depends(verify_api_key)])
+@router.post("/ai/summarize", dependencies=[Depends(verify_operator)])
 async def summarize_filtered(body: FilteredAiRequest) -> dict[str, Any]:
     if body.summary_type not in ("brief", "detailed", "bullets", "unanswered"):
         raise HTTPException(status_code=400, detail="Invalid summary_type")
@@ -247,7 +252,7 @@ async def summarize_filtered(body: FilteredAiRequest) -> dict[str, Any]:
     )
 
 
-@router.post("/ai/suggest-actions", dependencies=[Depends(verify_api_key)])
+@router.post("/ai/suggest-actions", dependencies=[Depends(verify_operator)])
 async def suggest_actions(body: FilteredAiRequest) -> dict[str, Any]:
     messages, filters = _fetch_filtered_messages(body)
     chat_ids = list({m["chat_id"] for m in messages if m.get("chat_id") is not None})
@@ -274,7 +279,7 @@ async def _ensure_chat_relationships() -> None:
         )
 
 
-@router.get("/settings/reply-mode", dependencies=[Depends(verify_api_key)])
+@router.get("/settings/reply-mode", dependencies=[Depends(verify_operator)])
 async def get_reply_mode() -> dict[str, Any]:
     await _ensure_chat_relationships()
     return {
@@ -283,7 +288,7 @@ async def get_reply_mode() -> dict[str, Any]:
     }
 
 
-@router.put("/settings/reply-mode", dependencies=[Depends(verify_api_key)])
+@router.put("/settings/reply-mode", dependencies=[Depends(verify_operator)])
 async def set_reply_mode(body: ReplyModeRequest) -> dict[str, Any]:
     try:
         store.set_reply_mode(body.mode)
@@ -295,7 +300,7 @@ async def set_reply_mode(body: ReplyModeRequest) -> dict[str, Any]:
     return payload
 
 
-@router.get("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_api_key)])
+@router.get("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_operator)])
 async def get_chat_settings(chat_id: int) -> dict[str, Any]:
     store.sync_chat_settings_from_messages()
     saved = store.get_chat_setting(chat_id)
@@ -304,7 +309,7 @@ async def get_chat_settings(chat_id: int) -> dict[str, Any]:
     return saved
 
 
-@router.put("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_api_key)])
+@router.put("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_operator)])
 async def update_chat_settings(chat_id: int, body: ChatSettingsRequest) -> dict[str, Any]:
     if body.enabled is None and body.relationship is None:
         raise HTTPException(status_code=400, detail="No settings to update")
@@ -323,7 +328,7 @@ async def update_chat_settings(chat_id: int, body: ChatSettingsRequest) -> dict[
 
 @router.post(
     "/settings/chat-replies/{chat_id}/regenerate-relationship",
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_operator)],
 )
 async def regenerate_chat_relationship(chat_id: int) -> dict[str, Any]:
     messages = store.get_messages_by_chat_id(chat_id)
@@ -341,12 +346,12 @@ async def regenerate_chat_relationship(chat_id: int) -> dict[str, Any]:
     return saved
 
 
-@router.get("/settings/topic-mode", dependencies=[Depends(verify_api_key)])
+@router.get("/settings/topic-mode", dependencies=[Depends(verify_operator)])
 async def get_topic_mode() -> dict[str, str]:
     return {"mode": store.get_topic_mode()}
 
 
-@router.put("/settings/topic-mode", dependencies=[Depends(verify_api_key)])
+@router.put("/settings/topic-mode", dependencies=[Depends(verify_operator)])
 async def set_topic_mode(body: TopicModeRequest) -> dict[str, str]:
     try:
         mode = store.set_topic_mode(body.mode)
@@ -356,12 +361,12 @@ async def set_topic_mode(body: TopicModeRequest) -> dict[str, str]:
     return {"mode": mode}
 
 
-@router.get("/topics", dependencies=[Depends(verify_api_key)])
+@router.get("/topics", dependencies=[Depends(verify_operator)])
 async def list_topics() -> list[dict[str, Any]]:
     return store.list_topics()
 
 
-@router.post("/messages/{message_id}/topics", dependencies=[Depends(verify_api_key)])
+@router.post("/messages/{message_id}/topics", dependencies=[Depends(verify_operator)])
 async def add_message_topics(message_id: int, body: MessageTopicsRequest) -> dict[str, Any]:
     added = store.add_message_topics(message_id, body.topics, source="manual")
     return {"message_id": message_id, "topics": added}
@@ -369,7 +374,7 @@ async def add_message_topics(message_id: int, body: MessageTopicsRequest) -> dic
 
 @router.delete(
     "/messages/{message_id}/topics/{topic_name}",
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_operator)],
 )
 async def remove_message_topic(message_id: int, topic_name: str) -> dict[str, Any]:
     removed = store.remove_message_topic(message_id, topic_name)
@@ -378,7 +383,7 @@ async def remove_message_topic(message_id: int, topic_name: str) -> dict[str, An
     return {"message_id": message_id, "removed": topic_name}
 
 
-@router.get("/suggestions", dependencies=[Depends(verify_api_key)])
+@router.get("/suggestions", dependencies=[Depends(verify_operator)])
 async def list_suggestions(
     filter_hash: str | None = None,
     include_dismissed: bool = False,
@@ -386,7 +391,7 @@ async def list_suggestions(
     return store.list_suggestions(filter_hash, include_dismissed)
 
 
-@router.patch("/suggestions/{suggestion_id}", dependencies=[Depends(verify_api_key)])
+@router.patch("/suggestions/{suggestion_id}", dependencies=[Depends(verify_operator)])
 async def update_suggestion_status(
     suggestion_id: int, body: SuggestionStatusRequest
 ) -> dict[str, Any]:
@@ -400,22 +405,22 @@ async def update_suggestion_status(
     return updated
 
 
-@router.get("/events", dependencies=[Depends(verify_api_key)])
+@router.get("/events", dependencies=[Depends(verify_operator)])
 async def events(limit: int = 50) -> list[dict[str, Any]]:
     return store.recent_events(limit)
 
 
-@router.get("/analytics/commands", dependencies=[Depends(verify_api_key)])
+@router.get("/analytics/commands", dependencies=[Depends(verify_operator)])
 async def command_analytics(days: int = 7) -> dict[str, Any]:
     return store.command_usage_over_time(days)
 
 
-@router.get("/quick-actions", dependencies=[Depends(verify_api_key)])
+@router.get("/quick-actions", dependencies=[Depends(verify_operator)])
 async def get_quick_actions() -> list[dict[str, Any]]:
     return store.list_quick_actions()
 
 
-@router.put("/quick-actions", dependencies=[Depends(verify_api_key)])
+@router.put("/quick-actions", dependencies=[Depends(verify_operator)])
 async def update_quick_actions(body: QuickActionsRequest) -> list[dict[str, Any]]:
     actions = [action.model_dump() for action in body.actions]
     saved = store.save_quick_actions(actions)
@@ -423,19 +428,19 @@ async def update_quick_actions(body: QuickActionsRequest) -> list[dict[str, Any]
     return saved
 
 
-@router.get("/feedback", dependencies=[Depends(verify_api_key)])
+@router.get("/feedback", dependencies=[Depends(verify_operator)])
 async def feedback(limit: int = 20) -> list[dict[str, Any]]:
     return store.recent_feedback(limit)
 
 
-@router.post("/feedback", dependencies=[Depends(verify_api_key)])
+@router.post("/feedback", dependencies=[Depends(verify_operator)])
 async def submit_feedback(body: FeedbackRequest) -> dict[str, Any]:
     item = store.add_feedback(body.user_id, body.username, body.rating, body.comment)
     await ws_manager.broadcast("feedback_received", item)
     return item
 
 
-@router.post("/send", dependencies=[Depends(verify_api_key)])
+@router.post("/send", dependencies=[Depends(verify_operator)])
 async def send_message(body: SendMessageRequest) -> dict[str, Any]:
     if not telegram_service.configured:
         raise HTTPException(status_code=400, detail="Telegram bot token not configured")
@@ -456,12 +461,12 @@ async def send_message(body: SendMessageRequest) -> dict[str, Any]:
     return result
 
 
-@router.get("/ai/status", dependencies=[Depends(verify_api_key)])
+@router.get("/ai/status", dependencies=[Depends(verify_operator)])
 async def ai_status() -> dict[str, Any]:
     return await ai_service.provider_status()
 
 
-@router.get("/bot/status", dependencies=[Depends(verify_api_key)])
+@router.get("/bot/status", dependencies=[Depends(verify_operator)])
 async def bot_status() -> dict[str, Any]:
     if not telegram_service.configured:
         return {"configured": False, "bot": None}
@@ -472,9 +477,92 @@ async def bot_status() -> dict[str, Any]:
         return {"configured": True, "bot": None, "error": str(exc)}
 
 
+@router.get("/export/messages", dependencies=[Depends(verify_operator)])
+async def export_messages(
+    user_ids: str = "",
+    chat_type: str | None = None,
+    direction: str | None = None,
+    q: str | None = None,
+    topics: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 1000,
+) -> StreamingResponse:
+    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
+        user_ids, chat_type, direction, date_from, date_to
+    )
+    result = store.query_messages(
+        user_ids=parsed_user_ids,
+        chat_type=chat_type,
+        direction=direction,
+        q=q,
+        topics=topics,
+        date_from=date_from,
+        date_to=date_to,
+        limit=min(limit, 5000),
+        offset=0,
+    )
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "id",
+            "user_id",
+            "username",
+            "direction",
+            "text",
+            "chat_id",
+            "chat_type",
+            "chat_title",
+            "created_at",
+            "topics",
+        ]
+    )
+    for item in result["items"]:
+        topics_str = ",".join(t["name"] for t in item.get("topics", []))
+        writer.writerow(
+            [
+                item.get("id"),
+                item.get("user_id"),
+                item.get("username"),
+                item.get("direction"),
+                item.get("text"),
+                item.get("chat_id"),
+                item.get("chat_type"),
+                item.get("chat_title"),
+                item.get("created_at"),
+                topics_str,
+            ]
+        )
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=messages-export.csv"},
+    )
+
+
+@router.get("/presets", dependencies=[Depends(verify_operator)])
+async def list_presets() -> list[dict[str, Any]]:
+    return store.list_filter_presets()
+
+
+@router.post("/presets", dependencies=[Depends(verify_operator)])
+async def save_preset(body: FilterPresetRequest) -> dict[str, Any]:
+    return store.save_filter_preset(body.name, body.filters)
+
+
+@router.delete("/presets/{preset_id}", dependencies=[Depends(verify_operator)])
+async def delete_preset(preset_id: int) -> dict[str, str]:
+    if not store.delete_filter_preset(preset_id):
+        raise HTTPException(status_code=404, detail="Preset not found")
+    return {"status": "deleted"}
+
+
 @router.websocket("/ws")
-async def dashboard_ws(websocket: WebSocket, api_key: str = ""):
-    if api_key != DASHBOARD_API_KEY:
+async def dashboard_ws(websocket: WebSocket, api_key: str = "", token: str = ""):
+    credential = token or api_key
+    if not validate_token(credential):
         await websocket.close(code=1008)
         return
 

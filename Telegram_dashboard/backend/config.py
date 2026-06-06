@@ -16,6 +16,11 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
 
 DASHBOARD_API_KEY = os.getenv("DASHBOARD_API_KEY", "dev-dashboard-key")
+OPERATOR_USERNAME = os.getenv("OPERATOR_USERNAME", "admin")
+OPERATOR_PASSWORD = os.getenv("OPERATOR_PASSWORD", "")
+SESSION_TTL_HOURS = int(os.getenv("SESSION_TTL_HOURS", "24"))
+OPENCLAW_ENABLED = os.getenv("OPENCLAW_ENABLED", "false").lower() in ("1", "true", "yes")
+OPENCLAW_GATEWAY_URL = os.getenv("OPENCLAW_GATEWAY_URL", "http://127.0.0.1:18789")
 DATABASE_PATH = DATA_DIR / "dashboard.db"
 FRONTEND_DIR = BASE_DIR / "frontend"
 

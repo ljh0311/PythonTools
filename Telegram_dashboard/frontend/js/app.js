@@ -1,4 +1,4 @@
-import { api, connectWebSocket } from "./api.js";
+import { api, connectWebSocket, ensureAuthenticated } from "./api.js";
 import { renderCommandChart } from "./chart.js";
 import { bindInsights } from "./insights.js";
 import { bindInbox, loadInbox, renderUserFilter } from "./inbox.js";
@@ -211,6 +211,9 @@ function handleRealtime(message) {
 }
 
 async function init() {
+  const authed = await ensureAuthenticated();
+  if (!authed) return;
+
   initTheme();
   bindForms();
   bindInbox(prefillReply, (error) => showToast(error.message));

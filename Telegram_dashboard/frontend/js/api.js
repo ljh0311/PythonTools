@@ -1,21 +1,42 @@
-const API_KEY = localStorage.getItem("dashboard-api-key") || "dev-dashboard-key";
+function authHeaders() {
+  const session = sessionStorage.getItem("dashboard-token");
+  if (session) {
+    return { Authorization: `Bearer ${session}` };
+  }
+  const apiKey = localStorage.getItem("dashboard-api-key");
+  if (apiKey) {
+    return { "X-API-Key": apiKey };
+  }
+  return { "X-API-Key": "dev-dashboard-key" };
+}
 
-const headers = {
+const baseHeaders = {
   "Content-Type": "application/json",
-  "X-API-Key": API_KEY,
 };
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
     ...options,
-    headers: { ...headers, ...(options.headers || {}) },
+    headers: { ...baseHeaders, ...authHeaders(), ...(options.headers || {}) },
   });
+
+  if (response.status === 401 && !path.includes("/auth/")) {
+    sessionStorage.removeItem("dashboard-token");
+    if (!window.location.pathname.includes("login")) {
+      window.location.href = "/login";
+    }
+    throw new Error("Session expired. Please sign in again.");
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || `Request failed: ${response.status}`);
   }
 
+  const contentType = response.headers.get("Content-Type") || "";
+  if (contentType.includes("text/csv")) {
+    return response.text();
+  }
   return response.json();
 }
 
@@ -30,11 +51,35 @@ function buildQuery(params = {}) {
   return query ? `?${query}` : "";
 }
 
+export async function ensureAuthenticated() {
+  const status = await fetch("/api/auth/status").then((r) => r.json());
+  const token = sessionStorage.getItem("dashboard-token");
+  if (status.password_login_enabled) {
+    if (!token) {
+      window.location.href = "/login";
+      return false;
+    }
+    try {
+      await request("/api/auth/me");
+      return true;
+    } catch {
+      window.location.href = "/login";
+      return false;
+    }
+  }
+  return true;
+}
+
 export const api = {
   getMetrics: () => request("/api/metrics"),
   getUsers: () => request("/api/users"),
   getMessages: (params = {}) => request(`/api/messages${buildQuery(params)}`),
   getInboxThreads: (params = {}) => request(`/api/inbox/threads${buildQuery(params)}`),
+  exportMessages: (params = {}) => request(`/api/export/messages${buildQuery(params)}`),
+  getPresets: () => request("/api/presets"),
+  savePreset: (name, filters) =>
+    request("/api/presets", { method: "POST", body: JSON.stringify({ name, filters }) }),
+  deletePreset: (id) => request(`/api/presets/${id}`, { method: "DELETE" }),
   summarizeThread: (chatId, messageIds) =>
     request("/api/ai/summarize-thread", {
       method: "POST",
@@ -98,13 +143,17 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  logout: () => request("/api/auth/logout", { method: "POST" }),
 };
 
 export function connectWebSocket(onMessage) {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(
-    `${protocol}://${window.location.host}/api/ws?api_key=${encodeURIComponent(API_KEY)}`
-  );
+  const token = sessionStorage.getItem("dashboard-token");
+  const apiKey = localStorage.getItem("dashboard-api-key") || "dev-dashboard-key";
+  const query = token
+    ? `token=${encodeURIComponent(token)}`
+    : `api_key=${encodeURIComponent(apiKey)}`;
+  const ws = new WebSocket(`${protocol}://${window.location.host}/api/ws?${query}`);
 
   ws.onmessage = (event) => {
     try {

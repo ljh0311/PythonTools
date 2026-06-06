@@ -114,9 +114,17 @@
             <input id="inbox-date-from" type="date" aria-label="From date" />
             <input id="inbox-date-to" type="date" aria-label="To date" />
           </div>
+          <div class="filter-row preset-row">
+            <select id="inbox-presets" aria-label="Saved filter presets">
+              <option value="">Load preset…</option>
+            </select>
+            <button id="inbox-save-preset" class="btn btn-ghost btn-sm" type="button">Save preset</button>
+            <button id="inbox-delete-preset" class="btn btn-ghost btn-sm" type="button">Delete</button>
+          </div>
           <div class="filter-actions">
             <button id="inbox-apply" class="btn btn-primary btn-sm" type="button">Apply filters</button>
             <button id="inbox-clear" class="btn btn-ghost btn-sm" type="button">Clear</button>
+            <button id="inbox-export" class="btn btn-ghost btn-sm" type="button">Export CSV</button>
           </div>
         </div>
         <section class="ai-insights" aria-labelledby="ai-insights-title">

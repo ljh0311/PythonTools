@@ -10,7 +10,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import FRONTEND_DIR, HOST, PORT
+from backend.routes.agent import router as agent_router
 from backend.routes.api import router as api_router
+from backend.routes.auth import router as auth_router
 from backend.routes.webhook import router as webhook_router
 
 
@@ -29,6 +31,8 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(auth_router)
+app.include_router(agent_router)
 app.include_router(webhook_router)
 
 frontend_path = Path(FRONTEND_DIR)
@@ -42,6 +46,14 @@ async def serve_dashboard():
     if index.exists():
         return FileResponse(index)
     return {"message": "Telegram Dashboard API is running. Frontend not found."}
+
+
+@app.get("/login")
+async def serve_login():
+    page = frontend_path / "login.html"
+    if page.exists():
+        return FileResponse(page)
+    return {"message": "Login page not found."}
 
 
 @app.get("/feedback")
