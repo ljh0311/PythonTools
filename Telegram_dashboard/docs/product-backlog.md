@@ -21,11 +21,15 @@ Backlog items are ordered by priority (highest first). Each item is a **user sto
 | Sprint | 1 |
 
 **Acceptance criteria:**
-- [ ] `messages` table includes `chat_id`, `message_id`, `chat_type`
+- [ ] `messages` table includes `chat_id`, `message_id`, `chat_type` (`private` | `group`)
+- [ ] Channels excluded for now; channel updates ignored or logged as unsupported
+- [ ] Group messages store the individual sender (`user_id`) alongside `chat_id`
 - [ ] Optional `reply_to_message_id` column added
-- [ ] Indexes on `user_id`, `chat_id`, `created_at`, `text`
+- [ ] Indexes on `user_id`, `chat_id`, `chat_type`, `created_at`, `text`
 - [ ] Bot handler persists new fields on ingest
 - [ ] Existing rows remain readable (migration safe)
+
+**Client decision:** D-02 — private + group chats; no channels yet
 
 ---
 
@@ -57,8 +61,9 @@ Backlog items are ordered by priority (highest first). Each item is a **user sto
 | Sprint | 1 |
 
 **Acceptance criteria:**
-- [ ] `GET /api/messages` accepts: `user_ids`, `q` (content search), `direction`, `from`, `to`, `limit`, `offset`
+- [ ] `GET /api/messages` accepts: `user_ids`, `chat_type`, `q` (content search), `direction`, `from`, `to`, `limit`, `offset`
 - [ ] `user_ids` supports multiple comma-separated IDs; omit = everyone
+- [ ] `chat_type` filter: `private`, `group`, or omit for both
 - [ ] `q` performs case-insensitive substring match on message text
 - [ ] Response includes `total` count for pagination
 - [ ] Empty filter returns all messages (paginated)
@@ -80,9 +85,11 @@ Backlog items are ordered by priority (highest first). Each item is a **user sto
 - [ ] Search input filters by content (debounced)
 - [ ] User multi-select: "Everyone" default + individual senders
 - [ ] Direction filter: All / Incoming / Outgoing
+- [ ] Chat type filter: All / Private / Group
 - [ ] Date range filter (from / to)
 - [ ] "Load more" or pagination controls
 - [ ] Filter state reflected in URL query params (shareable/bookmarkable)
+- [ ] Group messages show sender name within the group context
 
 ---
 
@@ -121,8 +128,12 @@ Backlog items are ordered by priority (highest first). Each item is a **user sto
 - [ ] `SummarizationService` uses Gemini with Ollama fallback
 - [ ] `POST /api/ai/summarize` accepts same filter params as messages API
 - [ ] Supports summary types: `brief`, `detailed`, `bullets`, `unanswered`
-- [ ] Returns structured JSON: `{ summary, message_count, generated_at, provider }`
+- [ ] **Summaries generated in English by default** (D-04)
+- [ ] Response includes original messages: `{ summary, message_count, originals[], generated_at, provider }`
+- [ ] Sensitive data redacted from text sent to AI (see US-2.4)
 - [ ] Handles empty result set gracefully
+
+**Client decision:** D-04 — English summaries; originals preserved
 
 ---
 
@@ -141,7 +152,31 @@ Backlog items are ordered by priority (highest first). Each item is a **user sto
 - [ ] Summary type selector (brief / detailed / bullets / unanswered)
 - [ ] Loading state shown during AI call
 - [ ] Result displayed in dedicated panel with copy-to-clipboard
+- [ ] **"View originals" toggle** shows source messages in their original language alongside English summary (D-04)
+- [ ] Redaction notice shown when sensitive data was masked before AI processing
 - [ ] Error state shown if both AI providers fail
+
+---
+
+### US-2.4 — Sensitive data redaction
+
+**As an** operator, **I want** sensitive information redacted before AI processing **so that** ID numbers and similar data are not sent to cloud AI.
+
+| Field | Value |
+|-------|-------|
+| Priority | P0 |
+| Points | 5 |
+| Sprint | 2 |
+
+**Acceptance criteria:**
+- [ ] `RedactionService` masks patterns: ID numbers, passport-like strings, credit card numbers
+- [ ] Redaction applied to all text sent to Gemini/Ollama (summaries, suggestions, auto-tags)
+- [ ] Original message text in database and inbox is **not** modified
+- [ ] API response includes `redaction_applied: true/false` and count of redacted fields
+- [ ] Dashboard shows a warning badge when redaction occurred
+- [ ] Pattern list configurable via `.env` or settings file
+
+**Client decision:** D-05 — all messages to AI, with sensitive-data safeguards
 
 ---
 
@@ -226,38 +261,33 @@ Backlog items are ordered by priority (highest first). Each item is a **user sto
 
 *Enable filtering by topic and conversation structure.*
 
-### US-4.1 — Manual topic tagging
+### US-4.1 — Topic filtering (manual + AI modes)
 
-**As an** operator, **I want** to tag messages with topics **so that** I can filter by theme.
+**As an** operator, **I want** to filter messages by topic using either my own labels or AI-assigned tags **so that** I can organise conversations my way.
 
 | Field | Value |
 |-------|-------|
 | Priority | P1 |
-| Points | 5 |
+| Points | 8 |
 | Sprint | 3 |
 
 **Acceptance criteria:**
 - [ ] `topics` and `message_topics` tables
-- [ ] `POST /api/messages/{id}/topics` to add/remove tags
-- [ ] `GET /api/messages?topics=support,billing` filter works
-- [ ] UI: tag chips on message rows; topic filter dropdown
+- [ ] **Toggle switch in UI:** "User type" mode vs "AI assign" mode (D-03)
+- [ ] **User type mode:** operator types free-form filter text; `GET /api/messages?topics=` matches tags or content
+- [ ] **AI assign mode:** AI classifies incoming messages; tags stored automatically
+- [ ] `POST /api/messages/{id}/topics` to add/remove manual tags
+- [ ] Operator can override or remove AI-assigned tags
+- [ ] UI: tag chips on message rows; topic filter input/dropdown
+- [ ] AI tagging uses redaction layer (US-2.4) before sending to Gemini/Ollama
+
+**Client decision:** D-03 — hybrid with toggle between user-typed and AI-assigned
 
 ---
 
-### US-4.2 — AI auto-tagging on ingest
+### US-4.2 — ~~AI auto-tagging on ingest~~
 
-**As an** operator, **I want** messages auto-tagged on arrival **so that** topics stay current without manual work.
-
-| Field | Value |
-|-------|-------|
-| Priority | P2 |
-| Points | 5 |
-| Sprint | 3 |
-
-**Acceptance criteria:**
-- [ ] Configurable topic list in `.env` or settings
-- [ ] New incoming messages classified into zero or more topics
-- [ ] Auto-tags visible in inbox; operator can override
+> **Merged into US-4.1** per client decision D-03.
 
 ---
 
@@ -282,21 +312,28 @@ Backlog items are ordered by priority (highest first). Each item is a **user sto
 
 *Production-ready operator experience.*
 
-### US-5.1 — Auto-reply toggle
+### US-5.1 — Reply mode switcher (three modes)
 
-**As an** operator, **I want** to disable bot auto-replies **so that** I review messages before responding.
+**As an** operator, **I want** to choose how the bot responds — auto, manual, or per-chat **so that** I control when messages are sent automatically.
 
 | Field | Value |
 |-------|-------|
 | Priority | P0 |
-| Points | 3 |
+| Points | 8 |
 | Sprint | 3 |
 
 **Acceptance criteria:**
-- [ ] `AUTO_REPLY_ENABLED` env var (default: `false`)
-- [ ] Dashboard toggle to enable/disable at runtime
-- [ ] When disabled: messages ingested and stored; no automatic Telegram reply
-- [ ] When enabled: current behaviour preserved
+- [ ] **Default mode: B — Operator approves** (`AUTO_REPLY_MODE=manual`) (D-01)
+- [ ] Dashboard mode switcher with three options:
+  - **A — Auto-reply:** bot sends AI reply immediately (Sprint 0 behaviour)
+  - **B — Operator approves:** ingest only; operator sends from dashboard
+  - **C — Per-chat:** auto-reply on/off per `chat_id` (private or group)
+- [ ] `GET/PUT /api/settings/reply-mode` persists current mode
+- [ ] Per-chat overrides stored in `chat_settings` table (`chat_id`, `auto_reply_enabled`)
+- [ ] Per-chat mode UI: list of chats with individual toggles
+- [ ] Mode change takes effect on next incoming message without restart
+
+**Client decision:** D-01 — default B; all three modes selectable
 
 ---
 
@@ -370,8 +407,10 @@ Backlog items are ordered by priority (highest first). Each item is a **user sto
 | Epic | Stories | Total points |
 |------|---------|--------------|
 | E1 — Inbox & Filtering | 5 | 17 |
-| E2 — AI Summaries | 3 | 11 |
+| E2 — AI Summaries | 4 | 16 |
 | E3 — Suggested Actions | 3 | 16 |
-| E4 — Topics & Organisation | 3 | 15 |
-| E5 — Operator Workflow & Polish | 5 | 16 |
-| **Total** | **19** | **75** |
+| E4 — Topics & Organisation | 2 active | 13 |
+| E5 — Operator Workflow & Polish | 5 | 21 |
+| **Total** | **19** | **83** |
+
+> Point totals updated after client decisions (2026-06-06). See [risks-and-decisions.md](risks-and-decisions.md).

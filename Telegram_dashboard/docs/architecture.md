@@ -81,10 +81,12 @@ AI tools available to the **bot** (not yet the operator dashboard):
 | Component | Sprint | Purpose |
 |-----------|--------|---------|
 | `MessageQueryService` | 1 | Filtered/paginated message queries |
-| `SummarizationService` | 2 | Operator-facing summaries |
+| `RedactionService` | 2 | Mask sensitive data before AI (D-05) |
+| `SummarizationService` | 2 | English summaries + originals (D-04) |
 | `ActionSuggestionService` | 2 | Reply drafts and next actions |
-| `TopicService` | 3 | Tagging and topic filters |
-| `OperatorSettings` | 3 | Auto-reply toggle, presets |
+| `TopicService` | 3 | User-type + AI-assign modes (D-03) |
+| `ReplyModeService` | 3 | Auto / manual / per-chat modes (D-01) |
+| `OperatorSettings` | 3 | Presets, preferences |
 
 ### Target message flow (operator mode)
 

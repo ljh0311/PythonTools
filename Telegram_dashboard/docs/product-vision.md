@@ -45,7 +45,19 @@ The current bot auto-replies to every message, which does not support an **opera
 - Multi-tenant / multi-bot support
 - Native mobile app
 - Full CRM integration
-- Automated sending without operator approval (unless explicitly enabled later)
+- **Channel messages** (private + group chats only for now; see D-02)
+
+## Product Owner decisions (locked)
+
+| # | Topic | Decision |
+|---|-------|----------|
+| D-01 | Reply mode | Default: operator approves; all 3 modes (auto / manual / per-chat) selectable |
+| D-02 | Chat scope | Private + group; no channels yet |
+| D-03 | Topics | User-typed filters + AI assign, with UI toggle |
+| D-04 | Summary language | English summaries; originals viewable |
+| D-05 | Sensitive data | All to AI; redact ID numbers etc. before sending |
+
+Full detail: [risks-and-decisions.md](risks-and-decisions.md)
 
 ## Vision roadmap (high level)
 

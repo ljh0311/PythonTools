@@ -1,28 +1,103 @@
-# Risks, Assumptions & Open Decisions
+# Risks, Assumptions & Decisions
 
-Items requiring **Product Owner (client)** input are marked **DECISION REQUIRED**.
+**Product Owner:** Client  
+**Last updated:** 2026-06-06
 
 ---
 
-## Open decisions
+## Client decisions (resolved)
 
-| ID | Question | Options | Impact | Status |
-|----|----------|---------|--------|--------|
-| D-01 | **Auto-reply behaviour** | A) Bot auto-replies (current) · B) Operator approves all replies · C) Per-chat toggle | Sprint 3 scope; affects bot_handler | **DECISION REQUIRED** |
-| D-02 | **Message scope** | A) Direct messages only · B) Groups · C) Channels · D) All | Schema (`chat_type`), UI complexity | **DECISION REQUIRED** |
-| D-03 | **Topic model** | A) Free-form tags · B) Fixed categories · C) AI-only auto-tags | Sprint 3 design | **DECISION REQUIRED** |
-| D-04 | **Summary language** | A) Same as source messages · B) Always English | AI prompt design | **DECISION REQUIRED** |
-| D-05 | **PII / exclusion rules** | A) All messages sent to AI · B) Exclude specific users · C) Redact before AI | Privacy, compliance | **DECISION REQUIRED** |
+All five open decisions have been confirmed by the Product Owner.
 
-### Recommended defaults (if client defers)
+### D-01 — Auto-reply behaviour ✅ DECIDED
 
-| ID | Recommendation | Rationale |
-|----|----------------|-----------|
-| D-01 | B — Operator approves (auto-reply off by default) | Aligns with review-then-act vision |
-| D-02 | A — Direct messages only for v0.2 | Simplest; extend later |
-| D-03 | A — Free-form tags + optional AI auto-tag | Flexible, low friction |
-| D-04 | A — Same as source | Respects multilingual users |
-| D-05 | A — All messages to AI (local Ollama fallback) | Simplest; revisit for production |
+| Field | Value |
+|-------|-------|
+| **Decision** | **Default: B (operator approves)** — bot does not auto-send until the operator reviews |
+| **Also required** | Support **all three modes** with a dashboard switcher |
+
+| Mode | Code | Behaviour |
+|------|------|-----------|
+| **Auto-reply** | A | Bot replies instantly to every message (current Sprint 0 behaviour) |
+| **Operator approves** | B | Messages stored only; operator reviews and sends from dashboard *(default)* |
+| **Per-chat** | C | Auto-reply on/off per individual chat (private or group) |
+
+**Implementation:** US-5.1 (expanded) · Sprint 3
+
+---
+
+### D-02 — Message scope ✅ DECIDED
+
+| Field | Value |
+|-------|-------|
+| **Decision** | **Private chats + group chats** |
+| **Excluded for now** | Channels — bot will not handle channel messages in this release |
+
+| Chat type | Supported |
+|-----------|-----------|
+| Private (1-on-1) | ✅ Yes |
+| Group | ✅ Yes |
+| Channel | ❌ Not now (future) |
+
+**Implementation:** US-1.1 (store `chat_type`), US-1.3 / US-1.4 (filter by chat type) · Sprint 1
+
+---
+
+### D-03 — Topic / content filter model ✅ DECIDED
+
+| Field | Value |
+|-------|-------|
+| **Decision** | **Hybrid with toggle** — operator chooses between two modes |
+
+| Mode | Behaviour |
+|------|-----------|
+| **User type** | Operator types free-form filter labels / topic text to filter messages |
+| **AI assign** | AI automatically tags or classifies messages; operator can filter by those tags |
+
+**UI:** Toggle switch between "User type" and "AI assign" modes.
+
+**Implementation:** US-4.1 (merged manual + AI) · Sprint 3
+
+---
+
+### D-04 — Summary language ✅ DECIDED
+
+| Field | Value |
+|-------|-------|
+| **Decision** | **Summaries default to English** |
+| **Also required** | Operator can **view original-language messages** alongside the English summary |
+
+| Output | Language |
+|--------|----------|
+| AI summary | English (default) |
+| Source messages in inbox | Original language preserved |
+| Summary panel | Toggle or section to view originals while reading summary |
+
+**Implementation:** US-2.1, US-2.2 · Sprint 2
+
+---
+
+### D-05 — Sensitive data & AI ✅ DECIDED
+
+| Field | Value |
+|-------|-------|
+| **Decision** | **All messages may be sent to AI** (Gemini / Ollama) |
+| **Safeguard** | System must **detect and redact highly sensitive data** before AI processing |
+
+Examples of sensitive patterns to handle:
+
+- National ID / identification numbers
+- Passport numbers
+- Credit card numbers
+- Other configurable PII patterns
+
+**Behaviour:**
+
+- Redact before sending text to Gemini/Ollama
+- Show operator a notice when redaction occurred
+- Original message text remains intact in the database and inbox
+
+**Implementation:** US-2.4 · Sprint 2
 
 ---
 
@@ -36,6 +111,8 @@ Items requiring **Product Owner (client)** input are marked **DECISION REQUIRED*
 | A-04 | Single operator (client) uses the dashboard; no multi-user roles in v1 |
 | A-05 | Production deployment will use HTTPS for Telegram webhook |
 | A-06 | Message volume is low-to-moderate (< 10k messages); SQLite is sufficient |
+| A-07 | Bot is added to group chats as a member; group messages are ingested via webhook |
+| A-08 | Channel support may be added in a future release |
 
 ---
 
@@ -43,14 +120,16 @@ Items requiring **Product Owner (client)** input are marked **DECISION REQUIRED*
 
 | ID | Risk | Likelihood | Impact | Mitigation |
 |----|------|------------|--------|------------|
-| R-01 | Auto-reply conflicts with operator review workflow | High | High | US-5.1; decide D-01 in Sprint 1 |
-| R-02 | AI hallucinations in suggested replies | Medium | High | Editable drafts; operator must approve before send |
+| R-01 | Auto-reply conflicts with operator review workflow | Medium | High | Default mode B; three-mode switcher (D-01) |
+| R-02 | AI hallucinations in suggested replies | Medium | High | Editable drafts; operator approves before send |
 | R-03 | Token limits on long message threads | Medium | Medium | Pagination; summarise in chunks; cache |
 | R-04 | Gemini API quota / rate limits | Medium | Medium | Ollama fallback; summary caching (US-2.3) |
 | R-05 | Missing `chat_id` breaks reply targeting | High | High | US-1.1, US-1.5 in Sprint 1 |
 | R-06 | SQLite not suitable at scale | Low | Medium | Monitor volume; migrate to PostgreSQL if needed |
 | R-07 | Dev API key insecure in production | High | High | US-5.4 in Sprint 4 |
-| R-08 | Client decisions delayed | Medium | Medium | Use recommended defaults; proceed with Sprint 1 |
+| R-09 | Sensitive data sent to cloud AI | Medium | High | US-2.4 redaction layer (D-05) |
+| R-10 | Group chat complexity (multiple senders per chat) | Medium | Medium | Store sender per message; thread by `chat_id` |
+| R-11 | English summary loses nuance for non-English messages | Medium | Low | Original messages always visible (D-04) |
 
 ---
 
@@ -62,7 +141,7 @@ Items requiring **Product Owner (client)** input are marked **DECISION REQUIRED*
 | Gemini API key | Client | Sprint 2 |
 | Ollama installed locally | Client | Optional fallback |
 | Public HTTPS URL for webhook | Client / DevOps | Production |
-| Sprint 1 decisions (D-01, D-02) | Client | Sprint 1 start |
+| Client decisions D-01 – D-05 | Client | ✅ Resolved |
 
 ---
 
@@ -71,3 +150,4 @@ Items requiring **Product Owner (client)** input are marked **DECISION REQUIRED*
 | Date | Change |
 |------|--------|
 | 2026-06-06 | Initial risk register and open decisions documented |
+| 2026-06-06 | All five decisions resolved per Product Owner input |

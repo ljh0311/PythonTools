@@ -36,16 +36,17 @@ Sprint length recommendation: **2 weeks** per sprint (adjust based on capacity).
 
 ### Sprint 1 definition of ready
 
-- [ ] Client confirms message scope: DMs only vs groups/channels (see [risks-and-decisions.md](risks-and-decisions.md))
+- [x] Client confirms message scope: **private + group chats; no channels** (D-02 — [risks-and-decisions.md](risks-and-decisions.md))
 - [ ] Sprint 0 code merged and runnable locally
 
 ### Sprint 1 review demo script
 
-1. Ingest test messages from 3 different users via webhook
-2. Open dashboard → Inbox shows all messages
+1. Ingest test messages from 3 users (2 private chats, 1 group chat) via webhook
+2. Open dashboard → Inbox shows all messages with chat type labels
 3. Filter to one user → only their messages shown
-4. Search keyword → matching messages only
-5. Click "Reply" on a row → chat_id pre-filled → send works
+4. Filter to "Group" chat type → only group messages shown
+5. Search keyword → matching messages only
+6. Click "Reply" on a row → chat_id pre-filled → send works
 
 ### Sprint 1 retrospective (template)
 
@@ -64,16 +65,17 @@ Sprint length recommendation: **2 weeks** per sprint (adjust based on capacity).
 | Status | Planned |
 | Goal | Operator can summarise filtered messages and get reply/action suggestions |
 | Epics | E2, E3 |
-| Stories | US-2.1, US-2.2, US-3.1, US-3.2 (+ US-2.3 if capacity) |
-| Points | 21 (or 24 with caching) |
+| Stories | US-2.4, US-2.1, US-2.2, US-3.1, US-3.2 (+ US-2.3 if capacity) |
+| Points | 26 (or 29 with caching) |
 
 ### Sprint 2 backlog (ordered)
 
-1. US-2.1 — Summarisation service
-2. US-2.2 — Summary UI panel
-3. US-3.1 — Action suggestion service
-4. US-3.2 — Suggestions UI panel
-5. US-2.3 — Summary caching (stretch)
+1. US-2.4 — Sensitive data redaction (prerequisite for all AI features)
+2. US-2.1 — Summarisation service (English default + originals)
+3. US-2.2 — Summary UI panel (with "View originals" toggle)
+4. US-3.1 — Action suggestion service
+5. US-3.2 — Suggestions UI panel
+6. US-2.3 — Summary caching (stretch)
 
 ### Sprint 2 dependencies
 
@@ -82,10 +84,11 @@ Sprint length recommendation: **2 weeks** per sprint (adjust based on capacity).
 
 ### Sprint 2 review demo script
 
-1. Filter inbox to 10+ messages from 2 users
-2. Click "Summarize" → brief summary appears
-3. Click "Suggest Actions" → reply drafts and next actions shown
-4. Edit a draft → Send → message delivered via Telegram
+1. Filter inbox to 10+ messages from 2 users (mix of languages)
+2. Click "Summarize" → English summary appears; "View originals" shows source messages
+3. Message with ID number → redaction notice displayed
+4. Click "Suggest Actions" → reply drafts and next actions shown
+5. Edit a draft → Send → message delivered via Telegram
 
 ---
 
@@ -96,23 +99,25 @@ Sprint length recommendation: **2 weeks** per sprint (adjust based on capacity).
 | Status | Planned |
 | Goal | Organise messages by topic; operator controls auto-reply |
 | Epics | E4, E5 (partial) |
-| Stories | US-4.1, US-4.3, US-5.1, US-3.3 (+ US-4.2 if capacity) |
-| Points | 16 (or 21 with auto-tagging) |
+| Stories | US-5.1, US-4.1, US-4.3, US-3.3 |
+| Points | 24 |
 
 ### Sprint 3 backlog (ordered)
 
-1. US-5.1 — Auto-reply toggle (high product impact — do early in sprint)
-2. US-4.1 — Manual topic tagging
+1. US-5.1 — Reply mode switcher (default: operator approves; A/B/C modes)
+2. US-4.1 — Topic filtering (user-type vs AI-assign toggle)
 3. US-4.3 — Conversation threading
 4. US-3.3 — Action status tracking
-5. US-4.2 — AI auto-tagging (stretch)
 
 ### Sprint 3 review demo script
 
-1. Disable auto-reply → new message appears in inbox, no bot reply sent
-2. Tag messages with "support" → filter by topic works
-3. Switch to thread view → conversation grouped by chat
-4. Mark a suggestion as "sent" → status persists
+1. Set mode to "Operator approves" → new message in inbox, no auto-reply
+2. Switch to "Auto-reply" → bot responds automatically
+3. Switch to "Per-chat" → enable auto-reply for one group only
+4. Toggle topic mode to "User type" → type filter "billing" → matching messages shown
+5. Toggle to "AI assign" → new messages auto-tagged; filter by AI tag works
+6. Switch to thread view → conversation grouped by chat
+7. Mark a suggestion as "sent" → status persists
 
 ---
 
