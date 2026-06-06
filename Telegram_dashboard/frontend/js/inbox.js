@@ -330,6 +330,15 @@ export function bindInbox(onReply, onError) {
   syncFilterForm();
   loadPresets().catch(onError);
 
+  const toggleBtn = document.getElementById("toggle-filters");
+  const advanced = document.getElementById("advanced-filters");
+  toggleBtn?.addEventListener("click", () => {
+    const open = advanced.hidden;
+    advanced.hidden = !open;
+    toggleBtn.setAttribute("aria-expanded", String(open));
+    toggleBtn.classList.toggle("active", open);
+  });
+
   document.getElementById("inbox-apply").addEventListener("click", () => {
     collectFiltersFromForm();
     loadInbox().catch(onError);

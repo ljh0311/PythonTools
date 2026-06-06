@@ -3,10 +3,12 @@ import { renderCommandChart } from "./chart.js";
 import { bindInsights } from "./insights.js";
 import { bindInbox, loadInbox, renderUserFilter } from "./inbox.js";
 import { initTheme } from "./theme.js";
+import { initNavigation } from "./navigation.js";
 import { bindWorkflow, loadWorkflowSettings } from "./workflow.js";
 
 const state = {
   quickActions: [],
+  nav: null,
 };
 
 function showToast(message) {
@@ -23,10 +25,21 @@ function formatTime(iso) {
   return date.toLocaleString();
 }
 
+function setMetric(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
 function renderMetrics(metrics = {}) {
-  document.getElementById("connected-users").textContent = metrics.connected_users ?? 0;
-  document.getElementById("total-messages").textContent = metrics.total_messages ?? 0;
-  document.getElementById("total-commands").textContent = metrics.total_commands ?? 0;
+  const users = metrics.connected_users ?? 0;
+  const messages = metrics.total_messages ?? 0;
+  const commands = metrics.total_commands ?? 0;
+  setMetric("connected-users", users);
+  setMetric("total-messages", messages);
+  setMetric("total-commands", commands);
+  setMetric("analytics-users", users);
+  setMetric("analytics-messages", messages);
+  setMetric("analytics-commands", commands);
 }
 
 function renderEvents(events = []) {
@@ -65,9 +78,11 @@ function renderQuickActions(actions = []) {
     button.addEventListener("click", async (event) => {
       const row = event.target.closest(".action-row");
       const command = row.querySelector(".action-command").value.trim();
-      const chatId = document.getElementById("chat-id").value.trim();
+      const chatId =
+        document.getElementById("chat-id")?.value.trim() ||
+        document.getElementById("chat-id-tools")?.value.trim();
       if (!chatId) {
-        showToast("Enter a chat ID before running a quick action.");
+        showToast("Enter a chat ID in Inbox or Tools before running a quick action.");
         return;
       }
       try {
@@ -107,11 +122,24 @@ function escapeHtml(value) {
 }
 
 function prefillReply(chatId) {
-  const field = document.getElementById("chat-id");
-  field.value = chatId;
-  field.focus();
-  document.getElementById("send-form").scrollIntoView({ behavior: "smooth", block: "center" });
+  state.nav?.showView("inbox");
+  for (const id of ["chat-id", "chat-id-tools"]) {
+    const field = document.getElementById(id);
+    if (field) field.value = chatId;
+  }
+  document.getElementById("message-text")?.focus();
+  document.querySelector(".compose-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   showToast(`Chat ID ${chatId} ready for reply.`);
+}
+
+async function submitSend(chatId, text, clearFields = []) {
+  await api.sendMessage(chatId, text);
+  clearFields.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  showToast("Message sent.");
+  await refreshDashboard();
 }
 
 async function refreshDashboard() {
@@ -148,15 +176,27 @@ function bindForms() {
     refreshDashboard().catch((error) => showToast(error.message));
   });
 
-  document.getElementById("send-form").addEventListener("submit", async (event) => {
+  document.getElementById("send-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const chatId = document.getElementById("chat-id").value.trim();
     const text = document.getElementById("message-text").value.trim();
     try {
-      await api.sendMessage(chatId, text);
-      document.getElementById("message-text").value = "";
-      showToast("Message sent.");
-      await refreshDashboard();
+      await submitSend(chatId, text, ["message-text"]);
+      const toolsMsg = document.getElementById("message-text-tools");
+      if (toolsMsg) toolsMsg.value = "";
+      document.getElementById("chat-id-tools").value = chatId;
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  document.getElementById("send-form-tools")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const chatId = document.getElementById("chat-id-tools").value.trim();
+    const text = document.getElementById("message-text-tools").value.trim();
+    try {
+      await submitSend(chatId, text, ["message-text-tools"]);
+      document.getElementById("chat-id").value = chatId;
     } catch (error) {
       showToast(error.message);
     }
@@ -216,6 +256,7 @@ async function init() {
   if (!authed) return;
 
   initTheme();
+  state.nav = initNavigation();
   bindForms();
   bindInbox(prefillReply, (error) => showToast(error.message));
   bindWorkflow((message) => showToast(message), (error) => showToast(error));
