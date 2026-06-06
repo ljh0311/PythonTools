@@ -74,17 +74,25 @@ curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
   -d '{"url":"https://YOUR-TUNNEL/webhook/telegram","secret_token":"YOUR_TELEGRAM_WEBHOOK_SECRET"}'
 ```
 
-## OpenClaw on the same machine
+## OpenClaw on the same laptop
 
-If OpenClaw runs on your host (not in Docker):
+| OpenClaw runs… | Guide | Dashboard URL in OpenClaw config |
+|----------------|-------|----------------------------------|
+| On host (not Docker) | below | `http://localhost:8000` |
+| **In Docker (same laptop)** | **[docs/openclaw-docker-laptop.md](docs/openclaw-docker-laptop.md)** | **`http://telegram-dashboard:8000`** |
+
+This compose file joins network **`openclaw-net`**. Connect your OpenClaw container:
+
+```bash
+docker network connect openclaw-net YOUR_OPENCLAW_CONTAINER_NAME
+```
+
+Host-only OpenClaw config:
 
 ```json5
 // ~/.openclaw/openclaw.json
 {
   skills: {
-    load: {
-      extraDirs: ["/absolute/path/to/Telegram_dashboard/openclaw/skills"],
-    },
     entries: {
       "telegram-dashboard": {
         enabled: true,
@@ -97,8 +105,6 @@ If OpenClaw runs on your host (not in Docker):
   },
 }
 ```
-
-If OpenClaw also runs in Docker, put both services on the same compose network and use `http://telegram-dashboard:8000`.
 
 ## Seed demo data (optional)
 

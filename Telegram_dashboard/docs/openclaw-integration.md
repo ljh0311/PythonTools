@@ -84,14 +84,23 @@ Use `allowSymlinkTargets` if you symlink the skills folder.
 | Setup | `TELEGRAM_DASHBOARD_URL` |
 |-------|--------------------------|
 | Dashboard in Docker, OpenClaw on host | `http://localhost:8000` |
-| Both in Docker (same compose network) | `http://telegram-dashboard:8000` |
-| Dashboard on host, OpenClaw in Docker | `http://host.docker.internal:8000` (Linux/Mac) |
+| **Both in Docker on same laptop** | **`http://telegram-dashboard:8000`** — see [openclaw-docker-laptop.md](openclaw-docker-laptop.md) |
+| Dashboard on host, OpenClaw in Docker | `http://host.docker.internal:8000` (Mac/Win); Linux: host gateway IP |
+
+### Both Docker on same laptop (most common)
+
+1. Start dashboard: `docker compose up -d` (creates network `openclaw-net`)
+2. Connect OpenClaw: `docker network connect openclaw-net YOUR_OPENCLAW_CONTAINER`
+3. Set URL to `http://telegram-dashboard:8000` in `skills.entries.telegram-dashboard.env`
+4. Mount only the skill folder into OpenClaw (see [openclaw-docker-laptop.md](openclaw-docker-laptop.md))
+
+Example snippet: [openclaw/openclaw.docker.example.json5](../openclaw/openclaw.docker.example.json5)
 
 Mount **only** the skills directory if OpenClaw runs in Docker:
 
 ```yaml
 volumes:
-  - /path/to/Telegram_dashboard/openclaw/skills:/home/node/.openclaw/workspace/skills:ro
+  - /path/to/Telegram_dashboard/openclaw/skills/telegram-dashboard:/home/node/.openclaw/workspace/skills/telegram-dashboard:ro
 ```
 
 ## What the agent can do

@@ -48,6 +48,7 @@ Telegram_dashboard/
 | **Local (no Docker)** | [local_mode.md](local_mode.md) |
 | **Docker** | [docker_mode.md](docker_mode.md) |
 | **OpenClaw agent** | [docs/openclaw-integration.md](docs/openclaw-integration.md) |
+| **OpenClaw + Docker (same laptop)** | [docs/openclaw-docker-laptop.md](docs/openclaw-docker-laptop.md) |
 
 ## Setup
 
