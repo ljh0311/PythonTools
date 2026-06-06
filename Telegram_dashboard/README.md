@@ -41,6 +41,10 @@ Telegram_dashboard/
 └── .env.example
 ```
 
+## Quick start on your laptop
+
+See **[SETUP_LAPTOP.md](SETUP_LAPTOP.md)** for copy-paste steps (clone → install → run → open browser).
+
 ## Run modes
 
 | Mode | Guide |
