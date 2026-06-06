@@ -12,7 +12,7 @@ A responsive Telegram bot dashboard with real-time metrics, chat logs, quick act
 ## Project Structure
 
 ```
-telegram-dashboard/
+Telegram_dashboard/
 ├── backend/
 │   ├── main.py              # FastAPI application entry point
 │   ├── config.py              # Environment configuration
@@ -33,7 +33,7 @@ telegram-dashboard/
 1. Create a virtual environment and install dependencies:
 
 ```bash
-cd telegram-dashboard
+cd Telegram_dashboard
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
