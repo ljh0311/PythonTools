@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram Dashboard</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">✈</span>
+        <div>
+          <h1>Telegram Dashboard</h1>
+          <p id="bot-status" class="subtitle">Checking bot connection…</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button id="theme-toggle" class="btn btn-ghost" type="button" aria-label="Toggle dark and light mode">
+          Toggle theme
+        </button>
+        <button id="refresh-btn" class="btn btn-primary" type="button">Refresh data</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card metric-card" aria-labelledby="connected-users-title">
+        <h2 id="connected-users-title">Connected Users</h2>
+        <p id="connected-users" class="metric-value">0</p>
+        <p class="metric-hint">Active in the last 24 hours</p>
+      </section>
+
+      <section class="card metric-card" aria-labelledby="total-messages-title">
+        <h2 id="total-messages-title">Total Messages</h2>
+        <p id="total-messages" class="metric-value">0</p>
+        <p class="metric-hint">All-time message count</p>
+      </section>
+
+      <section class="card metric-card" aria-labelledby="total-commands-title">
+        <h2 id="total-commands-title">Commands Run</h2>
+        <p id="total-commands" class="metric-value">0</p>
+        <p class="metric-hint">Tracked bot commands</p>
+      </section>
+
+      <section class="card span-2" aria-labelledby="analytics-title">
+        <div class="card-header">
+          <h2 id="analytics-title">Command Usage Over Time</h2>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="command-chart" aria-label="Command usage analytics chart"></canvas>
+        </div>
+      </section>
+
+      <section class="card span-2" aria-labelledby="messages-title">
+        <div class="card-header">
+          <h2 id="messages-title">Recent Messages</h2>
+        </div>
+        <ul id="messages-feed" class="feed" aria-live="polite"></ul>
+      </section>
+
+      <section class="card" aria-labelledby="events-title">
+        <div class="card-header">
+          <h2 id="events-title">Incoming Events</h2>
+        </div>
+        <ul id="events-feed" class="feed compact" aria-live="polite"></ul>
+      </section>
+
+      <section class="card" aria-labelledby="quick-actions-title">
+        <div class="card-header">
+          <h2 id="quick-actions-title">Quick Actions</h2>
+          <button id="save-actions-btn" class="btn btn-ghost btn-sm" type="button">Save</button>
+        </div>
+        <div id="quick-actions" class="actions-panel"></div>
+        <form id="add-action-form" class="inline-form">
+          <input id="action-label" type="text" placeholder="Label" required />
+          <input id="action-command" type="text" placeholder="/command" required />
+          <button class="btn btn-primary btn-sm" type="submit">Add</button>
+        </form>
+      </section>
+
+      <section class="card span-2" aria-labelledby="send-title">
+        <div class="card-header">
+          <h2 id="send-title">Send Message</h2>
+        </div>
+        <form id="send-form" class="send-form">
+          <input id="chat-id" type="text" placeholder="Chat ID" required />
+          <textarea id="message-text" rows="3" placeholder="Message text" required></textarea>
+          <button class="btn btn-primary" type="submit">Send via Telegram API</button>
+        </form>
+      </section>
+
+      <section class="card span-2" aria-labelledby="feedback-title">
+        <div class="card-header">
+          <h2 id="feedback-title">User Feedback</h2>
+        </div>
+        <form id="feedback-form" class="feedback-form">
+          <label>
+            Rating
+            <select id="feedback-rating" required>
+              <option value="5">5 - Excellent</option>
+              <option value="4">4 - Good</option>
+              <option value="3">3 - Average</option>
+              <option value="2">2 - Poor</option>
+              <option value="1">1 - Bad</option>
+            </select>
+          </label>
+          <label>
+            Comment
+            <textarea id="feedback-comment" rows="2" placeholder="Share feedback" required></textarea>
+          </label>
+          <button class="btn btn-primary" type="submit">Submit feedback</button>
+        </form>
+        <ul id="feedback-feed" class="feed compact"></ul>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
