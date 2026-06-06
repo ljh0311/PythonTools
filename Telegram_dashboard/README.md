@@ -2,6 +2,18 @@
 
 A responsive Telegram bot dashboard with real-time metrics, chat logs, quick actions, analytics, and AI-powered message handling.
 
+## Project documentation (Agile)
+
+Planning and backlog documentation lives in [`docs/`](docs/README.md):
+
+- [Product Vision](docs/product-vision.md)
+- [Current Increment (Sprint 0)](docs/current-increment.md)
+- [Product Backlog](docs/product-backlog.md)
+- [Sprint Plan](docs/sprint-plan.md)
+- [Definition of Done](docs/definition-of-done.md)
+- [Architecture](docs/architecture.md)
+- [Risks & Decisions](docs/risks-and-decisions.md)
+
 ## Features
 
 - **Dashboard UI**: Dark/light theme, live metrics, message feed, events log, feedback panel
@@ -13,6 +25,7 @@ A responsive Telegram bot dashboard with real-time metrics, chat logs, quick act
 
 ```
 Telegram_dashboard/
+├── docs/                    # Agile project documentation
 ├── backend/
 │   ├── main.py              # FastAPI application entry point
 │   ├── config.py              # Environment configuration
