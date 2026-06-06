@@ -76,7 +76,24 @@ def seed() -> None:
     store.set_chat_auto_reply(2001, True)
     store.sync_chat_settings_from_messages()
 
-    print(f"Seeded {len(samples)} messages, topics, and workflow settings.")
+    relationships = {
+        1001: (
+            "Alice Tan (@alice) — private customer contacting about billing and pricing. "
+            "She shares sensitive details and expects prompt, professional support."
+        ),
+        1002: (
+            "Bob Lim (@bob_dev) — developer contact requesting product demos. "
+            "Technical audience; prefers clear scheduling and follow-up."
+        ),
+        2001: (
+            "Project Alpha group — internal team chat with Carol and Bob coordinating standups, "
+            "timelines, and budget approvals. Fast-moving operational updates."
+        ),
+    }
+    for chat_id, relationship in relationships.items():
+        store.set_chat_relationship(chat_id, relationship, source="ai")
+
+    print(f"Seeded {len(samples)} messages, topics, relationships, and workflow settings.")
 
 
 if __name__ == "__main__":

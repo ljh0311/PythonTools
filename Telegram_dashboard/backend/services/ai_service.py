@@ -18,6 +18,14 @@ SUMMARY_PROMPTS = {
     ),
 }
 
+RELATIONSHIP_SYSTEM = (
+    "You describe who the other party is in a Telegram conversation for an operator dashboard. "
+    "Return ONLY valid JSON with no markdown fences. "
+    "Schema: {\"relationship\": string} — 2-3 concise English sentences covering: "
+    "who they are, their role or relationship to the operator, communication style if evident, "
+    "and what they typically need help with."
+)
+
 TOPIC_SYSTEM = (
     "You classify Telegram messages for an operator dashboard. "
     "Return ONLY valid JSON with no markdown fences. "
@@ -178,7 +186,90 @@ class AIService:
             "redaction_count": redaction_count,
         }
 
-    def _fallback_suggestions(self, messages: list[dict]) -> dict[str, Any]:
+    def _relationship_context_block(
+        self, relationship_map: dict[int, str] | None
+    ) -> str:
+        if not relationship_map:
+            return ""
+        lines = [
+            f"- Chat {chat_id}: {relationship}"
+            for chat_id, relationship in relationship_map.items()
+            if relationship
+        ]
+        if not lines:
+            return ""
+        return "Relationship context (who each receiving party is):\n" + "\n".join(lines) + "\n\n"
+
+    def _fallback_relationship(
+        self, messages: list[dict], chat_type: str | None, chat_title: str | None
+    ) -> str:
+        if chat_type == "group":
+            label = chat_title or "this group"
+            participants = sorted(
+                {
+                    m.get("username") or f"User {m.get('user_id')}"
+                    for m in messages
+                    if m.get("user_id")
+                }
+            )
+            names = ", ".join(participants[:4]) if participants else "team members"
+            return (
+                f"Group chat ({label}) with {names}. "
+                "They coordinate updates and requests as a team."
+            )
+
+        incoming = [m for m in messages if m.get("direction") == "incoming"]
+        latest = sorted(incoming or messages, key=lambda m: m.get("created_at", ""))[-1]
+        user = latest.get("username") or f"User {latest.get('user_id')}"
+        snippet = (latest.get("text") or "")[:120]
+        return (
+            f"Private chat with {user}. "
+            f"Recent focus: \"{snippet}\". "
+            "Treat them as a direct contact who expects a personal reply."
+        )
+
+    async def generate_relationship(
+        self,
+        messages: list[dict],
+        *,
+        chat_type: str | None = None,
+        chat_title: str | None = None,
+    ) -> dict[str, str]:
+        if not messages:
+            return {"relationship": "No messages yet.", "source": "ai"}
+
+        redacted, _, _ = self._prepare_messages(messages)
+        transcript = self._format_transcript(redacted)
+        label = chat_title or chat_type or "chat"
+        prompt = (
+            f"Describe who the other party is in this {label} conversation "
+            f"based on these messages:\n\n{transcript}"
+        )
+
+        if not self.configured:
+            return {
+                "relationship": self._fallback_relationship(messages, chat_type, chat_title),
+                "source": "ai",
+            }
+
+        try:
+            raw, _provider = await self._generate_text(prompt, RELATIONSHIP_SYSTEM)
+            parsed = self._parse_json_response(raw)
+            relationship = str(parsed.get("relationship", "")).strip()
+            if not relationship:
+                raise ValueError("Empty relationship")
+            return {"relationship": relationship, "source": "ai"}
+        except Exception:
+            return {
+                "relationship": self._fallback_relationship(messages, chat_type, chat_title),
+                "source": "ai",
+            }
+
+    def _fallback_suggestions(
+        self,
+        messages: list[dict],
+        relationship_map: dict[int, str] | None = None,
+    ) -> dict[str, Any]:
         suggestions = []
         by_chat: dict[int | None, list[dict]] = {}
         for msg in messages:
@@ -190,12 +281,16 @@ class AIService:
                 continue
             latest = sorted(incoming, key=lambda m: m.get("created_at", ""))[-1]
             user = latest.get("username") or f"User {latest.get('user_id')}"
+            rel = (relationship_map or {}).get(chat_id or 0, "")
+            greeting = f"Hi {user}, thanks for your message."
+            if rel:
+                greeting = f"Hi {user}, thanks for reaching out."
             suggestions.append(
                 {
                     "type": "reply",
                     "chat_id": chat_id,
                     "user": user,
-                    "draft": f"Hi {user}, thanks for your message. I'll follow up shortly.",
+                    "draft": f"{greeting} I'll follow up shortly.",
                     "action": "",
                     "priority": "medium",
                     "confidence": 0.5,
@@ -223,7 +318,11 @@ class AIService:
             "provider": "fallback",
         }
 
-    async def suggest_actions(self, messages: list[dict]) -> dict[str, Any]:
+    async def suggest_actions(
+        self,
+        messages: list[dict],
+        relationship_map: dict[int, str] | None = None,
+    ) -> dict[str, Any]:
         if not messages:
             return {
                 "summary": "No messages to analyze.",
@@ -235,14 +334,16 @@ class AIService:
 
         redacted, redaction_count, redaction_applied = self._prepare_messages(messages)
         transcript = self._format_transcript(redacted)
+        context_block = self._relationship_context_block(relationship_map)
         prompt = (
             "Analyze these Telegram messages. Suggest reply drafts for chats needing a response "
-            "and next actions for the operator.\n\n"
-            f"{transcript}"
+            "and next actions for the operator. "
+            "Use the relationship context to tailor tone and content to who the receiving party is.\n\n"
+            f"{context_block}{transcript}"
         )
 
         if not self.configured:
-            result = self._fallback_suggestions(messages)
+            result = self._fallback_suggestions(messages, relationship_map)
             result["redaction_applied"] = redaction_applied
             result["redaction_count"] = redaction_count
             return result
@@ -259,7 +360,7 @@ class AIService:
                 "redaction_count": redaction_count,
             }
         except Exception:
-            result = self._fallback_suggestions(messages)
+            result = self._fallback_suggestions(messages, relationship_map)
             result["redaction_applied"] = redaction_applied
             result["redaction_count"] = redaction_count
             return result

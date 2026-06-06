@@ -67,10 +67,15 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ mode }),
     }),
-  setChatAutoReply: (chatId, enabled) =>
+  getChatSettings: (chatId) => request(`/api/settings/chat-replies/${chatId}`),
+  updateChatSettings: (chatId, payload) =>
     request(`/api/settings/chat-replies/${chatId}`, {
       method: "PUT",
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify(payload),
+    }),
+  regenerateChatRelationship: (chatId) =>
+    request(`/api/settings/chat-replies/${chatId}/regenerate-relationship`, {
+      method: "POST",
     }),
   getTopicMode: () => request("/api/settings/topic-mode"),
   setTopicMode: (mode) =>

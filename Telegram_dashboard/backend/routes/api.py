@@ -63,8 +63,9 @@ class TopicModeRequest(BaseModel):
     mode: str = Field(pattern="^(user_type|ai_assign)$")
 
 
-class ChatAutoReplyRequest(BaseModel):
-    enabled: bool
+class ChatSettingsRequest(BaseModel):
+    enabled: bool | None = None
+    relationship: str | None = Field(default=None, max_length=2000)
 
 
 class MessageTopicsRequest(BaseModel):
@@ -249,15 +250,33 @@ async def summarize_filtered(body: FilteredAiRequest) -> dict[str, Any]:
 @router.post("/ai/suggest-actions", dependencies=[Depends(verify_api_key)])
 async def suggest_actions(body: FilteredAiRequest) -> dict[str, Any]:
     messages, filters = _fetch_filtered_messages(body)
-    result = await ai_service.suggest_actions(messages)
+    chat_ids = list({m["chat_id"] for m in messages if m.get("chat_id") is not None})
+    relationship_map = store.get_relationship_map(chat_ids)
+    result = await ai_service.suggest_actions(messages, relationship_map)
     fhash = store.filter_hash(filters)
     saved = store.save_suggestions(fhash, result.get("suggestions", []))
     return {**result, "filter_hash": fhash, "suggestions": saved}
 
 
+async def _ensure_chat_relationships() -> None:
+    store.sync_chat_settings_from_messages()
+    for chat_id in store.chats_missing_relationship():
+        messages = store.get_messages_by_chat_id(chat_id)
+        if not messages:
+            continue
+        chat_type = messages[-1].get("chat_type")
+        chat_title = messages[-1].get("chat_title")
+        generated = await ai_service.generate_relationship(
+            messages, chat_type=chat_type, chat_title=chat_title
+        )
+        store.set_chat_relationship(
+            chat_id, generated["relationship"], source=generated["source"]
+        )
+
+
 @router.get("/settings/reply-mode", dependencies=[Depends(verify_api_key)])
 async def get_reply_mode() -> dict[str, Any]:
-    store.sync_chat_settings_from_messages()
+    await _ensure_chat_relationships()
     return {
         "mode": store.get_reply_mode(),
         "chats": store.list_chat_settings(),
@@ -276,13 +295,49 @@ async def set_reply_mode(body: ReplyModeRequest) -> dict[str, Any]:
     return payload
 
 
+@router.get("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_api_key)])
+async def get_chat_settings(chat_id: int) -> dict[str, Any]:
+    store.sync_chat_settings_from_messages()
+    saved = store.get_chat_setting(chat_id)
+    if not saved:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return saved
+
+
 @router.put("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_api_key)])
-async def set_chat_auto_reply(chat_id: int, body: ChatAutoReplyRequest) -> dict[str, Any]:
-    saved = store.set_chat_auto_reply(chat_id, body.enabled)
-    await ws_manager.broadcast(
-        "chat_reply_updated",
-        {"chat_id": chat_id, "auto_reply_enabled": body.enabled},
+async def update_chat_settings(chat_id: int, body: ChatSettingsRequest) -> dict[str, Any]:
+    if body.enabled is None and body.relationship is None:
+        raise HTTPException(status_code=400, detail="No settings to update")
+    try:
+        saved = store.update_chat_settings(
+            chat_id,
+            enabled=body.enabled,
+            relationship=body.relationship,
+            relationship_source="manual" if body.relationship is not None else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await ws_manager.broadcast("chat_reply_updated", saved)
+    return saved
+
+
+@router.post(
+    "/settings/chat-replies/{chat_id}/regenerate-relationship",
+    dependencies=[Depends(verify_api_key)],
+)
+async def regenerate_chat_relationship(chat_id: int) -> dict[str, Any]:
+    messages = store.get_messages_by_chat_id(chat_id)
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages for this chat")
+    chat_type = messages[-1].get("chat_type")
+    chat_title = messages[-1].get("chat_title")
+    generated = await ai_service.generate_relationship(
+        messages, chat_type=chat_type, chat_title=chat_title
     )
+    saved = store.set_chat_relationship(
+        chat_id, generated["relationship"], source=generated["source"]
+    )
+    await ws_manager.broadcast("chat_relationship_updated", saved)
     return saved
 
 

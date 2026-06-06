@@ -21,8 +21,14 @@ async def main() -> None:
         await page.screenshot(path=str(OUT / "sprint3-workflow.png"), full_page=True)
 
         await page.select_option("#reply-mode", "per_chat")
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(2000)
         await page.screenshot(path=str(OUT / "sprint3-per-chat.png"), full_page=True)
+
+        edit_btn = page.locator(".toggle-relationship").first
+        if await edit_btn.count():
+            await edit_btn.click()
+            await page.wait_for_timeout(800)
+            await page.screenshot(path=str(OUT / "sprint3-relationship-edit.png"), full_page=True)
 
         await page.select_option("#topic-mode", "ai_assign")
         await page.fill("#inbox-topics", "billing")

@@ -66,6 +66,17 @@ class DashboardStore:
             "CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)"
         )
 
+    def _migrate_chat_settings(self, conn: sqlite3.Connection) -> None:
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(chat_settings)")}
+        additions = {
+            "relationship": "TEXT",
+            "relationship_source": "TEXT",
+            "relationship_generated_at": "TEXT",
+        }
+        for column, col_type in additions.items():
+            if column not in existing:
+                conn.execute(f"ALTER TABLE chat_settings ADD COLUMN {column} {col_type}")
+
     def _init_db(self) -> None:
         with self._conn() as conn:
             conn.executescript(
@@ -146,6 +157,7 @@ class DashboardStore:
                 """
             )
             self._migrate_messages(conn)
+            self._migrate_chat_settings(conn)
             self._seed_defaults(conn)
             count = conn.execute("SELECT COUNT(*) FROM quick_actions").fetchone()[0]
             if count == 0:
@@ -234,15 +246,73 @@ class DashboardStore:
                     cs.chat_title,
                     cs.chat_type,
                     cs.auto_reply_enabled,
+                    cs.relationship,
+                    cs.relationship_source,
+                    cs.relationship_generated_at,
                     COUNT(m.id) AS message_count,
-                    MAX(m.created_at) AS last_message_at
+                    MAX(m.created_at) AS last_message_at,
+                    GROUP_CONCAT(DISTINCT m.username) AS participants
                 FROM chat_settings cs
                 LEFT JOIN messages m ON m.chat_id = cs.chat_id
                 GROUP BY cs.chat_id
                 ORDER BY last_message_at DESC
                 """
             ).fetchall()
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            item = dict(row)
+            participants = item.pop("participants", None)
+            item["participants"] = [
+                p for p in (participants or "").split(",") if p
+            ]
+            result.append(item)
+        return result
+
+    def get_chat_setting(self, chat_id: int) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM chat_settings WHERE chat_id = ?", (chat_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_relationship_map(self, chat_ids: list[int]) -> dict[int, str]:
+        if not chat_ids:
+            return {}
+        placeholders = ",".join("?" for _ in chat_ids)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT chat_id, relationship
+                FROM chat_settings
+                WHERE chat_id IN ({placeholders}) AND relationship IS NOT NULL AND relationship != ''
+                """,
+                chat_ids,
+            ).fetchall()
+        return {int(row["chat_id"]): row["relationship"] for row in rows}
+
+    def set_chat_relationship(
+        self,
+        chat_id: int,
+        relationship: str,
+        *,
+        source: str = "manual",
+    ) -> dict[str, Any]:
+        return self.update_chat_settings(
+            chat_id,
+            relationship=relationship,
+            relationship_source=source,
+        )
+
+    def chats_missing_relationship(self) -> list[int]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT cs.chat_id
+                FROM chat_settings cs
+                WHERE cs.relationship IS NULL OR TRIM(cs.relationship) = ''
+                """
+            ).fetchall()
+        return [int(row["chat_id"]) for row in rows]
 
     def sync_chat_settings_from_messages(self) -> None:
         with self._conn() as conn:
@@ -266,7 +336,14 @@ class DashboardStore:
                     (row["chat_id"], row["chat_title"], row["chat_type"]),
                 )
 
-    def set_chat_auto_reply(self, chat_id: int, enabled: bool) -> dict[str, Any]:
+    def update_chat_settings(
+        self,
+        chat_id: int,
+        *,
+        enabled: bool | None = None,
+        relationship: str | None = None,
+        relationship_source: str | None = None,
+    ) -> dict[str, Any]:
         with self._conn() as conn:
             row = conn.execute(
                 """
@@ -280,6 +357,11 @@ class DashboardStore:
             ).fetchone()
             title = row["chat_title"] if row else None
             chat_type = row["chat_type"] if row else None
+            existing = conn.execute(
+                "SELECT auto_reply_enabled FROM chat_settings WHERE chat_id = ?",
+                (chat_id,),
+            ).fetchone()
+            auto_reply = int(enabled) if enabled is not None else int(existing["auto_reply_enabled"] if existing else 0)
             conn.execute(
                 """
                 INSERT INTO chat_settings (chat_id, chat_title, chat_type, auto_reply_enabled)
@@ -289,12 +371,30 @@ class DashboardStore:
                     chat_title = COALESCE(excluded.chat_title, chat_settings.chat_title),
                     chat_type = COALESCE(excluded.chat_type, chat_settings.chat_type)
                 """,
-                (chat_id, title, chat_type, int(enabled)),
+                (chat_id, title, chat_type, auto_reply),
             )
+            if relationship is not None:
+                generated_at = datetime.utcnow().isoformat()
+                conn.execute(
+                    """
+                    UPDATE chat_settings
+                    SET relationship = ?, relationship_source = ?, relationship_generated_at = ?
+                    WHERE chat_id = ?
+                    """,
+                    (
+                        relationship.strip(),
+                        relationship_source or "manual",
+                        generated_at,
+                        chat_id,
+                    ),
+                )
             saved = conn.execute(
                 "SELECT * FROM chat_settings WHERE chat_id = ?", (chat_id,)
             ).fetchone()
         return dict(saved)
+
+    def set_chat_auto_reply(self, chat_id: int, enabled: bool) -> dict[str, Any]:
+        return self.update_chat_settings(chat_id, enabled=enabled)
 
     def _get_or_create_topic(self, conn: sqlite3.Connection, name: str, source: str) -> int:
         normalized = name.strip().lower()

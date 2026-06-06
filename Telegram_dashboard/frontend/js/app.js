@@ -197,7 +197,11 @@ function handleRealtime(message) {
     refreshDashboard().catch(() => {});
   }
 
-  if (event === "reply_mode_updated" || event === "chat_reply_updated") {
+  if (
+    event === "reply_mode_updated" ||
+    event === "chat_reply_updated" ||
+    event === "chat_relationship_updated"
+  ) {
     loadWorkflowSettings().catch(() => {});
   }
 
