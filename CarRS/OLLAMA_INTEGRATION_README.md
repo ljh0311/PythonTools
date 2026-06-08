@@ -7,7 +7,9 @@ The Car Rental Recommender now includes **Ollama LLM (Large Language Model) inte
 ## Features
 
 ### 👤 User Profile
+
 The AI system is configured with a specific user profile to provide personalized recommendations:
+
 - **Age**: 24 years old male
 - **Driving Experience**: 3 years (decently confident)
 - **Decision Style**: Value-conscious, thorough researcher
@@ -16,6 +18,7 @@ The AI system is configured with a specific user profile to provide personalized
 - **Focus**: Getting the most out of what is paid for
 
 ### 🤖 Personalized AI Recommendations
+
 - **User Profile Awareness**: Considers you as a 24-year-old value-conscious male driver with 3 years of experience
 - **Natural Language Analysis**: The LLM analyzes your historical rental data with your profile in mind
 - **Value-Focused Reasoning**: Prioritizes cost efficiency and maximizing rental value for multiple purposes
@@ -24,12 +27,14 @@ The AI system is configured with a specific user profile to provide personalized
 - **Confidence Scoring**: Each recommendation includes a confidence score based on data quality and profile match
 
 ### 🎯 Smart Analysis
+
 - **Pattern Recognition**: Identifies trends in your rental behavior
 - **Cost Optimization**: Suggests the most cost-effective options based on distance and duration
 - **Provider Insights**: Analyzes which providers work best for different trip types
 - **Fuel Efficiency**: Considers fuel consumption for longer trips
 
 ### 🔧 Flexible Configuration
+
 - **Multiple Models**: Support for various Ollama models (llama2, mistral, codellama, etc.)
 - **Combined Methods**: Works alongside traditional and ML-based recommendations
 - **Customizable**: Enable/disable Ollama recommendations independently
@@ -41,12 +46,14 @@ The AI system is configured with a specific user profile to provide personalized
 Download and install Ollama from [https://ollama.ai](https://ollama.ai)
 
 **Windows:**
+
 ```bash
 # Download the Windows installer from the website
 # Run the installer and follow the setup wizard
 ```
 
 **macOS/Linux:**
+
 ```bash
 curl -fsSL https://ollama.ai/install.sh | sh
 ```
@@ -60,6 +67,7 @@ ollama pull llama2
 ```
 
 Other recommended models:
+
 ```bash
 ollama pull mistral          # Good for general reasoning
 ollama pull codellama        # Good for structured analysis
@@ -91,7 +99,7 @@ The service will run on `http://localhost:11434` by default.
 
 1. **Enable Ollama**: Check the "Use Ollama LLM" checkbox
 2. **Select Model**: Choose your preferred Ollama model from the dropdown
-3. **Enter Trip Details**: 
+3. **Enter Trip Details**:
    - Distance in kilometers
    - Duration in hours
    - Check "Weekend Trip" if applicable
@@ -100,6 +108,7 @@ The service will run on `http://localhost:11434` by default.
 ### Understanding Results
 
 The application will display recommendations with:
+
 - **Provider**: Car rental company
 - **Car Model**: Specific vehicle model
 - **Estimated Cost**: Total rental cost
@@ -129,21 +138,25 @@ The application will display recommendations with:
 ### Common Issues
 
 **1. "Cannot connect to Ollama"**
+
 - Ensure Ollama is installed and running
 - Check if the service is running on `localhost:11434`
 - Restart Ollama: `ollama serve`
 
 **2. "Model not found"**
+
 - Download the model: `ollama pull <model_name>`
 - Check available models: `ollama list`
 - Use a different model from the dropdown
 
 **3. "Slow responses"**
+
 - Use a smaller model (llama2:7b instead of llama2:13b)
 - Close other applications to free up memory
 - Consider using a more powerful computer
 
 **4. "No recommendations"**
+
 - Ensure you have historical rental data loaded
 - Check that the data contains the required columns
 - Try enabling other recommendation methods (ML, Historical)
@@ -160,6 +173,7 @@ The application will display recommendations with:
 ### API Integration
 
 The application communicates with Ollama via HTTP API:
+
 - **Endpoint**: `http://localhost:11434/api/generate`
 - **Method**: POST
 - **Timeout**: 30 seconds
@@ -175,6 +189,7 @@ The application communicates with Ollama via HTTP API:
 ### Prompt Structure
 
 The LLM receives structured prompts including:
+
 - Customer request details (distance, duration, weekend)
 - Historical rental data summary
 - Provider statistics and patterns
@@ -190,6 +205,7 @@ The LLM receives structured prompts including:
 ## Future Enhancements
 
 Planned improvements:
+
 - **Custom Model Training**: Train models on your specific rental patterns
 - **Advanced Analytics**: More sophisticated pattern recognition
 - **Multi-Model Ensemble**: Combine multiple models for better accuracy
@@ -198,6 +214,7 @@ Planned improvements:
 ## Support
 
 For issues with:
+
 - **Ollama Installation**: Visit [https://ollama.ai](https://ollama.ai)
 - **Application Issues**: Check the troubleshooting section above
 - **Model Selection**: Refer to the model comparison table

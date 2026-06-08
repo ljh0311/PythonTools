@@ -17,6 +17,7 @@ This application helps users find the best car rental option based on their trip
 
 ### Support Files (For Developers)
 
+- **run_cleaning_pipeline.py** - Standalone CLI to run the data cleaning pipeline on a CSV (see Data management / cleaning pipeline below)
 - **requirements.txt** - Lists all required Python packages
 
 ### Backup/Testing Files (Not Needed for Normal Use)
@@ -60,6 +61,27 @@ This application helps users find the best car rental option based on their trip
   - **Mileage-based**: Calculate required duration for your target cost and mileage
 - View booking scenarios to optimize your rental strategy
 - See detailed cost breakdowns
+
+## Data management / cleaning pipeline
+
+Loading a data file runs an **automated data cleaning pipeline** so your data is validated and normalized before use:
+
+1. **Schema validation** — Checks for required columns (e.g. Date) and warns about missing recommended columns (Car model, Car Cat, Distance, etc.).
+2. **Load and normalize** — Reads the CSV, ensures a Region column exists and normalizes Singapore/Malaysia values.
+3. **Enhance** — Converts dates to datetime, adds Month/Year, coerces numeric columns (strips `$`, `L`), and fills missing values with sensible defaults.
+4. **Deduplicate** — Removes duplicate rows by key columns (Date, Car model, Car Cat, Distance, Rental hour).
+5. **Quality report** — After each load you get a summary (rows in/out, duplicates removed, schema messages). Use the **Data quality report** button to view the full report.
+
+The same pipeline can be run **standalone** (e.g. to clean a file without opening the GUI):
+
+```bash
+python run_cleaning_pipeline.py "22 - Sheet1.csv" --out cleaned.csv
+python run_cleaning_pipeline.py input.csv --out cleaned.csv --report report.json --outliers
+```
+
+- `--out` / `-o`: Write cleaned data to this CSV.
+- `--report` / `-r`: Write a JSON quality report (rows in/out, duplicates removed, schema messages).
+- `--outliers`: Apply IQR-based capping to numeric columns (Distance, Total, Rental hour) to limit extreme values.
 
 ## Features
 
