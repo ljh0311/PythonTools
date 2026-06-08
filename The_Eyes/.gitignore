@@ -1,0 +1,4 @@
+﻿web_version/frontend/node_modules/
+web_version/venv/
+temp/
+logs/

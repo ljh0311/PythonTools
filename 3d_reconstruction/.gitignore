@@ -9,3 +9,7 @@ test_output/
 *.bmp
 *.tiff
 *.gif
+# Open3D viewer exports
+ScreenCapture_*
+ScreenCamera_*.json
+

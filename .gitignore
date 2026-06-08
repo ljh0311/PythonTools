@@ -79,3 +79,6 @@ develop-eggs/
 .installed.cfg
 lib/
 lib64/ 
+# Node.js
+node_modules/
+
