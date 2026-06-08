@@ -1,0 +1,25 @@
+modLoader = "javafml"
+loaderVersion = "[36,)"
+license = "MIT"
+
+[[mods]]
+modId = "mtr"
+version = "4.0.2-hotfix-1"
+displayName = "Minecraft Transit Railway"
+authors = "Jonathan Ho"
+description = "A Minecraft mod that adds automated train systems into the game. Now with AI-powered train management via Ollama integration."
+logoFile = "icon.png"
+
+[[dependencies.mtr]]
+modId = "forge"
+mandatory = true
+versionRange = "[36,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.mtr]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.20.1]"
+ordering = "NONE"
+side = "BOTH"

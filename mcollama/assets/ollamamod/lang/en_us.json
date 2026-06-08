@@ -1,0 +1,11 @@
+{
+  "key.categories.ollamamod": "Ollama Mod",
+  "key.ollamamod.open_gui": "Open Ollama Chat",
+  "gui.ollamamod.chat.title": "Ollama AI Chat",
+  "gui.ollamamod.chat.send": "Send",
+  "gui.ollamamod.chat.clear": "Clear",
+  "gui.ollamamod.chat.placeholder": "Enter your message...",
+  "gui.ollamamod.chat.response_placeholder": "AI responses will appear here...",
+  "gui.ollamamod.chat.loading": "Sending message to AI...",
+  "gui.ollamamod.chat.ready": "Ready"
+}

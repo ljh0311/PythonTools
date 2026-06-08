@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "ollamamod",
+  "version": "1.0.0",
+  "name": "Ollama Mod",
+  "description": "A Minecraft mod that integrates with Ollama AI to provide in-game AI chat capabilities.",
+  "authors": [
+    "OllamaMod Team"
+  ],
+  "contact": {
+    "homepage": "https://github.com/ollamamod/ollamamod",
+    "sources": "https://github.com/ollamamod/ollamamod"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.ollamamod.fabric.OllamaModFabric"
+    ],
+    "client": [
+      "com.ollamamod.fabric.OllamaModFabric"
+    ]
+  },
+  "mixins": [
+    "ollamamod.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.14.22",
+    "fabric-api": "*",
+    "minecraft": "~1.20.1",
+    "architectury": ">=9.1.10"
+  },
+  "suggests": {
+    "another-mod": "*"
+  }
+}

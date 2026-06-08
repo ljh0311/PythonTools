@@ -1,0 +1,28 @@
+plugins {
+    id 'dev.architectury.loom' version '1.6-SNAPSHOT'
+}
+
+architectury {
+    platformSetupLoomIde()
+    forge()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:1.20.1"
+    mappings loom.officialMojangMappings()
+
+    forge "net.minecraftforge:forge:1.20.1-47.2.0"
+    modImplementation "dev.architectury:architectury-forge:9.1.10"
+
+    implementation(project(":common")) {
+        transitive = false
+    }
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("META-INF/mods.toml") {
+        expand "version": project.version
+    }
+}

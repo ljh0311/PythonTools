@@ -1,0 +1,28 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="ollamamod"
+version="1.0.0"
+displayName="Ollama Mod"
+description='''
+A Minecraft mod that integrates with Ollama AI to provide in-game AI chat capabilities.
+Players can interact with AI models through commands and GUI interfaces.
+'''
+authors="OllamaMod Team"
+credits="Thanks to the Ollama team for the amazing AI platform"
+
+[[dependencies.ollamamod]]
+modId="forge"
+mandatory=true
+versionRange="[47.0.0,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.ollamamod]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.21)"
+ordering="NONE"
+side="BOTH"

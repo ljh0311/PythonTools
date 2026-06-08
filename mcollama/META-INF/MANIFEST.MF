@@ -1,0 +1,9 @@
+Manifest-Version: 1.0
+Specification-Title: OllamaModV1
+Specification-Vendor: OllamaMod Team
+Specification-Version: 1
+Implementation-Title: OllamaModV1
+Implementation-Version: 1.0.0
+Implementation-Vendor: OllamaMod Team
+Implementation-Timestamp: 2026-01-04T20:24:57+0800
+
