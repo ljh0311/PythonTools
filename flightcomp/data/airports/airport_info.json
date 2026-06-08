@@ -1,0 +1,270 @@
+{
+  "airports": [
+    {
+      "airport_icao": "WSSS",
+      "airport_name": "Singapore Changi Airport",
+      "runways": [
+        {
+          "runway_id": "rw_02L",
+          "designation": "02L",
+          "start_point": [0, 0],
+          "end_point": [4000, 0],
+          "length": 4000,
+          "width": 60,
+          "surface": "concrete",
+          "ils_available": true,
+          "ils_frequency": "110.3",
+          "restrictions": []
+        },
+        {
+          "runway_id": "rw_02C",
+          "designation": "02C",
+          "start_point": [0, 200],
+          "end_point": [4000, 200],
+          "length": 4000,
+          "width": 60,
+          "surface": "concrete",
+          "ils_available": true,
+          "ils_frequency": "109.5",
+          "restrictions": []
+        },
+        {
+          "runway_id": "rw_02R",
+          "designation": "02R",
+          "start_point": [0, 400],
+          "end_point": [4000, 400],
+          "length": 4000,
+          "width": 60,
+          "surface": "concrete",
+          "ils_available": true,
+          "ils_frequency": "111.1",
+          "restrictions": []
+        }
+      ],
+      "taxiways": [
+        {
+          "taxiway_id": "tw_A",
+          "name": "A",
+          "start_point": [100, 100],
+          "end_point": [3900, 100],
+          "width": 25,
+          "restrictions": [],
+          "connects_to": ["tw_B", "tw_C", "rw_02L"]
+        },
+        {
+          "taxiway_id": "tw_B",
+          "name": "B",
+          "start_point": [100, 300],
+          "end_point": [3900, 300],
+          "width": 25,
+          "restrictions": [],
+          "connects_to": ["tw_A", "tw_C", "rw_02C", "rw_02R"]
+        },
+        {
+          "taxiway_id": "tw_C",
+          "name": "C",
+          "start_point": [2000, 0],
+          "end_point": [2000, 500],
+          "width": 25,
+          "restrictions": [],
+          "connects_to": ["tw_A", "tw_B"]
+        }
+      ],
+      "gates": [
+        {
+          "gate_id": "gate_A1",
+          "gate_number": "A1",
+          "location": [50, 50],
+          "aircraft_types": ["Boeing 737", "Airbus A320"],
+          "taxiway_access": ["tw_A"]
+        },
+        {
+          "gate_id": "gate_A2",
+          "gate_number": "A2",
+          "location": [50, 150],
+          "aircraft_types": ["Boeing 737", "Airbus A320"],
+          "taxiway_access": ["tw_A"]
+        },
+        {
+          "gate_id": "gate_B1",
+          "gate_number": "B1",
+          "location": [50, 250],
+          "aircraft_types": ["Boeing 777", "Airbus A350"],
+          "taxiway_access": ["tw_B"]
+        }
+      ],
+      "hotspots": [
+        {
+          "hotspot_id": "hs_01",
+          "name": "Taxiway A-B Intersection",
+          "hotspot_type": "taxiway_intersection",
+          "location": [2000, 200],
+          "description": "Complex intersection between taxiways A and B. Exercise caution when crossing.",
+          "procedures": [
+            "Stop and verify clearance before crossing",
+            "Confirm with ATC if uncertain"
+          ],
+          "restrictions": [
+            "No simultaneous crossings",
+            "Maximum speed 10 knots"
+          ]
+        },
+        {
+          "hotspot_id": "hs_02",
+          "name": "Runway 02C Hold Short",
+          "hotspot_type": "hold_short",
+          "location": [100, 200],
+          "description": "Hold short line for runway 02C. Ensure complete stop before runway.",
+          "procedures": [
+            "Stop completely before hold short line",
+            "Verify runway is clear",
+            "Obtain explicit clearance before crossing"
+          ],
+          "restrictions": [
+            "Never cross without clearance",
+            "Maintain position until cleared"
+          ]
+        }
+      ],
+      "procedures": [
+        {
+          "procedure_id": "proc_dep_02L",
+          "name": "Standard Departure Runway 02L",
+          "procedure_type": "departure",
+          "description": "Standard departure procedure for runway 02L",
+          "steps": [
+            "Taxi to runway 02L via taxiway A",
+            "Hold short at runway 02L",
+            "Request takeoff clearance",
+            "After takeoff, turn right heading 090"
+          ],
+          "applicable_runways": ["02L"],
+          "restrictions": []
+        },
+        {
+          "procedure_id": "proc_arr_02C",
+          "name": "ILS Approach Runway 02C",
+          "procedure_type": "arrival",
+          "description": "ILS approach procedure for runway 02C",
+          "steps": [
+            "Intercept localizer at 3000 feet",
+            "Maintain 3000 until glideslope intercept",
+            "Follow glideslope to decision height",
+            "Land if runway in sight, otherwise go around"
+          ],
+          "applicable_runways": ["02C"],
+          "restrictions": [
+            "Minimum visibility 550m RVR",
+            "CAT III operations require authorization"
+          ]
+        }
+      ],
+      "chart_path": "data/airports/airport_charts/wsss_chart.png",
+      "metadata": {
+        "elevation_ft": 22,
+        "timezone": "Asia/Singapore",
+        "coordinates": "1.3644°N, 103.9915°E"
+      }
+    },
+    {
+      "airport_icao": "WMKK",
+      "airport_name": "Kuala Lumpur International Airport",
+      "runways": [
+        {
+          "runway_id": "rw_14L",
+          "designation": "14L",
+          "start_point": [0, 0],
+          "end_point": [0, 4000],
+          "length": 4000,
+          "width": 60,
+          "surface": "concrete",
+          "ils_available": true,
+          "ils_frequency": "110.5",
+          "restrictions": []
+        },
+        {
+          "runway_id": "rw_14R",
+          "designation": "14R",
+          "start_point": [200, 0],
+          "end_point": [200, 4000],
+          "length": 4000,
+          "width": 60,
+          "surface": "concrete",
+          "ils_available": true,
+          "ils_frequency": "109.9",
+          "restrictions": []
+        }
+      ],
+      "taxiways": [
+        {
+          "taxiway_id": "tw_Alpha",
+          "name": "Alpha",
+          "start_point": [100, 100],
+          "end_point": [100, 3900],
+          "width": 25,
+          "restrictions": [],
+          "connects_to": ["tw_Bravo", "rw_14L"]
+        },
+        {
+          "taxiway_id": "tw_Bravo",
+          "name": "Bravo",
+          "start_point": [300, 100],
+          "end_point": [300, 3900],
+          "width": 25,
+          "restrictions": [],
+          "connects_to": ["tw_Alpha", "rw_14R"]
+        }
+      ],
+      "gates": [
+        {
+          "gate_id": "gate_C1",
+          "gate_number": "C1",
+          "location": [50, 50],
+          "aircraft_types": ["Boeing 737", "Airbus A320"],
+          "taxiway_access": ["tw_Alpha"]
+        }
+      ],
+      "hotspots": [
+        {
+          "hotspot_id": "hs_wmkk_01",
+          "name": "Runway 14L/14R Crossing",
+          "hotspot_type": "runway_crossing",
+          "location": [150, 2000],
+          "description": "Critical crossing point between runways 14L and 14R",
+          "procedures": [
+            "Obtain explicit clearance from ATC",
+            "Verify both runways are clear",
+            "Cross expeditiously"
+          ],
+          "restrictions": [
+            "No stopping on crossing",
+            "Maximum speed 15 knots"
+          ]
+        }
+      ],
+      "procedures": [
+        {
+          "procedure_id": "proc_dep_wmkk_14L",
+          "name": "Standard Departure Runway 14L",
+          "procedure_type": "departure",
+          "description": "Standard departure procedure for runway 14L",
+          "steps": [
+            "Taxi to runway 14L via taxiway Alpha",
+            "Hold short at runway 14L",
+            "Request takeoff clearance",
+            "After takeoff, climb to 3000 feet"
+          ],
+          "applicable_runways": ["14L"],
+          "restrictions": []
+        }
+      ],
+      "chart_path": "data/airports/airport_charts/wmkk_chart.png",
+      "metadata": {
+        "elevation_ft": 69,
+        "timezone": "Asia/Kuala_Lumpur",
+        "coordinates": "2.7456°N, 101.7099°E"
+      }
+    }
+  ]
+}
+

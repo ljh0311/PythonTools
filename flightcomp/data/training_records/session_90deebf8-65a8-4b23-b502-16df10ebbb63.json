@@ -1,0 +1,41 @@
+{
+  "data_version": 1,
+  "session_id": "90deebf8-65a8-4b23-b502-16df10ebbb63",
+  "pilot_id": "Redcap 5223",
+  "scenario_id": "emergency_landing_gear_01",
+  "airport_icao": "WMKK",
+  "difficulty": "advanced",
+  "start_time": 1777796203.7806525,
+  "end_time": 1777796228.554514,
+  "status": "completed",
+  "communications": [
+    {
+      "instruction": "Redcap 5223, Roger, redcap 5223. sorry to hear about the landing gear issue. can you provide more information on what's happening? altitude, heading, any emergency procedures needed?.",
+      "readback": "I am at FL300, my dashboard just showed some errors, Redcap 5223.",
+      "timestamp": 1777796228.554514,
+      "response_time": 21.1485378742218,
+      "score": 91.0,
+      "errors": [
+        {
+          "error_type": "phraseology_error",
+          "severity": "minor",
+          "message": "Missing proper readback format",
+          "expected": null,
+          "actual": "I am at FL300, my dashboard just showed some errors, Redcap 5223.",
+          "timestamp": 1777796228.5539582,
+          "context": {}
+        }
+      ]
+    }
+  ],
+  "overall_score": 91.0,
+  "skill_scores": {
+    "communication": 91.0,
+    "readback_accuracy": 91.0,
+    "overall": 91.0
+  },
+  "metadata": {
+    "aircraft_type": "A320",
+    "scenario_name": "Landing Gear Malfunction"
+  }
+}

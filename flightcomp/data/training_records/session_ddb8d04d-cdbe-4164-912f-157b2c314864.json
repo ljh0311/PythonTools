@@ -1,0 +1,75 @@
+{
+  "data_version": 1,
+  "session_id": "ddb8d04d-cdbe-4164-912f-157b2c314864",
+  "pilot_id": "SIA123",
+  "scenario_id": "wsss_weather_01",
+  "airport_icao": "WSSS",
+  "difficulty": "advanced",
+  "start_time": 1775651491.013748,
+  "end_time": 1775651862.0633678,
+  "status": "completed",
+  "communications": [
+    {
+      "instruction": "SIA123, roger, standby.",
+      "readback": "Cleared for EKIKA 1A for take off, climb to 250 and contact departure on 123.45, Singapore 123",
+      "timestamp": 1775651538.7510505,
+      "response_time": 47.73465299606323,
+      "score": 100.0,
+      "errors": []
+    },
+    {
+      "instruction": "SIA123, roger, standby.",
+      "readback": "Climb to flight level 250, contact departure, thanks",
+      "timestamp": 1775651571.138831,
+      "response_time": 32.38060474395752,
+      "score": 91.0,
+      "errors": [
+        {
+          "error_type": "phraseology_error",
+          "severity": "minor",
+          "message": "Missing proper readback format",
+          "expected": null,
+          "actual": "Climb to flight level 250, contact departure, thanks",
+          "timestamp": 1775651571.138831,
+          "context": {}
+        }
+      ]
+    },
+    {
+      "instruction": "SIA123, roger, standby.",
+      "readback": "Go where?",
+      "timestamp": 1775651599.1510377,
+      "response_time": 28.009164094924927,
+      "score": 91.0,
+      "errors": [
+        {
+          "error_type": "phraseology_error",
+          "severity": "minor",
+          "message": "Missing proper readback format",
+          "expected": null,
+          "actual": "Go where?",
+          "timestamp": 1775651599.1495297,
+          "context": {}
+        }
+      ]
+    },
+    {
+      "instruction": "SIA123, roger, standby.",
+      "readback": "roger, contact departure, climb and matintain flight level 250",
+      "timestamp": 1775651664.3491023,
+      "response_time": 65.1970534324646,
+      "score": 100.0,
+      "errors": []
+    }
+  ],
+  "overall_score": 95.5,
+  "skill_scores": {
+    "communication": 95.5,
+    "readback_accuracy": 95.5,
+    "overall": 95.5
+  },
+  "metadata": {
+    "aircraft_type": "B737-800",
+    "scenario_name": "WSSS Low Visibility Operations"
+  }
+}

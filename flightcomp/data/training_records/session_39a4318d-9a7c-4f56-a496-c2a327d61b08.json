@@ -1,0 +1,176 @@
+{
+  "data_version": 1,
+  "session_id": "39a4318d-9a7c-4f56-a496-c2a327d61b08",
+  "pilot_id": "SIA123",
+  "scenario_id": "wsss_beginner_01",
+  "airport_icao": "WSSS",
+  "difficulty": "beginner",
+  "start_time": 1777795311.6699588,
+  "end_time": 1777795511.376609,
+  "status": "completed",
+  "communications": [
+    {
+      "instruction": "SIA123, Roger, singapore 123. taxi for takeoff runway 02l via taxiway charlie.",
+      "readback": "Taxi to runway 02L via charlie, singapore 123",
+      "timestamp": 1777795327.693072,
+      "response_time": 12.487678289413452,
+      "score": 93.0,
+      "errors": [
+        {
+          "error_type": "readback_error",
+          "severity": "minor",
+          "message": "Callsign missing or incomplete in readback",
+          "expected": "SIA123",
+          "actual": "Taxi to runway 02L via charlie, singapore 123",
+          "timestamp": 1777795327.693072,
+          "context": {}
+        }
+      ]
+    },
+    {
+      "instruction": "SIA123, Roger, taxi to runway 02l via charlie, sia123.",
+      "readback": "Taxing to runway 02L, Singapore 123",
+      "timestamp": 1777795345.1527762,
+      "response_time": 14.764536619186401,
+      "score": 93.0,
+      "errors": [
+        {
+          "error_type": "readback_error",
+          "severity": "minor",
+          "message": "Callsign missing or incomplete in readback",
+          "expected": "SIA123",
+          "actual": "Taxing to runway 02L, Singapore 123",
+          "timestamp": 1777795345.1522639,
+          "context": {}
+        }
+      ]
+    },
+    {
+      "instruction": "SIA123, roger.",
+      "readback": "*reached runway 02L*",
+      "timestamp": 1777795389.1703749,
+      "response_time": 40.44731855392456,
+      "score": 93.0,
+      "errors": [
+        {
+          "error_type": "readback_error",
+          "severity": "minor",
+          "message": "Callsign missing or incomplete in readback",
+          "expected": "SIA123",
+          "actual": "*reached runway 02L*",
+          "timestamp": 1777795389.1703749,
+          "context": {}
+        }
+      ]
+    },
+    {
+      "instruction": "SIA123, Roger, sia123. ready for takeoff clearance.",
+      "readback": "Singapore 123, ready for takeoff.",
+      "timestamp": 1777795411.1498227,
+      "response_time": 18.767321586608887,
+      "score": 84.0,
+      "errors": [
+        {
+          "error_type": "phraseology_error",
+          "severity": "minor",
+          "message": "Missing proper readback format",
+          "expected": null,
+          "actual": "Singapore 123, ready for takeoff.",
+          "timestamp": 1777795411.1482956,
+          "context": {}
+        },
+        {
+          "error_type": "readback_error",
+          "severity": "minor",
+          "message": "Callsign missing or incomplete in readback",
+          "expected": "SIA123",
+          "actual": "Singapore 123, ready for takeoff.",
+          "timestamp": 1777795411.1482956,
+          "context": {}
+        }
+      ]
+    },
+    {
+      "instruction": "SIA123, Roger, singapore 123. cleared for takeoff via sid ekika 1a. contact departure on 123.45 once airborne.",
+      "readback": "Cleared for takeoff via sid ekika 1a, contact departure on 123.45, Singapore 123. *initiates takeoff roll*",
+      "timestamp": 1777795442.4136236,
+      "response_time": 26.56976056098938,
+      "score": 93.0,
+      "errors": [
+        {
+          "error_type": "readback_error",
+          "severity": "minor",
+          "message": "Callsign missing or incomplete in readback",
+          "expected": "SIA123",
+          "actual": "Cleared for takeoff via sid ekika 1a, contact departure on 123.45, Singapore 123. *initiates takeoff roll*",
+          "timestamp": 1777795442.4136236,
+          "context": {}
+        }
+      ]
+    },
+    {
+      "instruction": "SIA123, Roger, singapore 123. contact departure on 123.45 once airborne.",
+      "readback": "Contacting departure on 123.45, Singapore 123. *switches to departure on 123.45*",
+      "timestamp": 1777795473.509471,
+      "response_time": 27.42029356956482,
+      "score": 84.0,
+      "errors": [
+        {
+          "error_type": "phraseology_error",
+          "severity": "minor",
+          "message": "Missing proper readback format",
+          "expected": null,
+          "actual": "Contacting departure on 123.45, Singapore 123. *switches to departure on 123.45*",
+          "timestamp": 1777795473.5084572,
+          "context": {}
+        },
+        {
+          "error_type": "readback_error",
+          "severity": "minor",
+          "message": "Callsign missing or incomplete in readback",
+          "expected": "SIA123",
+          "actual": "Contacting departure on 123.45, Singapore 123. *switches to departure on 123.45*",
+          "timestamp": 1777795473.509471,
+          "context": {}
+        }
+      ]
+    },
+    {
+      "instruction": "SIA123, roger.",
+      "readback": "Departure, Singapore 123, with you.",
+      "timestamp": 1777795497.5196388,
+      "response_time": 20.171772718429565,
+      "score": 84.0,
+      "errors": [
+        {
+          "error_type": "phraseology_error",
+          "severity": "minor",
+          "message": "Missing proper readback format",
+          "expected": null,
+          "actual": "Departure, Singapore 123, with you.",
+          "timestamp": 1777795497.5184195,
+          "context": {}
+        },
+        {
+          "error_type": "readback_error",
+          "severity": "minor",
+          "message": "Callsign missing or incomplete in readback",
+          "expected": "SIA123",
+          "actual": "Departure, Singapore 123, with you.",
+          "timestamp": 1777795497.5184195,
+          "context": {}
+        }
+      ]
+    }
+  ],
+  "overall_score": 89.14285714285714,
+  "skill_scores": {
+    "communication": 89.14285714285714,
+    "readback_accuracy": 89.14285714285714,
+    "overall": 89.14285714285714
+  },
+  "metadata": {
+    "aircraft_type": "A320",
+    "scenario_name": "WSSS Basic Departure"
+  }
+}

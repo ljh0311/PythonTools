@@ -1,0 +1,200 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "emergency_engine_failure_01",
+      "name": "Engine Failure on Takeoff",
+      "description": "Critical engine failure immediately after takeoff. Practice emergency procedures and ATC coordination.",
+      "airport_icao": "WSSS",
+      "difficulty": "expert",
+      "scenario_type": "emergency",
+      "weather": {
+        "wind_direction": 20,
+        "wind_speed": 8,
+        "visibility": "10 kilometres",
+        "ceiling": "Clear",
+        "precipitation": "None",
+        "temperature": 28,
+        "qnh": 1013.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Declare emergency",
+        "Execute engine failure checklist",
+        "Request immediate return",
+        "Coordinate with ATC for emergency landing"
+      ],
+      "expected_communications": [
+        "Mayday Mayday Mayday",
+        "Engine failure",
+        "Request immediate return",
+        "Cleared emergency landing"
+      ],
+      "time_limit": 10,
+      "metadata": {
+        "emergency_type": "engine_failure",
+        "phase_of_flight": "takeoff",
+        "severity": "critical"
+      },
+      "checklist_id": "engine_failure_takeoff"
+    },
+    {
+      "scenario_id": "emergency_medical_01",
+      "name": "Medical Emergency in Flight",
+      "description": "Passenger medical emergency requiring priority landing and medical services coordination.",
+      "airport_icao": "WMKK",
+      "difficulty": "advanced",
+      "scenario_type": "emergency",
+      "weather": {
+        "wind_direction": 90,
+        "wind_speed": 12,
+        "visibility": "8 kilometres",
+        "ceiling": "Scattered clouds at 3000",
+        "precipitation": "Light rain",
+        "temperature": 24,
+        "qnh": 1012.0
+      },
+      "traffic_aircraft": [
+        {
+          "callsign": "SIA456",
+          "aircraft_type": "Boeing 777",
+          "position": "En route",
+          "altitude": 35000,
+          "heading": 180,
+          "speed": 450,
+          "status": "en_route",
+          "destination": "WMKK"
+        }
+      ],
+      "objectives": [
+        "Declare medical emergency",
+        "Request priority handling",
+        "Coordinate medical services",
+        "Execute priority approach"
+      ],
+      "expected_communications": [
+        "Pan Pan Pan",
+        "Medical emergency",
+        "Request priority landing",
+        "Medical services standing by"
+      ],
+      "time_limit": 15,
+      "metadata": {
+        "emergency_type": "medical",
+        "phase_of_flight": "cruise",
+        "severity": "urgent"
+      },
+      "checklist_id": "medical_emergency"
+    },
+    {
+      "scenario_id": "emergency_fire_01",
+      "name": "Smoke in Cockpit",
+      "description": "Smoke detected in cockpit requiring immediate emergency procedures and landing.",
+      "airport_icao": "WSSS",
+      "difficulty": "expert",
+      "scenario_type": "emergency",
+      "weather": {
+        "wind_direction": 180,
+        "wind_speed": 10,
+        "visibility": "6 kilometres",
+        "ceiling": "Broken clouds at 2000",
+        "precipitation": "Moderate rain",
+        "temperature": 26,
+        "qnh": 1011.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Declare emergency",
+        "Execute smoke/fire checklist",
+        "Request immediate landing",
+        "Coordinate with emergency services"
+      ],
+      "expected_communications": [
+        "Mayday Mayday Mayday",
+        "Smoke in cockpit",
+        "Request immediate landing",
+        "Emergency services standing by"
+      ],
+      "time_limit": 8,
+      "metadata": {
+        "emergency_type": "fire",
+        "phase_of_flight": "approach",
+        "severity": "critical"
+      },
+      "checklist_id": "smoke_fire"
+    },
+    {
+      "scenario_id": "emergency_landing_gear_01",
+      "name": "Landing Gear Malfunction",
+      "description": "Landing gear will not extend. Practice troubleshooting and emergency landing procedures.",
+      "airport_icao": "WMKK",
+      "difficulty": "advanced",
+      "scenario_type": "emergency",
+      "weather": {
+        "wind_direction": 270,
+        "wind_speed": 8,
+        "visibility": "10 kilometres",
+        "ceiling": "Clear",
+        "precipitation": "None",
+        "temperature": 22,
+        "qnh": 1013.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Troubleshoot landing gear",
+        "Declare emergency if needed",
+        "Execute gear extension procedures",
+        "Prepare for emergency landing"
+      ],
+      "expected_communications": [
+        "Landing gear problem",
+        "Attempting gear extension",
+        "Gear down and locked",
+        "Cleared emergency landing"
+      ],
+      "time_limit": 20,
+      "metadata": {
+        "emergency_type": "landing_gear",
+        "phase_of_flight": "approach",
+        "severity": "serious"
+      },
+      "checklist_id": "landing_gear"
+    },
+    {
+      "scenario_id": "emergency_weather_01",
+      "name": "Severe Weather Encounter",
+      "description": "Unexpected severe weather requiring immediate diversion and emergency procedures.",
+      "airport_icao": "WSSS",
+      "difficulty": "expert",
+      "scenario_type": "emergency",
+      "weather": {
+        "wind_direction": 0,
+        "wind_speed": 45,
+        "visibility": "200 metres",
+        "ceiling": "Overcast at 50",
+        "precipitation": "Heavy rain, thunderstorms",
+        "temperature": 20,
+        "qnh": 1008.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Assess weather situation",
+        "Request diversion if needed",
+        "Execute severe weather procedures",
+        "Maintain aircraft control"
+      ],
+      "expected_communications": [
+        "Severe weather ahead",
+        "Request diversion",
+        "Cleared to alternate",
+        "Maintain heading"
+      ],
+      "time_limit": 15,
+      "metadata": {
+        "emergency_type": "weather",
+        "phase_of_flight": "en_route",
+        "severity": "serious"
+      }
+    }
+  ]
+}
+

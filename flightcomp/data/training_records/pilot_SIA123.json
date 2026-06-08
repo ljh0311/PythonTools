@@ -1,0 +1,66 @@
+{
+  "data_version": 1,
+  "pilot_id": "SIA123",
+  "total_sessions": 5,
+  "total_communications": 11,
+  "overall_average_score": 36.92857142857143,
+  "skill_progress": {
+    "communication": {
+      "skill_name": "communication",
+      "current_level": "beginner",
+      "sessions_completed": 5,
+      "average_score": 36.92857142857143,
+      "trend": [
+        95.5,
+        0.0,
+        89.14285714285714,
+        0.0,
+        0.0
+      ],
+      "last_practiced": 1777798097.1235423,
+      "weak_areas": [],
+      "strong_areas": []
+    },
+    "readback_accuracy": {
+      "skill_name": "readback_accuracy",
+      "current_level": "beginner",
+      "sessions_completed": 5,
+      "average_score": 36.92857142857143,
+      "trend": [
+        95.5,
+        0.0,
+        89.14285714285714,
+        0.0,
+        0.0
+      ],
+      "last_practiced": 1777798097.1235423,
+      "weak_areas": [],
+      "strong_areas": []
+    },
+    "overall": {
+      "skill_name": "overall",
+      "current_level": "beginner",
+      "sessions_completed": 5,
+      "average_score": 36.92857142857143,
+      "trend": [
+        95.5,
+        0.0,
+        89.14285714285714,
+        0.0,
+        0.0
+      ],
+      "last_practiced": 1777798097.1235423,
+      "weak_areas": [],
+      "strong_areas": []
+    }
+  },
+  "session_history": [
+    "ddb8d04d-cdbe-4164-912f-157b2c314864",
+    "4ad1f37f-3585-4b0d-975f-d334950f42ed",
+    "39a4318d-9a7c-4f56-a496-c2a327d61b08",
+    "c808e16e-9b65-46da-b777-022b48303ee6",
+    "9175b94c-c647-4595-ac93-a3eb0bb88973"
+  ],
+  "last_training_date": 1777798097.1235423,
+  "certifications": []
+}

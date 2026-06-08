@@ -1,0 +1,22 @@
+{
+  "data_version": 1,
+  "session_id": "4ed93fd9-b09c-49fa-9185-1968c6ba48a7",
+  "pilot_id": "ATC_CONTROLLER",
+  "scenario_id": "wsss_beginner_01",
+  "airport_icao": "WSSS",
+  "difficulty": "beginner",
+  "start_time": 1777791941.8551915,
+  "end_time": 1777792028.5850923,
+  "status": "completed",
+  "communications": [],
+  "overall_score": 0.0,
+  "skill_scores": {
+    "communication": 0.0,
+    "readback_accuracy": 0.0,
+    "overall": 0.0
+  },
+  "metadata": {
+    "scenario_name": "WSSS Basic Departure",
+    "scenario_type": "normal_operations"
+  }
+}

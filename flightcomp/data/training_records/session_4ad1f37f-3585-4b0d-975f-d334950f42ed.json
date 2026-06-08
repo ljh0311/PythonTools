@@ -1,0 +1,22 @@
+{
+  "data_version": 1,
+  "session_id": "4ad1f37f-3585-4b0d-975f-d334950f42ed",
+  "pilot_id": "SIA123",
+  "scenario_id": "wsss_weather_01",
+  "airport_icao": "WSSS",
+  "difficulty": "advanced",
+  "start_time": 1777795299.0310118,
+  "end_time": 1777795308.0832236,
+  "status": "completed",
+  "communications": [],
+  "overall_score": 0.0,
+  "skill_scores": {
+    "communication": 0.0,
+    "readback_accuracy": 0.0,
+    "overall": 0.0
+  },
+  "metadata": {
+    "aircraft_type": "A320",
+    "scenario_name": "WSSS Low Visibility Operations"
+  }
+}

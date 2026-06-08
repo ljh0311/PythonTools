@@ -1,0 +1,22 @@
+{
+  "data_version": 1,
+  "session_id": "c808e16e-9b65-46da-b777-022b48303ee6",
+  "pilot_id": "SIA123",
+  "scenario_id": "wsss_beginner_01",
+  "airport_icao": "WSSS",
+  "difficulty": "beginner",
+  "start_time": 1777797307.0643194,
+  "end_time": 1777797308.5351658,
+  "status": "completed",
+  "communications": [],
+  "overall_score": 0.0,
+  "skill_scores": {
+    "communication": 0.0,
+    "readback_accuracy": 0.0,
+    "overall": 0.0
+  },
+  "metadata": {
+    "aircraft_type": "A320",
+    "scenario_name": "WSSS Basic Departure"
+  }
+}

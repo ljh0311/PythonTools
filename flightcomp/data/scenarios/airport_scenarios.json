@@ -1,0 +1,464 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "wsss_beginner_01",
+      "name": "WSSS Basic Departure",
+      "description": "Simple departure scenario at Singapore Changi Airport. Practice basic taxi and takeoff procedures.",
+      "airport_icao": "WSSS",
+      "difficulty": "beginner",
+      "scenario_type": "normal_operations",
+      "weather": {
+        "wind_direction": 20,
+        "wind_speed": 8,
+        "visibility": "10 kilometres",
+        "ceiling": "Few clouds at 4000",
+        "precipitation": "None",
+        "temperature": 28,
+        "qnh": 1013.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Request taxi clearance",
+        "Follow taxi instructions",
+        "Request takeoff clearance",
+        "Execute proper readbacks"
+      ],
+      "expected_communications": [
+        "Request taxi for departure",
+        "Taxi to runway via taxiway",
+        "Request takeoff clearance",
+        "Cleared for takeoff"
+      ],
+      "time_limit": 15,
+      "metadata": {
+        "runway": "02L",
+        "gate": "A1"
+      }
+    },
+    {
+      "scenario_id": "wsss_intermediate_01",
+      "name": "WSSS Traffic Pattern",
+      "description": "Moderate traffic scenario with multiple aircraft in the pattern. Practice sequencing and coordination.",
+      "airport_icao": "WSSS",
+      "difficulty": "intermediate",
+      "scenario_type": "traffic_management",
+      "weather": {
+        "wind_direction": 180,
+        "wind_speed": 12,
+        "visibility": "8 kilometres",
+        "ceiling": "Scattered clouds at 3000",
+        "precipitation": "Light rain",
+        "temperature": 26,
+        "qnh": 1012.0
+      },
+      "traffic_aircraft": [
+        {
+          "callsign": "SIA123",
+          "aircraft_type": "Boeing 777",
+          "position": "Final approach",
+          "altitude": 500,
+          "heading": 20,
+          "speed": 140,
+          "status": "landing",
+          "destination": "WSSS"
+        },
+        {
+          "callsign": "JET456",
+          "aircraft_type": "Airbus A320",
+          "position": "Downwind",
+          "altitude": 1000,
+          "heading": 200,
+          "speed": 180,
+          "status": "pattern",
+          "destination": "WSSS"
+        }
+      ],
+      "objectives": [
+        "Maintain proper spacing",
+        "Follow traffic pattern",
+        "Coordinate with other aircraft",
+        "Execute proper sequencing"
+      ],
+      "expected_communications": [
+        "Traffic in sight",
+        "Follow the Boeing 777",
+        "Extend downwind",
+        "Turn base"
+      ],
+      "time_limit": 20,
+      "metadata": {
+        "runway": "02R",
+        "traffic_density": "moderate"
+      }
+    },
+    {
+      "scenario_id": "wmkk_advanced_01",
+      "name": "WMKK Complex Arrival",
+      "description": "Advanced arrival scenario at Kuala Lumpur International Airport with multiple waypoints and altitude restrictions.",
+      "airport_icao": "WMKK",
+      "difficulty": "advanced",
+      "scenario_type": "normal_operations",
+      "weather": {
+        "wind_direction": 90,
+        "wind_speed": 15,
+        "visibility": "6 kilometres",
+        "ceiling": "Broken clouds at 2000",
+        "precipitation": "Moderate rain",
+        "temperature": 24,
+        "qnh": 1011.0
+      },
+      "traffic_aircraft": [
+        {
+          "callsign": "MAS789",
+          "aircraft_type": "Boeing 737",
+          "position": "Approach",
+          "altitude": 3000,
+          "heading": 90,
+          "speed": 200,
+          "status": "approach",
+          "destination": "WMKK"
+        }
+      ],
+      "objectives": [
+        "Follow STAR procedures",
+        "Maintain altitude restrictions",
+        "Execute approach briefing",
+        "Handle ATC vectoring"
+      ],
+      "expected_communications": [
+        "Descend to 3000 feet",
+        "Turn right heading 090",
+        "Maintain 3000 until established",
+        "Cleared ILS approach"
+      ],
+      "time_limit": 25,
+      "metadata": {
+        "runway": "14L",
+        "approach_type": "ILS",
+        "star": "KEPAS 1A"
+      }
+    },
+    {
+      "scenario_id": "wsss_weather_01",
+      "name": "WSSS Low Visibility Operations",
+      "description": "Low visibility scenario requiring precision approach procedures and enhanced communication.",
+      "airport_icao": "WSSS",
+      "difficulty": "advanced",
+      "scenario_type": "low_visibility",
+      "weather": {
+        "wind_direction": 0,
+        "wind_speed": 5,
+        "visibility": "400 metres",
+        "ceiling": "Overcast at 100",
+        "precipitation": "Heavy fog",
+        "temperature": 22,
+        "qnh": 1014.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Execute CAT III approach",
+        "Maintain precise altitude",
+        "Follow low visibility procedures",
+        "Execute missed approach if needed"
+      ],
+      "expected_communications": [
+        "RVR 400 metres",
+        "Cleared CAT III approach",
+        "Minimums",
+        "Go around"
+      ],
+      "time_limit": 30,
+      "metadata": {
+        "runway": "02C",
+        "approach_type": "CAT III ILS",
+        "rvr": 400
+      }
+    },
+    {
+      "scenario_id": "wmkk_night_01",
+      "name": "WMKK Night Operations",
+      "description": "Night time operations scenario with reduced visibility and different procedures.",
+      "airport_icao": "WMKK",
+      "difficulty": "intermediate",
+      "scenario_type": "night_operations",
+      "weather": {
+        "wind_direction": 270,
+        "wind_speed": 10,
+        "visibility": "10 kilometres",
+        "ceiling": "Clear",
+        "precipitation": "None",
+        "temperature": 20,
+        "qnh": 1013.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Follow night procedures",
+        "Use proper lighting",
+        "Maintain situational awareness",
+        "Execute night landing"
+      ],
+      "expected_communications": [
+        "Lights on",
+        "Runway lights on",
+        "Cleared to land",
+        "Taxi to gate"
+      ],
+      "time_limit": 20,
+      "metadata": {
+        "runway": "14R",
+        "time_of_day": "night"
+      }
+    },
+    {
+      "scenario_id": "wsss_commercial_departure_01",
+      "name": "WSSS Commercial Departure with SID",
+      "description": "Commercial aircraft departure following Standard Instrument Departure (SID) procedures. Practice SID compliance and initial climb procedures.",
+      "airport_icao": "WSSS",
+      "difficulty": "intermediate",
+      "scenario_type": "normal_operations",
+      "weather": {
+        "wind_direction": 20,
+        "wind_speed": 10,
+        "visibility": "10 kilometres",
+        "ceiling": "Few clouds at 5000",
+        "precipitation": "None",
+        "temperature": 28,
+        "qnh": 1013.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Request pushback clearance",
+        "Request taxi clearance",
+        "Follow SID procedures",
+        "Maintain assigned altitude and heading",
+        "Execute proper readbacks"
+      ],
+      "expected_communications": [
+        "Request pushback",
+        "Pushback approved",
+        "Request taxi",
+        "Taxi to runway",
+        "Cleared for takeoff",
+        "Follow SID",
+        "Climb and maintain"
+      ],
+      "time_limit": 20,
+      "metadata": {
+        "runway": "02L",
+        "gate": "A12",
+        "sid": "SID EKIKA 1A",
+        "aircraft_type": "A320"
+      }
+    },
+    {
+      "scenario_id": "wmkk_star_arrival_01",
+      "name": "WMKK STAR Arrival Procedure",
+      "description": "Commercial aircraft arrival following Standard Terminal Arrival Route (STAR). Practice STAR compliance, altitude restrictions, and approach sequencing.",
+      "airport_icao": "WMKK",
+      "difficulty": "advanced",
+      "scenario_type": "normal_operations",
+      "weather": {
+        "wind_direction": 140,
+        "wind_speed": 12,
+        "visibility": "8 kilometres",
+        "ceiling": "Scattered clouds at 3000",
+        "precipitation": "Light rain",
+        "temperature": 25,
+        "qnh": 1012.0
+      },
+      "traffic_aircraft": [
+        {
+          "callsign": "AK123",
+          "aircraft_type": "A320",
+          "position": "STAR entry",
+          "altitude": 8000,
+          "heading": 140,
+          "speed": 250,
+          "status": "arrival",
+          "destination": "WMKK"
+        }
+      ],
+      "objectives": [
+        "Follow STAR procedures",
+        "Maintain altitude restrictions",
+        "Comply with speed restrictions",
+        "Execute approach briefing",
+        "Handle traffic sequencing"
+      ],
+      "expected_communications": [
+        "Descend via STAR",
+        "Maintain 8000 until",
+        "Cross waypoint at altitude",
+        "Reduce speed to 210 knots",
+        "Traffic in sight",
+        "Cleared ILS approach"
+      ],
+      "time_limit": 25,
+      "metadata": {
+        "runway": "14L",
+        "star": "KEPAS 1A",
+        "approach_type": "ILS",
+        "aircraft_type": "B737"
+      }
+    },
+    {
+      "scenario_id": "wsss_ils_approach_01",
+      "name": "WSSS ILS Precision Approach",
+      "description": "Commercial aircraft executing Instrument Landing System (ILS) precision approach. Practice ILS procedures, glideslope intercept, and landing clearance.",
+      "airport_icao": "WSSS",
+      "difficulty": "intermediate",
+      "scenario_type": "normal_operations",
+      "weather": {
+        "wind_direction": 20,
+        "wind_speed": 8,
+        "visibility": "6 kilometres",
+        "ceiling": "Broken clouds at 2000",
+        "precipitation": "Light rain",
+        "temperature": 27,
+        "qnh": 1013.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Intercept localizer",
+        "Intercept glideslope",
+        "Maintain approach speed",
+        "Execute landing checklist",
+        "Request landing clearance"
+      ],
+      "expected_communications": [
+        "Intercept localizer",
+        "Glideslope alive",
+        "Maintain 160 knots",
+        "Request landing clearance",
+        "Cleared to land",
+        "Runway in sight"
+      ],
+      "time_limit": 20,
+      "metadata": {
+        "runway": "02C",
+        "approach_type": "ILS",
+        "ils_frequency": "110.3",
+        "aircraft_type": "A320"
+      }
+    },
+    {
+      "scenario_id": "wmkk_holding_pattern_01",
+      "name": "WMKK Holding Pattern",
+      "description": "Commercial aircraft entering and maintaining a holding pattern. Practice holding entry, timing, and pattern procedures.",
+      "airport_icao": "WMKK",
+      "difficulty": "advanced",
+      "scenario_type": "traffic_management",
+      "weather": {
+        "wind_direction": 90,
+        "wind_speed": 15,
+        "visibility": "10 kilometres",
+        "ceiling": "Scattered clouds at 4000",
+        "precipitation": "None",
+        "temperature": 24,
+        "qnh": 1012.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Enter holding pattern correctly",
+        "Maintain holding altitude",
+        "Time holding legs",
+        "Request further clearance",
+        "Execute proper readbacks"
+      ],
+      "expected_communications": [
+        "Hold at waypoint",
+        "Hold as published",
+        "Expect further clearance",
+        "Entering holding pattern",
+        "Outbound time",
+        "Request clearance"
+      ],
+      "time_limit": 25,
+      "metadata": {
+        "holding_fix": "KEPAS",
+        "holding_altitude": "5000",
+        "pattern": "Standard",
+        "aircraft_type": "B737"
+      }
+    },
+    {
+      "scenario_id": "wsss_go_around_01",
+      "name": "WSSS Go-Around Procedure",
+      "description": "Commercial aircraft executing a go-around/missed approach. Practice go-around procedures, climb instructions, and re-sequencing.",
+      "airport_icao": "WSSS",
+      "difficulty": "advanced",
+      "scenario_type": "normal_operations",
+      "weather": {
+        "wind_direction": 20,
+        "wind_speed": 12,
+        "visibility": "5 kilometres",
+        "ceiling": "Broken clouds at 1500",
+        "precipitation": "Moderate rain",
+        "temperature": 26,
+        "qnh": 1012.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Execute go-around procedure",
+        "Follow missed approach instructions",
+        "Climb to assigned altitude",
+        "Request new approach clearance",
+        "Maintain situational awareness"
+      ],
+      "expected_communications": [
+        "Going around",
+        "Climb and maintain",
+        "Turn right heading",
+        "Missed approach",
+        "Request vectors",
+        "Request new approach"
+      ],
+      "time_limit": 20,
+      "metadata": {
+        "runway": "02L",
+        "missed_approach_altitude": "3000",
+        "aircraft_type": "A320"
+      }
+    },
+    {
+      "scenario_id": "wsss_gate_operations_01",
+      "name": "WSSS Gate Operations and Pushback",
+      "description": "Commercial aircraft gate operations including pushback, engine start, and initial taxi. Practice gate-to-runway procedures.",
+      "airport_icao": "WSSS",
+      "difficulty": "beginner",
+      "scenario_type": "normal_operations",
+      "weather": {
+        "wind_direction": 20,
+        "wind_speed": 8,
+        "visibility": "10 kilometres",
+        "ceiling": "Few clouds at 4000",
+        "precipitation": "None",
+        "temperature": 28,
+        "qnh": 1013.0
+      },
+      "traffic_aircraft": [],
+      "objectives": [
+        "Request pushback clearance",
+        "Request engine start",
+        "Request taxi clearance",
+        "Follow ground instructions",
+        "Execute proper readbacks"
+      ],
+      "expected_communications": [
+        "Request pushback",
+        "Pushback approved",
+        "Request engine start",
+        "Start approved",
+        "Request taxi",
+        "Taxi to runway"
+      ],
+      "time_limit": 15,
+      "metadata": {
+        "gate": "A15",
+        "runway": "02L",
+        "aircraft_type": "B737"
+      }
+    }
+  ]
+}
+

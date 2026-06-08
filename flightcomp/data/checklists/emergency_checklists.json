@@ -1,0 +1,211 @@
+{
+  "checklists": [
+    {
+      "checklist_id": "engine_failure_takeoff",
+      "name": "Engine Failure on Takeoff",
+      "emergency_type": "engine_failure",
+      "phase_of_flight": "takeoff",
+      "items": [
+        {
+          "item_id": "1",
+          "action": "Maintain aircraft control",
+          "critical": true,
+          "time_limit": 2
+        },
+        {
+          "item_id": "2",
+          "action": "Throttle - IDLE",
+          "critical": true,
+          "time_limit": 1
+        },
+        {
+          "item_id": "3",
+          "action": "Declare emergency - Mayday Mayday Mayday",
+          "critical": true,
+          "time_limit": 5
+        },
+        {
+          "item_id": "4",
+          "action": "Mixture - IDLE CUTOFF",
+          "critical": true,
+          "time_limit": 1
+        },
+        {
+          "item_id": "5",
+          "action": "Fuel Selector - OFF",
+          "critical": true,
+          "time_limit": 1
+        },
+        {
+          "item_id": "6",
+          "action": "Ignition - OFF",
+          "critical": true,
+          "time_limit": 1
+        },
+        {
+          "item_id": "7",
+          "action": "Airspeed - Maintain 70 KIAS",
+          "critical": true,
+          "time_limit": 2
+        },
+        {
+          "item_id": "8",
+          "action": "Landing site - Select",
+          "critical": true,
+          "time_limit": 5
+        },
+        {
+          "item_id": "9",
+          "action": "Request immediate landing clearance",
+          "critical": true,
+          "time_limit": 3
+        }
+      ]
+    },
+    {
+      "checklist_id": "smoke_fire",
+      "name": "Smoke/Fire in Cockpit",
+      "emergency_type": "fire",
+      "phase_of_flight": "all",
+      "items": [
+        {
+          "item_id": "1",
+          "action": "Declare emergency - Mayday Mayday Mayday",
+          "critical": true,
+          "time_limit": 5
+        },
+        {
+          "item_id": "2",
+          "action": "Oxygen masks - ON and 100%",
+          "critical": true,
+          "time_limit": 10
+        },
+        {
+          "item_id": "3",
+          "action": "Cabin heat/air - OFF",
+          "critical": true,
+          "time_limit": 2
+        },
+        {
+          "item_id": "4",
+          "action": "Vents - OPEN",
+          "critical": true,
+          "time_limit": 2
+        },
+        {
+          "item_id": "5",
+          "action": "Request immediate descent",
+          "critical": true,
+          "time_limit": 3
+        },
+        {
+          "item_id": "6",
+          "action": "Land as soon as possible",
+          "critical": true,
+          "time_limit": 5
+        },
+        {
+          "item_id": "7",
+          "action": "Fire extinguisher - Use if needed",
+          "critical": false,
+          "time_limit": null
+        }
+      ]
+    },
+    {
+      "checklist_id": "landing_gear",
+      "name": "Landing Gear Malfunction",
+      "emergency_type": "landing_gear",
+      "phase_of_flight": "approach",
+      "items": [
+        {
+          "item_id": "1",
+          "action": "Landing gear switch - Check position",
+          "critical": false,
+          "time_limit": null
+        },
+        {
+          "item_id": "2",
+          "action": "Circuit breaker - Check",
+          "critical": false,
+          "time_limit": null
+        },
+        {
+          "item_id": "3",
+          "action": "Manual extension - Attempt",
+          "critical": true,
+          "time_limit": 60
+        },
+        {
+          "item_id": "4",
+          "action": "Gear position - Verify",
+          "critical": true,
+          "time_limit": 10
+        },
+        {
+          "item_id": "5",
+          "action": "Declare emergency if gear unsafe",
+          "critical": true,
+          "time_limit": 5
+        },
+        {
+          "item_id": "6",
+          "action": "Request emergency services",
+          "critical": true,
+          "time_limit": 3
+        },
+        {
+          "item_id": "7",
+          "action": "Prepare for emergency landing",
+          "critical": true,
+          "time_limit": 10
+        }
+      ]
+    },
+    {
+      "checklist_id": "medical_emergency",
+      "name": "Medical Emergency",
+      "emergency_type": "medical",
+      "phase_of_flight": "all",
+      "items": [
+        {
+          "item_id": "1",
+          "action": "Declare medical emergency - Pan Pan Pan",
+          "critical": true,
+          "time_limit": 5
+        },
+        {
+          "item_id": "2",
+          "action": "Request priority handling",
+          "critical": true,
+          "time_limit": 3
+        },
+        {
+          "item_id": "3",
+          "action": "Provide medical details to ATC",
+          "critical": true,
+          "time_limit": 10
+        },
+        {
+          "item_id": "4",
+          "action": "Coordinate with medical services",
+          "critical": true,
+          "time_limit": 5
+        },
+        {
+          "item_id": "5",
+          "action": "Request priority approach",
+          "critical": true,
+          "time_limit": 3
+        },
+        {
+          "item_id": "6",
+          "action": "Prepare for priority landing",
+          "critical": true,
+          "time_limit": 5
+        }
+      ]
+    }
+  ]
+}
+

@@ -1,0 +1,22 @@
+{
+  "data_version": 1,
+  "session_id": "9175b94c-c647-4595-ac93-a3eb0bb88973",
+  "pilot_id": "SIA123",
+  "scenario_id": "emergency_weather_01",
+  "airport_icao": "WSSS",
+  "difficulty": "expert",
+  "start_time": 1777798084.6924856,
+  "end_time": 1777798097.1235423,
+  "status": "completed",
+  "communications": [],
+  "overall_score": 0.0,
+  "skill_scores": {
+    "communication": 0.0,
+    "readback_accuracy": 0.0,
+    "overall": 0.0
+  },
+  "metadata": {
+    "aircraft_type": "A320",
+    "scenario_name": "Severe Weather Encounter"
+  }
+}

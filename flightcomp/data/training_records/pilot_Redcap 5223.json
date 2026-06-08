@@ -1,0 +1,67 @@
+{
+  "data_version": 1,
+  "pilot_id": "Redcap 5223",
+  "total_sessions": 2,
+  "total_communications": 2,
+  "overall_average_score": 91.0,
+  "skill_progress": {
+    "communication": {
+      "skill_name": "communication",
+      "current_level": "expert",
+      "sessions_completed": 2,
+      "average_score": 91.0,
+      "trend": [
+        91.0,
+        91.0
+      ],
+      "last_practiced": 1777796228.554514,
+      "weak_areas": [
+        "Phraseology"
+      ],
+      "strong_areas": [
+        "Solid overall exchange scores"
+      ]
+    },
+    "readback_accuracy": {
+      "skill_name": "readback_accuracy",
+      "current_level": "expert",
+      "sessions_completed": 2,
+      "average_score": 91.0,
+      "trend": [
+        91.0,
+        91.0
+      ],
+      "last_practiced": 1777796228.554514,
+      "weak_areas": [
+        "Phraseology"
+      ],
+      "strong_areas": [
+        "Complete readbacks on recorded exchanges"
+      ]
+    },
+    "overall": {
+      "skill_name": "overall",
+      "current_level": "expert",
+      "sessions_completed": 2,
+      "average_score": 91.0,
+      "trend": [
+        91.0,
+        91.0
+      ],
+      "last_practiced": 1777796228.554514,
+      "weak_areas": [
+        "Phraseology"
+      ],
+      "strong_areas": [
+        "Solid overall exchange scores",
+        "Complete readbacks on recorded exchanges"
+      ]
+    }
+  },
+  "session_history": [
+    "4efdb1a6-3c80-4bcb-8dca-c47fe5c4189a",
+    "90deebf8-65a8-4b23-b502-16df10ebbb63"
+  ],
+  "last_training_date": 1777796228.554514,
+  "certifications": []
+}

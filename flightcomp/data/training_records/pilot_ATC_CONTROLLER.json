@@ -1,0 +1,70 @@
+{
+  "data_version": 1,
+  "pilot_id": "ATC_CONTROLLER",
+  "total_sessions": 6,
+  "total_communications": 0,
+  "overall_average_score": 0.0,
+  "skill_progress": {
+    "communication": {
+      "skill_name": "communication",
+      "current_level": "beginner",
+      "sessions_completed": 6,
+      "average_score": 0.0,
+      "trend": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_practiced": 1777792028.5850923,
+      "weak_areas": [],
+      "strong_areas": []
+    },
+    "readback_accuracy": {
+      "skill_name": "readback_accuracy",
+      "current_level": "beginner",
+      "sessions_completed": 6,
+      "average_score": 0.0,
+      "trend": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_practiced": 1777792028.5850923,
+      "weak_areas": [],
+      "strong_areas": []
+    },
+    "overall": {
+      "skill_name": "overall",
+      "current_level": "beginner",
+      "sessions_completed": 6,
+      "average_score": 0.0,
+      "trend": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "last_practiced": 1777792028.5850923,
+      "weak_areas": [],
+      "strong_areas": []
+    }
+  },
+  "session_history": [
+    "567b4776-3136-4bdc-afdc-19b6cee4a78e",
+    "6db33028-f004-4cc5-bfda-9bed6dfddcb7",
+    "aea9ed45-30dc-4fa8-a070-c9f4d4c8a976",
+    "a796d956-2c87-46a5-ace7-8c20a01197bc",
+    "1de55a08-b1e4-4649-8158-025733e9272f",
+    "4ed93fd9-b09c-49fa-9185-1968c6ba48a7"
+  ],
+  "last_training_date": 1777792028.5850923,
+  "certifications": []
+}

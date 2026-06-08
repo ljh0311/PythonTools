@@ -1,0 +1,41 @@
+{
+  "data_version": 1,
+  "session_id": "4efdb1a6-3c80-4bcb-8dca-c47fe5c4189a",
+  "pilot_id": "Redcap 5223",
+  "scenario_id": "emergency_landing_gear_01",
+  "airport_icao": "WMKK",
+  "difficulty": "advanced",
+  "start_time": 1777796011.1513107,
+  "end_time": 1777796188.4936397,
+  "status": "completed",
+  "communications": [
+    {
+      "instruction": "Redcap 5223, Roger, redcap 5223. sorry to hear about the landing gear issue. could you provide more information on what's happening? altitude, heading, any emergency procedures needed?.",
+      "readback": "I am at 8000ft and my dashboard just lit up showing that i have some hydraulic issues. Currently on decent into Subang airport. Might need to do an emergency landing at Kuala Lumpur airport, Redcap 5223.",
+      "timestamp": 1777796188.4822187,
+      "response_time": 164.3367097377777,
+      "score": 91.0,
+      "errors": [
+        {
+          "error_type": "phraseology_error",
+          "severity": "minor",
+          "message": "Missing proper readback format",
+          "expected": null,
+          "actual": "I am at 8000ft and my dashboard just lit up showing that i have some hydraulic issues. Currently on decent into Subang airport. Might need to do an emergency landing at Kuala Lumpur airport, Redcap 5223.",
+          "timestamp": 1777796188.4811654,
+          "context": {}
+        }
+      ]
+    }
+  ],
+  "overall_score": 91.0,
+  "skill_scores": {
+    "communication": 91.0,
+    "readback_accuracy": 91.0,
+    "overall": 91.0
+  },
+  "metadata": {
+    "aircraft_type": "A320",
+    "scenario_name": "Landing Gear Malfunction"
+  }
+}
