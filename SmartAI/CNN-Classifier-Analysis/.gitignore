@@ -1,0 +1,11 @@
+# Local datasets and lab archives (too large for git)
+ImageNetSamples/
+CUB_200_2011_Split/
+*.zip
+models/*.pt
+
+# IDE
+.vscode/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
