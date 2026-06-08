@@ -1,0 +1,107 @@
+[
+  {
+    "type": "event",
+    "content": "Conversation between Bb ❤️, hong (consolidated).",
+    "timestamp": null,
+    "source": "message_history",
+    "timestamp_start": 1770130980.019847,
+    "timestamp_end": 1770158641.019847,
+    "summary": "Consolidated chat messages between Bb ❤️ and hong from 2/3/2026 3:03 PM to 10:44 PM, combining all consecutive entries by each author and removing redundant blank messages."
+  },
+  {
+    "type": "event",
+    "content": "Bb ❤️, [2/3/2026 10:45 PM]",
+    "timestamp": 1770158703.019847,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, Yappie: hong: laoban hong: the beach day hong: uw join me and Chris rent car hong: HAHAHAHAHAHAHAHAHHA Yappie: EURHH Yappie: i s...",
+    "timestamp": 1770132504.9940033,
+    "source": "message_history"
+  },
+  {
+    "type": "fact",
+    "content": "Hong and Yappie have a playful relationship.",
+    "timestamp": 1770132510.2642803,
+    "source": "reflection"
+  },
+  {
+    "type": "preference",
+    "content": "Marlboro Ice Blast cigarettes are preferred over Semo brand.",
+    "timestamp": 1770132510.2642803,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Hong invited Yappie to join him on a beach day with Chris, but Yappie declined due to financial constraints.",
+    "timestamp": 1770132510.2653902,
+    "source": "reflection"
+  },
+  {
+    "type": "relationship",
+    "content": "Hong is referred to as \"laoban\" (boss) by Yappie.",
+    "timestamp": 1770132510.2662866,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, Yappie: hong: I drawing arms now Yappie: ok Yappie:  Yappie: u infront the queue ah hong: nah hong: about 8 more Yappie: gaddam ...",
+    "timestamp": 1770132554.3558102,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, Yappie: Yappie: wake up alr not hong: gud the fking morn hong:  Yappie: good the fking morn indeed Yappie: u ltr rching alr call...",
+    "timestamp": 1770132623.0125325,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Ester, Darrel(SIT) Ling, hong, Already told Scott to do the following: Ester: Heads up Ester: A guy name scott gonna pester you guys tmr hong: wo bu yao hong: wo yao heads down Darrel(SIT) Li...",
+    "timestamp": 1770132671.3472085,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Ester, Darrel(SIT) Ling, hong: hong: c4 has arrived hong: bomb has been planted hong: c2^2 has arrived Ester: Whit Ester: Whut Ester: Hahah hong:  Este...",
+    "timestamp": 1770132723.708271,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Celulu, hong: Celulu: eh lai Celulu: which classrom u in Celulu: ru in this one hong:  hong:  Celulu: SHAG Celulu: i cfm late Celulu: ...",
+    "timestamp": 1770132790.7622204,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, Yong Qing: Yong Qing: u drive in? hong: we rent car in malaysia Yong Qing: at whr now Yong Qing: i also in jb lolol hong: oh LOL ho...",
+    "timestamp": 1770133886.8805182,
+    "source": "message_history"
+  },
+  {
+    "type": "fact",
+    "content": "Hong and Yong Qing are both in Johor Bahru (JB).",
+    "timestamp": 1770133893.2129314,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Aefy 🍃, Unknown, hong: hong: after some short discussion with Darius/Pierre, I'll check on the car agn as Pierre suggest we get SUV since we go...",
+    "timestamp": 1770134279.309682,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Jen has concerns about the price of renting a car and whether it's necessary to take an SUV.",
+    "timestamp": 1770134296.7611938,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with bastard, hong: hong: bro hong: U wear my belt ah bastard: Guess belt? hong: yea bastard: huh i took that from my room bastard: It was h...",
+    "timestamp": 1770294383.4151924,
+    "source": "message_history"
+  }
+]

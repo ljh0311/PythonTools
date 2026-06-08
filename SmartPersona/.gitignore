@@ -1,0 +1,17 @@
+.env
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywzz
+*.pyzz
+*.pywzz
+*.pyzzz
+*.pywzzz
+# Brain data files
+memory.json
+thoughts.json
+.firecrawl/
