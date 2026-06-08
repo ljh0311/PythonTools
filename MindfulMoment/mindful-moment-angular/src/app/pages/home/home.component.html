@@ -1,0 +1,653 @@
+<!-- Home Page Container -->
+<div class="home-container">
+  <!-- Welcome Header -->
+  <div class="welcome-header" *ngIf="currentUser">
+    <div class="welcome-content">
+      <h1 class="welcome-title">
+        {{ getGreeting() }}, {{ getUserDisplayName() }}!
+      </h1>
+      <p class="welcome-subtitle">
+        Promoting mindful behavior in public spaces for a safer, more connected
+        Singapore
+      </p>
+    </div>
+
+    <div class="user-stats">
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="fas fa-star"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ (currentUser && currentUser.points) || 0
+            }}</div>
+          <div class="stat-label">Points</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="fas fa-trophy"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ (currentUser && currentUser.level) || 1
+            }}</div>
+          <div class="stat-label">Level</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="fas fa-medal"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ (currentUser.badges &&
+            currentUser.badges.length) || 0 }}</div>
+          <div class="stat-label">Badges</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="quick-actions-section">
+    <h2 class="section-title">
+      <i class="fas fa-bolt"></i>
+      Quick Actions
+    </h2>
+    <div class="quick-actions-grid">
+      <button class="quick-action-card" routerLink="/focus">
+        <div class="action-icon">
+          <i class="fas fa-bolt"></i>
+        </div>
+        <div class="action-content">
+          <h3>Start Focus Session</h3>
+          <p>Begin a mindful focus session to reduce phone usage</p>
+          <div class="action-status">
+            <span class="status-indicator active"></span>
+            <span class="status-text">Ready to start</span>
+          </div>
+        </div>
+      </button>
+
+      <button class="quick-action-card" routerLink="/public-awareness">
+        <div class="action-icon">
+          <i class="fas fa-shield-alt"></i>
+        </div>
+        <div class="action-content">
+          <h3>Public Awareness</h3>
+          <p>Access safety tips and emergency contacts</p>
+          <div class="action-status">
+            <span class="status-indicator"></span>
+            <span class="status-text">Updated today</span>
+          </div>
+        </div>
+      </button>
+
+      <button class="quick-action-card" routerLink="/bus">
+        <div class="action-icon">
+          <i class="fas fa-bus"></i>
+        </div>
+        <div class="action-content">
+          <h3>Bus arrivals</h3>
+          <p>Check real-time bus arrival times at your stop</p>
+          <div class="action-status">
+            <span class="status-indicator active"></span>
+            <span class="status-text">LTA Singapore</span>
+          </div>
+        </div>
+      </button>
+
+      <button class="quick-action-card" routerLink="/community">
+        <div class="action-icon">
+          <i class="fas fa-users"></i>
+        </div>
+        <div class="action-content">
+          <h3>Join Community</h3>
+          <p>Connect with like-minded individuals</p>
+          <div class="action-status">
+            <span class="status-indicator active"></span>
+            <span class="status-text">5 new groups</span>
+          </div>
+        </div>
+      </button>
+
+      <button class="quick-action-card" routerLink="/insights">
+        <div class="action-icon">
+          <i class="fas fa-chart-line"></i>
+        </div>
+        <div class="action-content">
+          <h3>View Insights</h3>
+          <p>Track your mindfulness progress</p>
+          <div class="action-status">
+            <span class="status-indicator"></span>
+            <span class="status-text">New data available</span>
+          </div>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Performance Overview -->
+  <div class="section performance-overview-section" *ngIf="currentUser">
+    <h2 class="section-title">
+      <i class="fas fa-trophy"></i>
+      Performance Overview
+    </h2>
+    <div class="tabbed-radio-group">
+      <!-- Tab Headers -->
+      <div class="tab-radio-labels">
+        <label class="tab-radio-label" [class.active]="selectedPerformanceTab === 'overview' || !selectedPerformanceTab">
+          <input
+            type="radio"
+            name="performance-radio"
+            [(ngModel)]="selectedPerformanceTab"
+            [value]="'overview'"
+            hidden
+          />
+          <span><i class="fas fa-chart-bar"></i> Overview</span>
+        </label>
+        <label class="tab-radio-label" [class.active]="selectedPerformanceTab === 'period'">
+          <input
+            type="radio"
+            name="performance-radio"
+            [(ngModel)]="selectedPerformanceTab"
+            [value]="'period'"
+            hidden
+          />
+          <span><i class="fas fa-calendar-alt"></i> By Period</span>
+        </label>
+        <label class="tab-radio-label" [class.active]="selectedPerformanceTab === 'details'">
+          <input
+            type="radio"
+            name="performance-radio"
+            [(ngModel)]="selectedPerformanceTab"
+            [value]="'details'"
+            hidden
+          />
+          <span><i class="fas fa-search"></i> Details</span>
+        </label>
+        <label class="tab-radio-label" [class.active]="selectedPerformanceTab === 'more'">
+          <input
+            type="radio"
+            name="performance-radio"
+            [(ngModel)]="selectedPerformanceTab"
+            [value]="'more'"
+            hidden
+          />
+          <span><i class="fas fa-ellipsis-h"></i> More</span>
+        </label>
+      </div>
+
+      <!-- Tab Content: Overview -->
+      <div class="tab-content" *ngIf="selectedPerformanceTab === 'overview' || !selectedPerformanceTab">
+        <div class="overview-header-area">
+          <span class="performance-summary highlight">
+            <i class="fas fa-smile-beam" style="color:#70c489;margin-right:3px;"></i>
+            Keep up the great progress!
+          </span>
+        </div>
+        <div class="performance-grid enhanced-ui">
+          <!-- Focus Sessions Card -->
+          <div
+            class="performance-card focus-sessions card-glow"
+            [class.positive]="focusSessionsChange > 0"
+            [class.negative]="focusSessionsChange < 0"
+            matTooltip="Number of focused mindfulness sessions completed"
+            matTooltipPosition="above"
+          >
+            <div class="performance-icon">
+              <span class="icon-bg" style="background:#f5eaea">
+                <i class="fas fa-bolt"></i>
+              </span>
+            </div>
+            <div class="performance-content">
+              <div class="performance-label">Focus Sessions</div>
+              <div class="performance-value large-value">{{ focusSessions }}</div>
+              <div class="performance-change"
+                [ngClass]="{'positive': focusSessionsChange > 0, 'negative': focusSessionsChange < 0}">
+                <ng-container *ngIf="focusSessionsChange > 0">
+                  <i class="fas fa-arrow-up"></i>
+                </ng-container>
+                <ng-container *ngIf="focusSessionsChange < 0">
+                  <i class="fas fa-arrow-down"></i>
+                </ng-container>
+                <span [class.text-muted]="focusSessionsChange === 0">
+                  {{ focusSessionsChange > 0 ? '+' : ''}}{{ focusSessionsChange }}%
+                  <span *ngIf="hasStaticValues.changeIndicators" class="static-indicator" title="Using temporary static value">
+                    <i class="fas fa-info-circle"></i>
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- Mindful Time Card -->
+          <div
+            class="performance-card mindful-time card-glow"
+            [class.positive]="mindfulTimeChange > 0"
+            [class.negative]="mindfulTimeChange < 0"
+            matTooltip="Total mindful hours tracked"
+            matTooltipPosition="above"
+          >
+            <div class="performance-icon">
+              <span class="icon-bg" style="background:#eaf0f8">
+                <i class="fas fa-clock"></i>
+              </span>
+            </div>
+            <div class="performance-content">
+              <div class="performance-label">Mindful Time</div>
+              <div class="performance-value large-value">{{ mindfulTime }}<span class="unit">h</span></div>
+              <div class="performance-change"
+                [ngClass]="{'positive': mindfulTimeChange > 0, 'negative': mindfulTimeChange < 0}">
+                <ng-container *ngIf="mindfulTimeChange > 0">
+                  <i class="fas fa-arrow-up"></i>
+                </ng-container>
+                <ng-container *ngIf="mindfulTimeChange < 0">
+                  <i class="fas fa-arrow-down"></i>
+                </ng-container>
+                <span [class.text-muted]="mindfulTimeChange === 0">
+                  {{ mindfulTimeChange > 0 ? '+' : ''}}{{ mindfulTimeChange }}%
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- Social Interactions Card -->
+          <div
+            class="performance-card social-interactions card-glow"
+            [class.positive]="socialInteractionsChange > 0"
+            [class.negative]="socialInteractionsChange < 0"
+            matTooltip="Interactions with the mindfulness community"
+            matTooltipPosition="above"
+          >
+            <div class="performance-icon">
+              <span class="icon-bg" style="background:#e8f6ee">
+                <i class="fas fa-users"></i>
+              </span>
+            </div>
+            <div class="performance-content">
+              <div class="performance-label">Social Interactions</div>
+              <div class="performance-value large-value">{{ socialInteractions }}</div>
+              <div class="performance-change"
+                [ngClass]="{'positive': socialInteractionsChange > 0, 'negative': socialInteractionsChange < 0}">
+                <ng-container *ngIf="socialInteractionsChange > 0">
+                  <i class="fas fa-arrow-up"></i>
+                </ng-container>
+                <ng-container *ngIf="socialInteractionsChange < 0">
+                  <i class="fas fa-arrow-down"></i>
+                </ng-container>
+                <span [class.text-muted]="socialInteractionsChange === 0">
+                  {{ socialInteractionsChange > 0 ? '+' : ''}}{{ socialInteractionsChange }}%
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- Phone Reduction Card -->
+          <div
+            class="performance-card phone-reduction card-glow"
+            [class.positive]="phoneReductionChange > 0"
+            [class.negative]="phoneReductionChange < 0"
+            matTooltip="Reduced phone usage while focusing"
+            matTooltipPosition="above"
+          >
+            <div class="performance-icon">
+              <span class="icon-bg" style="background:#f0edea">
+                <i class="fas fa-mobile-alt"></i>
+              </span>
+            </div>
+            <div class="performance-content">
+              <div class="performance-label">Phone Usage Reduced</div>
+              <div class="performance-value large-value">{{ phoneReduction }}<span class="unit">h</span></div>
+              <div class="performance-change"
+                [ngClass]="{'positive': phoneReductionChange > 0, 'negative': phoneReductionChange < 0}">
+                <ng-container *ngIf="phoneReductionChange > 0">
+                  <i class="fas fa-arrow-up"></i>
+                </ng-container>
+                <ng-container *ngIf="phoneReductionChange < 0">
+                  <i class="fas fa-arrow-down"></i>
+                </ng-container>
+                <span [class.text-muted]="phoneReductionChange === 0">
+                  {{ phoneReductionChange > 0 ? '+' : ''}}{{ phoneReductionChange }}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="performance-legend">
+          <span class="legend-dot positive"></span><span>Improved</span>
+          <span class="legend-dot negative"></span><span>Regressed</span>
+          <span class="legend-dot neutral"></span><span>No change</span>
+        </div>
+      </div>
+
+      <!-- Tab Content: By Period -->
+      <div class="tab-content" *ngIf="selectedPerformanceTab === 'period'">
+        <div class="section-header" style="margin-bottom: 1rem;">
+          <div class="period-selector">
+            <select
+              [(ngModel)]="selectedPeriod"
+              (change)="onPeriodChange(selectedPeriod)"
+            >
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="all">All Time</option>
+            </select>
+          </div>
+        </div>
+        <div class="performance-grid">
+          <!-- Focus Sessions (by period) -->
+          <div
+            class="performance-card focus-sessions"
+            [class.positive]="focusSessionsChangePeriod > 0"
+            [class.negative]="focusSessionsChangePeriod < 0"
+            matTooltip="Number of focused mindfulness sessions in this period"
+            matTooltipPosition="above"
+          >
+            <div class="performance-icon">
+              <i class="fas fa-bolt"></i>
+            </div>
+            <div class="performance-content">
+              <div class="performance-label">Focus Sessions</div>
+              <div class="performance-value">{{ focusSessionsPeriod }}</div>
+              <div class="performance-change" [ngClass]="{
+                'positive': focusSessionsChangePeriod > 0, 
+                'negative': focusSessionsChangePeriod < 0
+              }">
+                <ng-container *ngIf="focusSessionsChangePeriod > 0">
+                  <i class="fas fa-arrow-up"></i>
+                </ng-container>
+                <ng-container *ngIf="focusSessionsChangePeriod < 0">
+                  <i class="fas fa-arrow-down"></i>
+                </ng-container>
+                <span [class.text-muted]="focusSessionsChangePeriod === 0">
+                  {{ focusSessionsChangePeriod > 0 ? '+' : ''}}{{ focusSessionsChangePeriod }}%
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- Mindful Time (by period) -->
+          <div
+            class="performance-card mindful-time"
+            [class.positive]="mindfulTimeChangePeriod > 0"
+            [class.negative]="mindfulTimeChangePeriod < 0"
+            matTooltip="Total mindful hours in this period"
+            matTooltipPosition="above"
+          >
+            <div class="performance-icon">
+              <i class="fas fa-clock"></i>
+            </div>
+            <div class="performance-content">
+              <div class="performance-label">Mindful Time</div>
+              <div class="performance-value">{{ mindfulTimePeriod }}h</div>
+              <div class="performance-change"
+                [ngClass]="{'positive': mindfulTimeChangePeriod > 0, 'negative': mindfulTimeChangePeriod < 0}">
+                <ng-container *ngIf="mindfulTimeChangePeriod > 0">
+                  <i class="fas fa-arrow-up"></i>
+                </ng-container>
+                <ng-container *ngIf="mindfulTimeChangePeriod < 0">
+                  <i class="fas fa-arrow-down"></i>
+                </ng-container>
+                <span [class.text-muted]="mindfulTimeChangePeriod === 0">
+                  {{ mindfulTimeChangePeriod > 0 ? '+' : ''}}{{ mindfulTimeChangePeriod }}%
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- Social Interactions (by period) -->
+          <div
+            class="performance-card social-interactions"
+            [class.positive]="socialInteractionsChangePeriod > 0"
+            [class.negative]="socialInteractionsChangePeriod < 0"
+            matTooltip="Community interactions in this period"
+            matTooltipPosition="above"
+          >
+            <div class="performance-icon">
+              <i class="fas fa-users"></i>
+            </div>
+            <div class="performance-content">
+              <div class="performance-label">Social Interactions</div>
+              <div class="performance-value">{{ socialInteractionsPeriod }}</div>
+              <div class="performance-change"
+                [ngClass]="{'positive': socialInteractionsChangePeriod > 0, 'negative': socialInteractionsChangePeriod < 0}">
+                <ng-container *ngIf="socialInteractionsChangePeriod > 0">
+                  <i class="fas fa-arrow-up"></i>
+                </ng-container>
+                <ng-container *ngIf="socialInteractionsChangePeriod < 0">
+                  <i class="fas fa-arrow-down"></i>
+                </ng-container>
+                <span [class.text-muted]="socialInteractionsChangePeriod === 0">
+                  {{ socialInteractionsChangePeriod > 0 ? '+' : ''}}{{ socialInteractionsChangePeriod }}%
+                </span>
+              </div>
+            </div>
+          </div>
+          <!-- Phone Usage Reduction (by period) -->
+          <div
+            class="performance-card phone-reduction"
+            [class.positive]="phoneReductionChangePeriod > 0"
+            [class.negative]="phoneReductionChangePeriod < 0"
+            matTooltip="Reduced phone usage in this period"
+            matTooltipPosition="above"
+          >
+            <div class="performance-icon">
+              <i class="fas fa-mobile-alt"></i>
+            </div>
+            <div class="performance-content">
+              <div class="performance-label">Phone Usage Reduced</div>
+              <div class="performance-value">{{ phoneReductionPeriod }}h</div>
+              <div class="performance-change"
+                [ngClass]="{'positive': phoneReductionChangePeriod > 0, 'negative': phoneReductionChangePeriod < 0}">
+                <ng-container *ngIf="phoneReductionChangePeriod > 0">
+                  <i class="fas fa-arrow-up"></i>
+                </ng-container>
+                <ng-container *ngIf="phoneReductionChangePeriod < 0">
+                  <i class="fas fa-arrow-down"></i>
+                </ng-container>
+                <span [class.text-muted]="phoneReductionChangePeriod === 0">
+                  {{ phoneReductionChangePeriod > 0 ? '+' : ''}}{{ phoneReductionChangePeriod }}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content: Details -->
+      <div class="tab-content" *ngIf="selectedPerformanceTab === 'details'">
+        <div class="section-header" style="margin-bottom: 1rem;">
+          <h4>
+            <i class="fas fa-info-circle" style="margin-right:6px;color:#70c489;"></i>
+            Detailed Analysis
+          </h4>
+          <span class="performance-summary">
+            Dive deeper into your progress and trends.
+          </span>
+        </div>
+        <div class="performance-details-list">
+          <div class="detail-item">
+            <i class="fas fa-fire"></i>
+            <strong>Best Streak:</strong>
+            <span>{{ bestStreakDays }} days</span>
+          </div>
+          <div class="detail-item">
+            <i class="fas fa-clock"></i>
+            <strong>Avg Mindful Time/Day:</strong>
+            <span>{{ mindfulTimePeriod }}h</span>
+          </div>
+          <div class="detail-item">
+            <i class="fas fa-seedling"></i>
+            <strong>Social Impact Score:</strong>
+            <span>{{ socialImpactScore }}</span>
+          </div>
+          <div class="detail-item">
+            <i class="fas fa-calendar-day"></i>
+            <strong>Most Active Day:</strong>
+            <span>{{ mostActiveDay }}</span>
+          </div>
+          <div class="detail-item">
+            <i class="fas fa-stopwatch"></i>
+            <strong>Longest Focus Session:</strong>
+            <span>{{ longestFocusSession }} min</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content: More -->
+      <div class="tab-content" *ngIf="selectedPerformanceTab === 'more'">
+        <div class="section-header" style="margin-bottom: 1rem;">
+          <h4>
+            <i class="fas fa-lightbulb"></i>
+            Additional Insights
+          </h4>
+          <span class="performance-summary">
+            Discover more about your mindfulness journey.
+          </span>
+        </div>
+        <ul class="more-list">
+          <li>
+            <i class="fas fa-users"></i>
+            <strong>Sessions with Community:</strong>
+            <span>{{ communitySessions }}</span>
+          </li>
+          <li>
+            <i class="fas fa-map-marker-alt"></i>
+            <strong>Public Places Practiced:</strong>
+            <span>{{ publicPlacesCount }}</span>
+          </li>
+          <li>
+            <i class="fas fa-share-alt"></i>
+            <strong>Times Shared Insights:</strong>
+            <span>{{ insightsSharedCount }}</span>
+          </li>
+          <li>
+            <i class="fas fa-ban"></i>
+            <strong>Longest Phone-Free Streak:</strong>
+            <span>{{ longestPhoneFreeStreak }} days</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Performance Insights -->
+  <div class="insights-section" *ngIf="currentUser">
+    <h2 class="section-title">
+      <i class="fas fa-lightbulb"></i>
+      Performance Insights
+    </h2>
+    <div class="insights-grid">
+      <div class="insight-card">
+        <div class="insight-header">
+          <i class="fas fa-trending-up"></i>
+          <h3>Focus Session Trends</h3>
+        </div>
+        <div class="insight-content">
+          <div class="insight-chart">
+            <div class="chart-placeholder">Loading chart...</div>
+          </div>
+          <div class="insight-summary">
+            <p>{{ focusTrendSummary }}</p>
+          </div>
+        </div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-header">
+          <i class="fas fa-map-marker-alt"></i>
+          <h3>Location-Based Performance</h3>
+        </div>
+        <div class="insight-content">
+          <div class="location-stats">
+            <div class="location-item">
+              <span class="location-name">Public Spaces</span>
+              <span class="location-score">
+                {{ locationScores.publicSpaces }}%
+                <span *ngIf="hasStaticValues.locationScores" class="static-indicator" title="Using temporary static value">
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </span>
+            </div>
+            <div class="location-item">
+              <span class="location-name">MRT Stations</span>
+              <span class="location-score">
+                {{ locationScores.mrtStations }}%
+                <span *ngIf="hasStaticValues.locationScores" class="static-indicator" title="Using temporary static value">
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </span>
+            </div>
+            <div class="location-item">
+              <span class="location-name">Shopping Centers</span>
+              <span class="location-score">
+                {{ locationScores.shoppingCenters }}%
+                <span *ngIf="hasStaticValues.locationScores" class="static-indicator" title="Using temporary static value">
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-header">
+          <i class="fas fa-trophy"></i>
+          <h3>Achievement Progress</h3>
+        </div>
+        <div class="insight-content">
+          <div class="achievement-progress">
+            <div class="achievement-item"
+              *ngFor="let achievement of achievementProgress">
+              <div class="achievement-icon">
+                <i [class]="achievement.icon"></i>
+              </div>
+              <div class="achievement-details">
+                <div class="achievement-name">{{ achievement.name }}</div>
+                <div class="achievement-progress-bar">
+                  <div class="progress-fill" [style.width.%]="achievement.progress"></div>
+                </div>
+                <div class="achievement-progress-text">{{ achievement.progress }}% Complete</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Goals & Targets -->
+  <div class="goals-section" *ngIf="currentUser">
+    <h2 class="section-title">
+      <i class="fas fa-bullseye"></i>
+      Goals & Targets
+    </h2>
+    <div class="goals-grid">
+      <div class="goal-card" *ngFor="let goal of goalsProgress">
+        <div class="goal-header">
+          <h3>{{ goal.name }}</h3>
+          <span class="goal-target">{{ goal.target }}</span>
+        </div>
+        <div class="goal-progress">
+          <div class="progress-circle"
+            [style.--progress-angle]="goal.progress * 3.6 + 'deg'">
+            <span class="progress-text">{{ goal.progress }}%</span>
+          </div>
+          <div class="goal-status">{{ goal.current }}/{{ goal.targetValue }}
+            today</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mindfulness Tips -->
+  <div class="mindfulness-tips">
+    <h2 class="section-title">
+      <i class="fas fa-lightbulb"></i>
+      Today's Mindfulness Tip
+    </h2>
+    <div class="tip-content">
+      <div class="tip-text">
+        <p>Take a moment to observe your surroundings. Notice the people around
+          you, the sounds, and the environment. This simple act of awareness can
+          help you stay present and mindful in public spaces.</p>
+      </div>
+      <div class="tip-source">
+        <small>- MindfulMoment Team</small>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,106 @@
+<div
+  class="group-card"
+  [class.joined]="group.isJoined"
+  [class.managed]="mode === 'managed'"
+  (click)="onCardClick(group)"
+>
+  <div class="group-header">
+    <div class="group-icon" [style.background-color]="group.color">
+      <i [class]="group.icon"></i>
+    </div>
+    <div class="group-status">
+      @if (mode === 'managed') {
+        <span class="status-badge admin">Admin</span>
+        @if (group.isJoined) {
+          <span class="status-badge joined">Joined</span>
+        }
+      } @else {
+        <span class="status-badge" [class.joined]="group.isJoined">
+          {{ group.isJoined ? 'Joined' : 'Available' }}
+        </span>
+      }
+    </div>
+  </div>
+
+  <div class="group-content">
+    <h4 class="group-name">{{ group.name }}</h4>
+    <p class="group-description">{{ group.description }}</p>
+
+    @if (mode === 'available' && group.tags.length) {
+      <div class="group-tags">
+        @for (tag of group.tags.slice(0, 3); track tag) {
+          <span class="tag">{{ tag }}</span>
+        }
+      </div>
+    }
+
+    <div class="group-meta">
+      <div class="meta-item">
+        <i class="fas fa-users"></i>
+        <span>{{ group.memberCount }} members</span>
+      </div>
+      @if (mode === 'managed' && group.requiresApproval && pendingRequestsCount > 0) {
+        <div class="meta-item">
+          <i class="fas fa-bell"></i>
+          <span class="pending-requests">{{ pendingRequestsCount }} pending requests</span>
+        </div>
+      }
+      @if (mode === 'joined' && group.events.length !== undefined) {
+        <div class="meta-item">
+          <i class="fas fa-calendar"></i>
+          <span>{{ group.events.length }} events</span>
+        </div>
+      }
+      @if (mode === 'available' && group.location) {
+        <div class="meta-item">
+          <i class="fas fa-map-marker-alt"></i>
+          <span>{{ group.location }}</span>
+        </div>
+      }
+    </div>
+  </div>
+
+  <div class="group-actions">
+    @switch (mode) {
+      @case ('managed') {
+        @if (group.requiresApproval) {
+          <button type="button" class="action-button manage" (click)="onManageRequests($event, group)">
+            <i class="fas fa-user-check"></i>
+            <span>Manage Requests</span>
+          </button>
+        }
+        <button type="button" class="action-button edit" (click)="onEdit($event, group)">
+          <i class="fas fa-edit"></i>
+          <span>Edit</span>
+        </button>
+        <button type="button" class="action-button delete" (click)="onDelete($event, group)">
+          <i class="fas fa-trash"></i>
+          <span>Delete</span>
+        </button>
+      }
+      @case ('joined') {
+        <button type="button" class="action-button view" (click)="onView($event, group)">
+          <i class="fas fa-eye"></i>
+          <span>View</span>
+        </button>
+        <button type="button" class="action-button leave" (click)="onLeave($event, group)">
+          <i class="fas fa-sign-out-alt"></i>
+          <span>Leave</span>
+        </button>
+      }
+      @case ('available') {
+        @if (!group.isJoined) {
+          <button type="button" class="action-button join" (click)="onJoin($event, group)">
+            <i class="fas fa-plus"></i>
+            <span>Join</span>
+          </button>
+        } @else {
+          <button type="button" class="action-button view" (click)="onView($event, group)">
+            <i class="fas fa-eye"></i>
+            <span>View</span>
+          </button>
+        }
+      }
+    }
+  </div>
+</div>

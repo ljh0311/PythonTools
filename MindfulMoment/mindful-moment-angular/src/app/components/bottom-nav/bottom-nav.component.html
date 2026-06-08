@@ -1,0 +1,16 @@
+<!-- Bottom Navigation for Mobile -->
+<nav class="bottom-nav">
+  <div class="nav-items">
+    <button 
+      *ngFor="let item of navItems" 
+      class="nav-item"
+      [class.active]="isActive(item.route)"
+      (click)="navigateTo(item.route)"
+      [attr.aria-label]="item.label">
+      <div class="nav-icon">
+        <i [class]="item.icon"></i>
+      </div>
+      <span class="nav-label">{{ item.label }}</span>
+    </button>
+  </div>
+</nav>

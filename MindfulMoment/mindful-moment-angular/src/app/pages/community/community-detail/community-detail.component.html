@@ -1,0 +1,126 @@
+<div class="community-detail-container">
+  <app-page-back-bar [backUrl]="'/community'" [title]="group?.name ?? 'Group'"></app-page-back-bar>
+
+  @if (isLoading) {
+    <div class="loading-indicator">
+      <i class="fas fa-spinner fa-spin"></i>
+      <span>Loading group...</span>
+    </div>
+  }
+
+  @if (!isLoading && group) {
+    <div class="group-hero">
+      <div class="group-header">
+        <div class="group-icon" [style.background-color]="group.color">
+          <i [class]="group.icon"></i>
+        </div>
+        <div class="group-badges">
+          @if (group.isJoined) {
+            <span class="status-badge joined">Joined</span>
+          }
+          @if (isGroupAdmin()) {
+            <span class="status-badge admin">Admin</span>
+          }
+        </div>
+      </div>
+      <h2 class="group-name">{{ group.name }}</h2>
+      <p class="group-description">{{ group.description }}</p>
+      <div class="group-meta">
+        <span class="meta-item"><i class="fas fa-users"></i> {{ group.memberCount }} members</span>
+        @if (group.location) {
+          <span class="meta-item"><i class="fas fa-map-marker-alt"></i> {{ group.location }}</span>
+        }
+      </div>
+      @if (group.tags.length) {
+        <div class="group-tags">
+          @for (tag of group.tags; track tag) {
+            <span class="tag">{{ tag }}</span>
+          }
+        </div>
+      }
+      <div class="group-actions-hero">
+        @if (!group.isJoined) {
+          <button type="button" class="btn-join" (click)="joinGroup()" [disabled]="isJoining">
+            @if (isJoining) {
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Joining...</span>
+            } @else {
+              <i class="fas fa-plus"></i>
+              <span>Join group</span>
+            }
+          </button>
+        } @else {
+          <button type="button" class="btn-leave" (click)="leaveGroup()" [disabled]="isLeaving">
+            @if (isLeaving) {
+              <i class="fas fa-spinner fa-spin"></i>
+            } @else {
+              <i class="fas fa-sign-out-alt"></i>
+            }
+            <span>Leave group</span>
+          </button>
+        }
+        @if (isGroupAdmin()) {
+          <p class="admin-hint">You can edit or manage this group from the <a routerLink="/community">Community</a> page.</p>
+        }
+      </div>
+    </div>
+
+    @if (rules.length > 0) {
+      <app-page-section title="Rules" icon="fas fa-list-ul">
+        <ul class="rules-list">
+          @for (rule of rules; track rule.id) {
+            <li>
+              <strong>{{ rule.title }}</strong>
+              @if (rule.description) {
+                <span> – {{ rule.description }}</span>
+              }
+            </li>
+          }
+        </ul>
+      </app-page-section>
+    }
+
+    @if (events.length > 0) {
+      <app-page-section title="Upcoming events" icon="fas fa-calendar">
+        <div class="events-list">
+          @for (event of events; track event.id) {
+            <div class="event-card">
+              <div class="event-title">{{ event.title }}</div>
+              @if (event.description) {
+                <p class="event-description">{{ event.description }}</p>
+              }
+              <div class="event-meta">
+                <span><i class="fas fa-calendar"></i> {{ event.date }}</span>
+                @if (event.time) {
+                  <span><i class="fas fa-clock"></i> {{ event.time }}</span>
+                }
+                @if (event.location) {
+                  <span><i class="fas fa-map-marker-alt"></i> {{ event.location }}</span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </app-page-section>
+    }
+
+    @if (recentActivity.length > 0) {
+      <app-page-section title="Recent activity" icon="fas fa-history">
+        <ul class="activity-list">
+          @for (activity of recentActivity; track activity.id) {
+            <li>
+              <span class="activity-desc">{{ activity.description }}</span>
+              <span class="activity-time">{{ activity.timestamp | date:'short' }}</span>
+            </li>
+          }
+        </ul>
+      </app-page-section>
+    }
+
+    @if (rules.length === 0 && events.length === 0 && recentActivity.length === 0) {
+      <app-page-section title="About" icon="fas fa-info-circle">
+        <p class="no-extra">No rules, events, or recent activity yet.</p>
+      </app-page-section>
+    }
+  }
+</div>

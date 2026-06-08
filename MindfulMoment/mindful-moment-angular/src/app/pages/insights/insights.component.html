@@ -1,0 +1,270 @@
+<!-- Insights Page Container -->
+<div class="insights-container">
+  <!-- Header -->
+  <div class="insights-header">
+    <div class="header-content">
+      <h1 class="page-title">
+        <i class="fas fa-chart-line"></i>
+        Insights & Analytics
+      </h1>
+      <p class="page-subtitle">Track your progress and discover patterns in your
+        mindful behavior</p>
+    </div>
+
+    <!-- Period Selector -->
+    <div class="period-selector" role="tablist" aria-label="Select period">
+      <button
+        *ngFor="let period of periodOptions"
+        class="period-button"
+        type="button"
+        role="tab"
+        [attr.aria-selected]="selectedPeriod === period.id"
+        [class.selected]="selectedPeriod === period.id"
+        (click)="onPeriodChange(period.id)">
+        {{ period.label }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Performance Overview -->
+  <div class="performance-overview">
+    <h3 class="section-title">
+      <i class="fas fa-tachometer-alt"></i>
+      Performance Overview
+    </h3>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-icon focus">
+          <i class="fas fa-bolt"></i>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ performanceMetrics.focusSessions }}</div>
+          <div class="metric-label">Focus Sessions</div>
+          <div class="metric-change"
+            [style.color]="getChangeColor(performanceMetrics.focusSessionsChange)">
+            <i
+              [class]="getChangeIcon(performanceMetrics.focusSessionsChange)"></i>
+            {{ Math.abs(performanceMetrics.focusSessionsChange) }}%
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon mindful">
+          <i class="fas fa-clock"></i>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ performanceMetrics.mindfulTime }}h</div>
+          <div class="metric-label">Mindful Time</div>
+          <div class="metric-change"
+            [style.color]="getChangeColor(performanceMetrics.mindfulTimeChange)">
+            <i
+              [class]="getChangeIcon(performanceMetrics.mindfulTimeChange)"></i>
+            {{ Math.abs(performanceMetrics.mindfulTimeChange) }}%
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon social">
+          <i class="fas fa-users"></i>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ performanceMetrics.socialInteractions
+            }}</div>
+          <div class="metric-label">Social Interactions</div>
+          <div class="metric-change"
+            [style.color]="getChangeColor(performanceMetrics.socialInteractionsChange)">
+            <i
+              [class]="getChangeIcon(performanceMetrics.socialInteractionsChange)"></i>
+            {{ Math.abs(performanceMetrics.socialInteractionsChange) }}%
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon reduction">
+          <i class="fas fa-mobile-alt"></i>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ performanceMetrics.phoneReduction
+            }}h</div>
+          <div class="metric-label">Phone Usage Reduced</div>
+          <div class="metric-change"
+            [style.color]="getChangeColor(performanceMetrics.phoneReductionChange)">
+            <i
+              [class]="getChangeIcon(performanceMetrics.phoneReductionChange)"></i>
+            {{ Math.abs(performanceMetrics.phoneReductionChange) }}%
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Weekly Breakdown Chart -->
+  <div class="weekly-breakdown">
+    <h3 class="section-title">
+      <i class="fas fa-calendar-week"></i>
+      Weekly Breakdown
+    </h3>
+
+    <div class="chart-container">
+      <canvas #weeklyChartCanvas></canvas>
+    </div>
+  </div>
+
+  <!-- Sessions Trend Chart -->
+  <div class="sessions-trend" *ngIf="weeklyData.length > 0">
+    <h3 class="section-title">
+      <i class="fas fa-chart-line"></i>
+      Sessions Trend (Last 7 Days)
+    </h3>
+
+    <div class="chart-container">
+      <canvas #sessionsChartCanvas></canvas>
+    </div>
+  </div>
+
+  <!-- Achievement Progress -->
+  <div class="achievement-progress">
+    <h3 class="section-title">
+      <i class="fas fa-trophy"></i>
+      Achievement Progress
+    </h3>
+
+    <div class="achievements-grid">
+      <div
+        *ngFor="let achievement of achievements"
+        class="achievement-card">
+        <div class="achievement-icon">
+          <i [class]="achievement.icon"></i>
+        </div>
+        <div class="achievement-content">
+          <h4 class="achievement-name">{{ achievement.name }}</h4>
+          <div class="progress-bar">
+            <div
+              class="progress-fill"
+              [style.width.%]="getProgressPercentage(achievement.progress, achievement.target)"></div>
+          </div>
+          <div class="progress-text">
+            {{ achievement.progress }}/{{ achievement.target }} ({{
+            getProgressPercentage(achievement.progress, achievement.target) |
+            number:'1.0-0' }}%)
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Accomplishments & Distractions (from recent sessions) -->
+  <div class="accomplishments-distractions" *ngIf="recentSessions.length > 0">
+    <h3 class="section-title">
+      <i class="fas fa-clipboard-check"></i>
+      Accomplishments &amp; distractions
+    </h3>
+    <div class="recent-reflections">
+      <div class="reflection-card" *ngFor="let session of recentSessions.slice(0, 8)">
+        <div class="reflection-date">{{ formatReflectionDate(session.startTime) }}</div>
+        <div class="reflection-type">{{ getSessionTypeLabel(session.type) }}</div>
+        <p class="reflection-accomplishments" *ngIf="session.accomplishments">
+          <strong>Accomplished:</strong> {{ session.accomplishments }}
+        </p>
+        <p class="reflection-distractions" *ngIf="session.distractions && session.distractions.length > 0">
+          <strong>Distracted by:</strong>
+          <ng-container *ngFor="let d of session.distractions; let last = last">
+            {{ d.description || d.type }}<ng-container *ngIf="!last">; </ng-container>
+          </ng-container>
+        </p>
+        <p class="reflection-empty" *ngIf="!session.accomplishments && (!session.distractions || session.distractions.length === 0)">
+          No reflection noted
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Session Evaluation -->
+  <div class="ai-evaluation-section">
+    <h3 class="section-title">
+      <i class="fas fa-robot"></i>
+      AI session evaluation
+    </h3>
+    <p class="section-desc">Get an analysis of your recent sessions: what happened, how it affected you, and what to improve.</p>
+    <button type="button" class="ai-generate-btn" (click)="generateAIInsights()"
+      [disabled]="llmLoading || recentSessions.length === 0">
+      <i class="fas" [class.fa-spinner]="llmLoading" [class.fa-spin]="llmLoading" [class.fa-magic]="!llmLoading"></i>
+      {{ llmLoading ? 'Generating…' : 'Generate AI insights' }}
+    </button>
+    <p class="ai-error" *ngIf="llmError">{{ llmError }}</p>
+    <div class="llm-result" *ngIf="llmEvaluation && !llmLoading">
+      <div class="llm-block" *ngIf="llmEvaluation.summary">
+        <h4>Summary</h4>
+        <p>{{ llmEvaluation.summary }}</p>
+      </div>
+      <div class="llm-block" *ngIf="llmEvaluation.whatHappened">
+        <h4>What happened</h4>
+        <p>{{ llmEvaluation.whatHappened }}</p>
+      </div>
+      <div class="llm-block" *ngIf="llmEvaluation.impactOnUser">
+        <h4>Impact on you</h4>
+        <p>{{ llmEvaluation.impactOnUser }}</p>
+      </div>
+      <div class="llm-block" *ngIf="llmEvaluation.whatCanBeImproved">
+        <h4>What can be improved</h4>
+        <p>{{ llmEvaluation.whatCanBeImproved }}</p>
+      </div>
+      <div class="llm-block" *ngIf="llmEvaluation.whatWasImproved">
+        <h4>What was improved</h4>
+        <p>{{ llmEvaluation.whatWasImproved }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Location Performance -->
+  <div class="location-performance">
+    <h3 class="section-title">
+      <i class="fas fa-map-marker-alt"></i>
+      Location Performance
+    </h3>
+
+    <div class="location-grid">
+      <div
+        *ngFor="let location of locationPerformance"
+        class="location-card">
+        <div class="location-header">
+          <h4 class="location-name">{{ location.location }}</h4>
+          <div class="location-score"
+            [style.color]="getScoreColor(location.score)">
+            {{ location.score }}%
+          </div>
+        </div>
+        <div class="location-stats">
+          <div class="stat">
+            <span class="stat-label">Sessions:</span>
+            <span class="stat-value">{{ location.sessions }}</span>
+          </div>
+        </div>
+        <div class="location-progress">
+          <div class="progress-bar">
+            <div
+              class="progress-fill"
+              [style.width.%]="location.score"
+              [style.background-color]="getScoreColor(location.score)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="quick-actions">
+    <button class="quick-action" (click)="navigateToHome()">
+      <i class="fas fa-home"></i>
+      <span>Home</span>
+    </button>
+    <button class="quick-action" (click)="navigateToFocus()">
+      <i class="fas fa-bolt"></i>
+      <span>Focus</span>
+    </button>
+  </div>
+</div>

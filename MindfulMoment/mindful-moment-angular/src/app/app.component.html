@@ -1,0 +1,40 @@
+<!-- Main App Container -->
+<div class="app-container">
+  <!-- Skip Navigation Link for Accessibility -->
+  <a href="#main-content" class="skip-nav-link" aria-label="Skip to main content">
+    Skip to main content
+  </a>
+
+  <!-- Dev sidebar toggle (development only, visible to all users) -->
+  <button
+    *ngIf="isDevMode"
+    type="button"
+    class="dev-sidebar-toggle"
+    [class.open]="showDevSidebar"
+    (click)="toggleDevSidebar()"
+    aria-label="Toggle developer tools">
+    Dev
+  </button>
+
+  <!-- Dev sidebar (development only) -->
+  <aside *ngIf="isDevMode && showDevSidebar" class="dev-sidebar" aria-label="Developer tools">
+    <app-dev-box (closeRequested)="closeDevSidebar()"></app-dev-box>
+  </aside>
+  
+  <!-- Navigation Header - Only show for authenticated users on non-auth pages -->
+  <app-header *ngIf="showHeader"></app-header>
+  
+  <!-- Main Content Area -->
+  <main id="main-content" class="main-content" [class.no-header]="!showHeader" [class.dev-sidebar-open]="showDevSidebar && isDevMode" role="main" tabindex="-1">
+    <router-outlet></router-outlet>
+  </main>
+  
+  <!-- Bottom Navigation for Mobile - Only show for authenticated users -->
+  <app-bottom-nav *ngIf="isMobile && showHeader"></app-bottom-nav>
+  
+  <!-- Loading Overlay -->
+  <app-loading-overlay *ngIf="isLoading$ | async"></app-loading-overlay>
+</div>
+
+<!-- Toast Notifications -->
+<app-toast-container></app-toast-container>

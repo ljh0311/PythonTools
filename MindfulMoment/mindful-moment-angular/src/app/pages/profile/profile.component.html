@@ -1,0 +1,365 @@
+<!-- Profile Page Container -->
+<div class="profile-container">
+  <!-- Header -->
+  <div class="profile-header">
+    <div class="header-content">
+      <h1 class="page-title">
+        <i class="fas fa-user"></i>
+        Profile
+      </h1>
+      <p class="page-subtitle">Manage your account and view your progress</p>
+    </div>
+  </div>
+
+  <!-- User Info Card -->
+  <div class="user-info-card">
+    <div class="user-avatar">
+      <div class="avatar-circle">
+        <span class="avatar-text">{{ getInitials() }}</span>
+      </div>
+      <button class="edit-avatar-button" (click)="toggleEdit()">
+        <i class="fas fa-camera"></i>
+      </button>
+    </div>
+
+    <div class="user-details">
+      <h2 class="user-name">{{ getDisplayName() }}</h2>
+      <p class="user-email">{{ currentUser?.email }}</p>
+      <div class="user-level">
+        <span class="level-badge">Level {{ profileStats.level }}</span>
+        <span class="points-badge">{{ profileStats.points }} points</span>
+      </div>
+    </div>
+
+    <div class="user-actions">
+      <button class="action-button edit" (click)="toggleEdit()">
+        <i class="fas fa-edit"></i>
+        <span>{{ isEditing ? 'Cancel' : 'Edit Profile' }}</span>
+      </button>
+      <button class="action-button logout" (click)="logout()">
+        <i class="fas fa-sign-out-alt"></i>
+        <span>Logout</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Edit Profile Form -->
+  <div class="edit-profile-form" *ngIf="isEditing">
+    <div class="form-card">
+      <h3 class="section-title">
+        <i class="fas fa-user-edit"></i>
+        Edit Profile
+      </h3>
+      
+      <form [formGroup]="editForm" (ngSubmit)="saveProfile()" class="profile-form">
+        <!-- Personal Details Section -->
+        <div class="form-section">
+          <h4 class="form-section-title">
+            <i class="fas fa-id-card-alt"></i>
+            Personal Information
+          </h4>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="firstName">First Name</label>
+              <input
+                type="text"
+                id="firstName"
+                formControlName="firstName"
+                class="form-control"
+                [class.error]="editForm.get('firstName')?.invalid && editForm.get('firstName')?.touched"
+                placeholder="Enter your first name"
+                autocomplete="given-name" />
+              <div class="error-message"
+                *ngIf="editForm.get('firstName')?.invalid && editForm.get('firstName')?.touched">
+                First name is required
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="lastName">Last Name</label>
+              <input
+                type="text"
+                id="lastName"
+                formControlName="lastName"
+                class="form-control"
+                [class.error]="editForm.get('lastName')?.invalid && editForm.get('lastName')?.touched"
+                placeholder="Enter your last name"
+                autocomplete="family-name" />
+              <div class="error-message"
+                *ngIf="editForm.get('lastName')?.invalid && editForm.get('lastName')?.touched">
+                Last name is required
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input
+              type="text"
+              id="username"
+              formControlName="username"
+              class="form-control"
+              [class.error]="editForm.get('username')?.invalid && editForm.get('username')?.touched"
+              placeholder="Enter your username"
+              autocomplete="username" />
+            <div class="error-message"
+              *ngIf="editForm.get('username')?.invalid && editForm.get('username')?.touched">
+              Username is required
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input
+              type="email"
+              id="email"
+              formControlName="email"
+              class="form-control"
+              [class.error]="editForm.get('email')?.invalid && editForm.get('email')?.touched"
+              placeholder="Enter your email"
+              autocomplete="email" />
+            <div class="error-message"
+              *ngIf="editForm.get('email')?.hasError('required') && editForm.get('email')?.touched">
+              Email is required
+            </div>
+            <div class="error-message"
+              *ngIf="editForm.get('email')?.hasError('email') && editForm.get('email')?.touched">
+              Please enter a valid email address
+            </div>
+          </div>
+        </div>
+
+        <!-- Password Change Section -->
+        <div class="form-section">
+          <h4 class="form-section-title">
+            <i class="fas fa-key"></i>
+            Change Password
+          </h4>
+          <p class="form-hint">
+            <i class="fas fa-info-circle"></i>
+            Leave blank to keep current password
+          </p>
+          
+          <div class="form-group">
+            <label for="currentPassword">Current Password</label>
+            <input
+              type="password"
+              id="currentPassword"
+              formControlName="currentPassword"
+              class="form-control"
+              autocomplete="current-password"
+              [class.error]="editForm.get('currentPassword')?.invalid && editForm.get('currentPassword')?.touched"
+              placeholder="Current password" />
+            <div class="error-message"
+              *ngIf="editForm.get('currentPassword')?.invalid && editForm.get('currentPassword')?.touched && editForm.get('newPassword')?.value">
+              Current password is required to change password
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="newPassword">New Password</label>
+            <input
+              type="password"
+              id="newPassword"
+              formControlName="newPassword"
+              class="form-control"
+              autocomplete="new-password"
+              [class.error]="editForm.get('newPassword')?.invalid && editForm.get('newPassword')?.touched"
+              placeholder="New password" />
+            <div class="error-message"
+              *ngIf="editForm.get('newPassword')?.hasError('minlength') && editForm.get('newPassword')?.touched">
+              Password must be at least 8 characters long
+            </div>
+            <div class="error-message"
+              *ngIf="editForm.get('newPassword')?.hasError('pattern') && editForm.get('newPassword')?.touched">
+              Password must contain uppercase, lowercase, number, and special character
+            </div>
+            <div class="password-strength"
+              *ngIf="passwordStrength && editForm.get('newPassword')?.value">
+              <div class="strength-indicator"
+                [ngClass]="'strength-' + passwordStrength.strength">
+                <span>
+                  <i *ngIf="passwordStrength.strength === 'weak'"
+                    class="fas fa-exclamation-triangle"></i>
+                  <i *ngIf="passwordStrength.strength === 'medium'"
+                    class="fas fa-info-circle"></i>
+                  <i *ngIf="passwordStrength.strength === 'strong'"
+                    class="fas fa-check-circle"></i>
+                  Strength: {{ passwordStrength.strength | titlecase }}
+                </span>
+              </div>
+              <ul class="strength-feedback"
+                *ngIf="passwordStrength.feedback.length > 0">
+                <li *ngFor="let feedback of passwordStrength.feedback">
+                  <i class="fas fa-info-circle"></i> {{ feedback }}
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="confirmPassword">Confirm New Password</label>
+            <input
+              type="password"
+              id="confirmPassword"
+              formControlName="confirmPassword"
+              class="form-control"
+              autocomplete="new-password"
+              [class.error]="editForm.get('confirmPassword')?.invalid && editForm.get('confirmPassword')?.touched"
+              placeholder="Confirm new password" />
+            <div class="error-message"
+              *ngIf="editForm.get('confirmPassword')?.hasError('passwordMismatch') && editForm.get('confirmPassword')?.touched">
+              Passwords do not match
+            </div>
+          </div>
+        </div>
+
+        <!-- Error and Success Messages -->
+        <div *ngIf="errorMessage" class="error-message form-error"
+          aria-live="polite" role="alert">
+          <i class="fas fa-exclamation-circle"></i> {{ errorMessage }}
+        </div>
+        <div *ngIf="successMessage" class="success-message form-success"
+          aria-live="polite" role="status">
+          <i class="fas fa-check-circle"></i> {{ successMessage }}
+        </div>
+
+        <!-- Form Actions -->
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="toggleEdit()">
+            <i class="fas fa-times"></i> Cancel
+          </button>
+          <button
+            type="submit"
+            class="btn btn-primary"
+            [disabled]="editForm.invalid || isSaving">
+            <i class="fas fa-save" *ngIf="!isSaving"></i>
+            <i class="fas fa-spinner fa-spin" *ngIf="isSaving"></i>
+            {{ isSaving ? 'Saving...' : 'Save Changes' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Profile Stats -->
+  <div class="profile-stats" *ngIf="!isEditing">
+    <h3 class="section-title">
+      <i class="fas fa-chart-bar"></i>
+      Your Statistics
+    </h3>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="fas fa-bolt"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ profileStats.totalSessions }}</div>
+          <div class="stat-label">Total Sessions</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="fas fa-clock"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ profileStats.totalMinutes }}m</div>
+          <div class="stat-label">Mindful Time</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="fas fa-fire"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ profileStats.currentStreak }}</div>
+          <div class="stat-label">Day Streak</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="fas fa-trophy"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ profileStats.badgesEarned }}</div>
+          <div class="stat-label">Badges Earned</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Achievements -->
+  <div class="recent-achievements" *ngIf="!isEditing">
+    <h3 class="section-title">
+      <i class="fas fa-star"></i>
+      Recent Achievements
+      <span *ngIf="hasStaticAchievements" class="static-indicator" title="Using temporary static values">
+        <i class="fas fa-info-circle"></i>
+      </span>
+    </h3>
+
+    <div class="achievements-list">
+      <div
+        *ngFor="let achievement of recentAchievements"
+        class="achievement-item">
+        <div class="achievement-icon">
+          <i [class]="achievement.icon"></i>
+        </div>
+        <div class="achievement-content">
+          <h4 class="achievement-name">{{ achievement.name }}</h4>
+          <p class="achievement-date">{{ achievement.date }}</p>
+        </div>
+        <div class="achievement-points">
+          <span class="points-badge">+{{ achievement.points }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Information -->
+  <div class="account-info" *ngIf="!isEditing">
+    <h3 class="section-title">
+      <i class="fas fa-info-circle"></i>
+      Account Information
+    </h3>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">Member Since</div>
+        <div class="info-value">{{ currentUser?.joinDate | date:'MMM yyyy' }}</div>
+      </div>
+
+      <div class="info-item">
+        <div class="info-label">Community</div>
+        <div class="info-value">{{ currentUser?.community | titlecase }}</div>
+      </div>
+
+      <div class="info-item">
+        <div class="info-label">Last Active</div>
+        <div class="info-value">{{ currentUser?.lastActive | date:'MMM dd, yyyy' }}</div>
+      </div>
+
+      <div class="info-item">
+        <div class="info-label">Language</div>
+        <div class="info-value">{{ currentUser?.preferences?.language | uppercase }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="quick-actions" *ngIf="!isEditing">
+    <button class="quick-action" (click)="navigateToHome()">
+      <i class="fas fa-home"></i>
+      <span>Home</span>
+    </button>
+    <button class="quick-action" (click)="navigateToSettings()">
+      <i class="fas fa-cog"></i>
+      <span>Settings</span>
+    </button>
+  </div>
+</div>

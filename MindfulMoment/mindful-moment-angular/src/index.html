@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MindfulMoment - Promoting Mindful Behavior in Public Spaces</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <meta name="description" content="MindfulMoment promotes mindful behavior in public spaces for a safer, more connected Singapore. Track your focus sessions, join community groups, and build mindful habits.">
+  <meta name="keywords" content="mindfulness, public awareness, digital wellness, Singapore, focus sessions, community, wellness">
+  <meta name="author" content="MindfulMoment Team">
+  <meta name="theme-color" content="#4A90E2">
+  
+  <!-- Open Graph Meta Tags -->
+  <meta property="og:title" content="MindfulMoment - Promoting Mindful Behavior">
+  <meta property="og:description" content="Promoting mindful behavior in public spaces for a safer, more connected Singapore">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://mindfulmoment.app">
+  <meta property="og:image" content="assets/og-image.png">
+  <meta property="og:site_name" content="MindfulMoment">
+  
+  <!-- Twitter Card Meta Tags -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="MindfulMoment - Promoting Mindful Behavior">
+  <meta name="twitter:description" content="Promoting mindful behavior in public spaces for a safer, more connected Singapore">
+  <meta name="twitter:image" content="assets/twitter-image.png">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
+  <link rel="manifest" href="manifest.json">
+  
+  <!-- Preconnect to external domains -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- PWA Meta Tags -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="MindfulMoment">
+  
+  <!-- Security Headers -->
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <meta http-equiv="X-Frame-Options" content="DENY">
+  <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+  
+  <!-- Performance Hints -->
+  <link rel="dns-prefetch" href="//api.mindfulmoment.app">
+  <link rel="preload" href="assets/icon-192x192.png" as="image">
+  
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "MindfulMoment",
+    "description": "Promoting mindful behavior in public spaces for a safer, more connected Singapore",
+    "url": "https://mindfulmoment.app",
+    "applicationCategory": "LifestyleApplication",
+    "operatingSystem": "Web Browser",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "author": {
+      "@type": "Organization",
+      "name": "MindfulMoment Team"
+    },
+    "featureList": [
+      "Focus Sessions",
+      "Community Groups",
+      "Performance Insights",
+      "Public Awareness",
+      "Achievement System"
+    ]
+  }
+  </script>
+</head>
+<body>
+  <app-root></app-root>
+  
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/ngsw-worker.js')
+          .then(function(registration) {
+            console.log('ServiceWorker registration successful');
+          })
+          .catch(function(err) {
+            console.log('ServiceWorker registration failed: ', err);
+          });
+      });
+    }
+  </script>
+  
+  <!-- Performance Monitoring -->
+  <script>
+    window.addEventListener('load', function() {
+      if ('performance' in window) {
+        const perfData = performance.getEntriesByType('navigation')[0];
+        const loadTime = perfData.loadEventEnd - perfData.loadEventStart;
+        console.log('Page Load Time:', loadTime + 'ms');
+        
+        // Send to analytics if available
+        if (window.gtag) {
+          gtag('event', 'timing_complete', {
+            name: 'load',
+            value: loadTime
+          });
+        }
+      }
+    });
+  </script>
+</body>
+</html>

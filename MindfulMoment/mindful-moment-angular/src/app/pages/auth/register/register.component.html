@@ -1,0 +1,205 @@
+<!-- Register Page Container -->
+<div class="register-container">
+  <div class="register-card">
+    <!-- Header -->
+    <div class="register-header">
+      <div class="logo">
+        <i class="fas fa-leaf"></i>
+      </div>
+      <h1 class="app-title">Join MindfulMoment</h1>
+      <p class="register-subtitle">Start your journey towards mindful public behavior.</p>
+    </div>
+
+    <!-- Register Form -->
+    <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="register-form">
+      <!-- Name Fields -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="firstName" class="form-label">
+            <i class="fas fa-user"></i>
+            First Name
+          </label>
+          <input
+            type="text"
+            id="firstName"
+            formControlName="firstName"
+            class="form-input"
+            [class.error]="registerForm.get('firstName')?.invalid && registerForm.get('firstName')?.touched"
+            placeholder="Enter your first name"
+          />
+          <div class="error-message" *ngIf="registerForm.get('firstName')?.invalid && registerForm.get('firstName')?.touched">
+            {{ getErrorMessage('firstName') }}
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="lastName" class="form-label">
+            <i class="fas fa-user"></i>
+            Last Name
+          </label>
+          <input
+            type="text"
+            id="lastName"
+            formControlName="lastName"
+            class="form-input"
+            [class.error]="registerForm.get('lastName')?.invalid && registerForm.get('lastName')?.touched"
+            placeholder="Enter your last name"
+          />
+          <div class="error-message" *ngIf="registerForm.get('lastName')?.invalid && registerForm.get('lastName')?.touched">
+            {{ getErrorMessage('lastName') }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Email Field -->
+      <div class="form-group">
+        <label for="email" class="form-label">
+          <i class="fas fa-envelope"></i>
+          Email Address
+        </label>
+        <input
+          type="email"
+          id="email"
+          formControlName="email"
+          class="form-input"
+          [class.error]="registerForm.get('email')?.invalid && registerForm.get('email')?.touched"
+          placeholder="Enter your email address"
+        />
+        <div class="error-message" *ngIf="registerForm.get('email')?.invalid && registerForm.get('email')?.touched">
+          {{ getErrorMessage('email') }}
+        </div>
+      </div>
+
+      <!-- Password Fields -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="password" class="form-label">
+            <i class="fas fa-lock"></i>
+            Password
+          </label>
+          <div class="password-input-container">
+            <input
+              [type]="showPassword ? 'text' : 'password'"
+              id="password"
+              formControlName="password"
+              class="form-input password-input"
+              [class.error]="registerForm.get('password')?.invalid && registerForm.get('password')?.touched"
+              placeholder="Create a password"
+            />
+            <button
+              type="button"
+              class="password-toggle"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'"
+            >
+              <i [class]="showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+            </button>
+          </div>
+          <div class="error-message" *ngIf="registerForm.get('password')?.invalid && registerForm.get('password')?.touched">
+            {{ getErrorMessage('password') }}
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="confirmPassword" class="form-label">
+            <i class="fas fa-lock"></i>
+            Confirm Password
+          </label>
+          <div class="password-input-container">
+            <input
+              [type]="showConfirmPassword ? 'text' : 'password'"
+              id="confirmPassword"
+              formControlName="confirmPassword"
+              class="form-input password-input"
+              [class.error]="registerForm.get('confirmPassword')?.invalid && registerForm.get('confirmPassword')?.touched"
+              placeholder="Confirm your password"
+            />
+            <button
+              type="button"
+              class="password-toggle"
+              (click)="toggleConfirmPasswordVisibility()"
+              [attr.aria-label]="showConfirmPassword ? 'Hide password' : 'Show password'"
+            >
+              <i [class]="showConfirmPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
+            </button>
+          </div>
+          <div class="error-message" *ngIf="registerForm.get('confirmPassword')?.invalid && registerForm.get('confirmPassword')?.touched">
+            {{ getErrorMessage('confirmPassword') }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Community Field -->
+      <div class="form-group">
+        <label for="community" class="form-label">
+          <i class="fas fa-map-marker-alt"></i>
+          Community
+        </label>
+        <select
+          id="community"
+          formControlName="community"
+          class="form-input"
+          [class.error]="registerForm.get('community')?.invalid && registerForm.get('community')?.touched"
+        >
+          <option value="singapore">Singapore</option>
+          <option value="malaysia">Malaysia</option>
+          <option value="other">Other</option>
+        </select>
+        <div class="error-message" *ngIf="registerForm.get('community')?.invalid && registerForm.get('community')?.touched">
+          {{ getErrorMessage('community') }}
+        </div>
+      </div>
+
+      <!-- Terms Agreement -->
+      <div class="form-group checkbox-group">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            formControlName="agreeToTerms"
+            class="checkbox-input"
+          />
+          <span class="checkbox-custom"></span>
+          <span class="checkbox-text">
+            I agree to the <a href="#" class="link">Terms of Service</a> and <a href="#" class="link">Privacy Policy</a>
+          </span>
+        </label>
+        <div class="error-message" *ngIf="registerForm.get('agreeToTerms')?.invalid && registerForm.get('agreeToTerms')?.touched">
+          {{ getErrorMessage('agreeToTerms') }}
+        </div>
+      </div>
+
+      <!-- Error Message -->
+      <div class="error-message general-error" *ngIf="errorMessage">
+        <i class="fas fa-exclamation-triangle"></i>
+        {{ errorMessage }}
+      </div>
+
+      <!-- Submit Button -->
+      <button
+        type="submit"
+        class="register-button"
+        [disabled]="isLoading || registerForm.invalid"
+        [class.loading]="isLoading"
+      >
+        <i class="fas fa-user-plus" *ngIf="!isLoading"></i>
+        <i class="fas fa-spinner fa-spin" *ngIf="isLoading"></i>
+        {{ isLoading ? 'Creating Account...' : 'Create Account' }}
+      </button>
+    </form>
+
+    <!-- Footer Links -->
+    <div class="register-footer">
+      <p class="login-link">
+        Already have an account?
+        <a (click)="navigateToLogin()" class="link">Sign in here</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- Background Elements -->
+  <div class="background-elements">
+    <div class="floating-element element-1"></div>
+    <div class="floating-element element-2"></div>
+    <div class="floating-element element-3"></div>
+  </div>
+</div>

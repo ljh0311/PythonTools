@@ -1,0 +1,788 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "John Doe",
+      "email": "john.doe@example.com",
+      "password": "password",
+      "stats": {
+        "todayStats": {
+          "sessionsCompleted": 2,
+          "totalMinutes": 50,
+          "averageSession": 25,
+          "streak": 3
+        },
+        "focusSessions": [
+          {
+            "id": "sess-1680000001",
+            "userId": 1,
+            "startTime": "2024-06-07T09:00:00.000Z",
+            "duration": 25,
+            "type": "focus",
+            "status": "completed",
+            "goals": [
+              {
+                "id": "productivity",
+                "description": "Increase Productivity",
+                "completed": true,
+                "category": "focus"
+              }
+            ],
+            "achievements": [],
+            "distractions": [],
+            "socialInteractions": [],
+            "phoneUsageReduction": 0,
+            "mindfulMoments": [],
+            "createdAt": "2024-06-07T09:00:00.000Z",
+            "updatedAt": "2026-05-02T15:21:14.832Z",
+            "location": null,
+            "llmEvaluation": {
+              "summary": "Session: focus, 25 min.  ",
+              "whatHappened": "Duration 25 min (focus).  ",
+              "impactOnUser": "Reflect on how this session felt. Setting aside time for focus is already a positive step.",
+              "whatCanBeImproved": "Keep tracking accomplishments and distractions to spot patterns over time.",
+              "whatWasImproved": "Completing a focus session is an improvement in itself.",
+              "generatedAt": "2026-05-02T15:21:14.809Z"
+            }
+          },
+          {
+            "id": "sess-1680000002",
+            "userId": 1,
+            "startTime": "2024-06-07T14:00:00.000Z",
+            "duration": 25,
+            "type": "focus",
+            "status": "completed",
+            "goals": [
+              {
+                "id": "mindfulness",
+                "description": "Practice Mindfulness",
+                "completed": true,
+                "category": "mindfulness"
+              }
+            ],
+            "achievements": [],
+            "distractions": [],
+            "socialInteractions": [],
+            "phoneUsageReduction": 0,
+            "mindfulMoments": [],
+            "createdAt": "2024-06-07T14:00:00.000Z",
+            "updatedAt": "2026-05-02T15:21:18.700Z",
+            "location": null,
+            "llmEvaluation": {
+              "summary": "Session: focus, 25 min.  ",
+              "whatHappened": "Duration 25 min (focus).  ",
+              "impactOnUser": "Reflect on how this session felt. Setting aside time for focus is already a positive step.",
+              "whatCanBeImproved": "Keep tracking accomplishments and distractions to spot patterns over time.",
+              "whatWasImproved": "Completing a focus session is an improvement in itself.",
+              "generatedAt": "2026-05-02T15:21:18.680Z"
+            }
+          },
+          {
+            "id": "dev-session-1771751879914",
+            "userId": 1,
+            "startTime": "2026-02-22T08:52:59.914Z",
+            "endTime": "2026-02-22T09:17:59.914Z",
+            "duration": 25,
+            "location": {
+              "type": "home",
+              "name": "Dev",
+              "environment": "quiet"
+            },
+            "type": "study",
+            "status": "completed",
+            "goals": [],
+            "achievements": [],
+            "distractions": [
+              {
+                "id": "d1",
+                "type": "phone",
+                "description": "Simulated distraction",
+                "duration": 2,
+                "timestamp": "2026-02-22T09:17:59.914Z",
+                "handled": true
+              }
+            ],
+            "socialInteractions": [],
+            "phoneUsageReduction": 5,
+            "mindfulMoments": [],
+            "createdAt": "2026-02-22T09:17:59.914Z",
+            "updatedAt": "2026-02-22T09:17:59.930Z"
+          },
+          {
+            "id": "dev-session-1771752323312",
+            "userId": 1,
+            "startTime": "2026-02-22T09:00:23.312Z",
+            "endTime": "2026-02-22T09:25:23.312Z",
+            "duration": 25,
+            "location": {
+              "type": "home",
+              "name": "Dev",
+              "environment": "quiet"
+            },
+            "type": "study",
+            "status": "completed",
+            "goals": [],
+            "achievements": [],
+            "distractions": [
+              {
+                "id": "d1",
+                "type": "phone",
+                "description": "Simulated distraction",
+                "duration": 2,
+                "timestamp": "2026-02-22T09:25:23.312Z",
+                "handled": true
+              }
+            ],
+            "socialInteractions": [],
+            "phoneUsageReduction": 5,
+            "mindfulMoments": [],
+            "createdAt": "2026-02-22T09:25:23.312Z",
+            "updatedAt": "2026-02-22T09:25:23.329Z"
+          },
+          {
+            "id": "dev-session-1771752879454",
+            "userId": 1,
+            "startTime": "2026-02-22T09:09:39.454Z",
+            "endTime": "2026-02-22T09:34:39.454Z",
+            "duration": 25,
+            "location": {
+              "type": "home",
+              "name": "Dev",
+              "environment": "quiet"
+            },
+            "type": "study",
+            "status": "completed",
+            "goals": [],
+            "achievements": [],
+            "distractions": [
+              {
+                "id": "d1",
+                "type": "phone",
+                "description": "Simulated distraction",
+                "duration": 2,
+                "timestamp": "2026-02-22T09:34:39.454Z",
+                "handled": true
+              }
+            ],
+            "socialInteractions": [],
+            "phoneUsageReduction": 5,
+            "mindfulMoments": [],
+            "createdAt": "2026-02-22T09:34:39.454Z",
+            "updatedAt": "2026-02-22T09:34:39.475Z"
+          },
+          {
+            "id": "dev-session-1771848480027",
+            "userId": 1,
+            "startTime": "2026-02-23T11:43:00.027Z",
+            "endTime": "2026-02-23T12:08:00.027Z",
+            "duration": 25,
+            "location": {
+              "type": "home",
+              "name": "Dev",
+              "environment": "quiet"
+            },
+            "type": "study",
+            "status": "completed",
+            "goals": [],
+            "achievements": [],
+            "accomplishments": "Simulated study session",
+            "distractions": [
+              {
+                "id": "d1",
+                "type": "phone",
+                "description": "Simulated distraction",
+                "duration": 2,
+                "timestamp": "2026-02-23T12:08:00.027Z",
+                "handled": true
+              }
+            ],
+            "socialInteractions": [],
+            "phoneUsageReduction": 5,
+            "mindfulMoments": [],
+            "typeMetrics": null,
+            "createdAt": "2026-02-23T12:08:00.027Z",
+            "updatedAt": "2026-02-23T12:08:00.037Z",
+            "llmEvaluation": null
+          },
+          {
+            "id": "dev-session-1771849196865",
+            "userId": 1,
+            "startTime": "2026-02-23T11:54:56.865Z",
+            "endTime": "2026-02-23T12:19:56.865Z",
+            "duration": 25,
+            "location": {
+              "type": "home",
+              "name": "Dev",
+              "environment": "quiet"
+            },
+            "type": "study",
+            "status": "completed",
+            "goals": [],
+            "achievements": [],
+            "accomplishments": "Simulated study session",
+            "distractions": [
+              {
+                "id": "d1",
+                "type": "phone",
+                "description": "Simulated distraction",
+                "duration": 2,
+                "timestamp": "2026-02-23T12:19:56.865Z",
+                "handled": true
+              }
+            ],
+            "socialInteractions": [],
+            "phoneUsageReduction": 5,
+            "mindfulMoments": [],
+            "typeMetrics": null,
+            "createdAt": "2026-02-23T12:19:56.865Z",
+            "updatedAt": "2026-02-23T12:19:56.895Z",
+            "llmEvaluation": null
+          }
+        ],
+        "publicAwarenessStats": {
+          "totalPublicTime": 120,
+          "safetyAlerts": 2,
+          "socialPrompts": 5,
+          "mindfulScore": 75,
+          "locationScores": {
+            "publicSpaces": 75,
+            "mrtStations": 85,
+            "shoppingCenters": 72
+          }
+        }
+      },
+      "achievements": [
+        {
+          "id": "first-session",
+          "name": "First Focus Session",
+          "icon": "fas fa-bolt",
+          "date": "2024-06-05T10:00:00.000Z",
+          "points": 10,
+          "progress": 100
+        },
+        {
+          "id": "week-warrior",
+          "name": "Week Warrior",
+          "icon": "fas fa-calendar-week",
+          "date": "2024-05-28T10:00:00.000Z",
+          "points": 25,
+          "progress": 100
+        },
+        {
+          "id": "social-butterfly",
+          "name": "Social Butterfly",
+          "icon": "fas fa-users",
+          "date": "2024-05-21T10:00:00.000Z",
+          "points": 15,
+          "progress": 100
+        },
+        {
+          "id": "mindful-master",
+          "name": "Mindful Master",
+          "icon": "fas fa-meditation",
+          "date": null,
+          "points": 50,
+          "progress": 60
+        }
+      ],
+      "goals": [
+        {
+          "id": "daily-sessions",
+          "name": "Daily Focus Sessions",
+          "target": "7 sessions/week",
+          "targetValue": 7,
+          "current": 2,
+          "progress": 29
+        },
+        {
+          "id": "mindful-hours",
+          "name": "Mindful Hours",
+          "target": "10 hours/month",
+          "targetValue": 10,
+          "current": 0.8,
+          "progress": 8
+        },
+        {
+          "id": "phone-reduction",
+          "name": "Phone Usage Reduction",
+          "target": "20 hours/month",
+          "targetValue": 20,
+          "current": 0,
+          "progress": 0
+        }
+      ]
+    }
+  ],
+  "communityGroups": [
+    {
+      "id": "group-1",
+      "name": "Mindful Mornings",
+      "description": "Start your day with focused mindfulness sessions",
+      "category": "focus",
+      "location": "Singapore",
+      "memberCount": 245,
+      "maxMembers": 500,
+      "isPublic": true,
+      "tags": [
+        "morning",
+        "meditation",
+        "focus"
+      ],
+      "icon": "fas fa-sun",
+      "color": "#FFD700",
+      "createdBy": "admin",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-06-07T00:00:00.000Z",
+      "rules": [],
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Weekly Morning Meditation",
+          "description": "Join us for a weekly group meditation session",
+          "date": "2024-06-15T07:00:00.000Z",
+          "time": "07:00",
+          "location": "Marina Bay",
+          "maxParticipants": 50,
+          "currentParticipants": 23,
+          "isJoined": false,
+          "organizer": "admin",
+          "category": "practice"
+        }
+      ],
+      "recentActivity": [],
+      "isJoined": true,
+      "joinDate": "2024-05-15T10:00:00.000Z",
+      "adminIds": [
+        "admin"
+      ],
+      "memberIds": [],
+      "joinRequests": [],
+      "requiresApproval": false
+    },
+    {
+      "id": "group-2",
+      "name": "Public Safety Awareness",
+      "description": "Promoting safety awareness in public spaces",
+      "category": "safety",
+      "location": "Singapore",
+      "memberCount": 181,
+      "maxMembers": 300,
+      "isPublic": true,
+      "tags": [
+        "safety",
+        "awareness",
+        "public"
+      ],
+      "icon": "fas fa-shield-alt",
+      "color": "#DC3545",
+      "createdBy": "admin",
+      "createdAt": "2024-01-15T00:00:00.000Z",
+      "updatedAt": "2024-06-07T00:00:00.000Z",
+      "rules": [],
+      "events": [
+        {
+          "id": "event-2",
+          "title": "Safety Workshop",
+          "description": "Learn about public safety best practices",
+          "date": "2024-06-20T14:00:00.000Z",
+          "time": "14:00",
+          "location": "Community Center",
+          "maxParticipants": 30,
+          "currentParticipants": 15,
+          "isJoined": false,
+          "organizer": "admin",
+          "category": "workshop"
+        }
+      ],
+      "recentActivity": [],
+      "isJoined": false,
+      "joinDate": null,
+      "adminIds": [
+        "admin"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": false
+    },
+    {
+      "id": "group-dev-1",
+      "name": "Development Test Group",
+      "description": "A test group for development purposes. Admin can manage join requests and group settings.",
+      "category": "focus",
+      "location": "Singapore",
+      "memberCount": 1,
+      "maxMembers": 50,
+      "isPublic": true,
+      "tags": [
+        "development",
+        "testing",
+        "admin"
+      ],
+      "icon": "fas fa-code",
+      "color": "#4A90E2",
+      "createdBy": "1",
+      "createdAt": "2024-06-07T00:00:00.000Z",
+      "updatedAt": "2026-05-02T14:45:31.595Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": true,
+      "joinDate": "2024-06-07T00:00:00.000Z",
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [
+        {
+          "id": "dev-req-1777733131573",
+          "userId": "999",
+          "userName": "Simulated User",
+          "groupId": "group-dev-1",
+          "requestedAt": "2026-05-02T14:45:31.573Z",
+          "status": "pending"
+        }
+      ],
+      "requiresApproval": true
+    },
+    {
+      "id": "dev-group-1771751877492",
+      "name": "Simulated group 5:17:57 PM",
+      "description": "Created by Developer Tools for testing",
+      "category": "focus",
+      "location": "Dev",
+      "memberCount": 1,
+      "maxMembers": 50,
+      "isPublic": true,
+      "tags": [
+        "dev",
+        "test"
+      ],
+      "icon": "fas fa-flask",
+      "color": "#6B7280",
+      "createdBy": "1",
+      "createdAt": "2026-02-22T09:17:57.496Z",
+      "updatedAt": "2026-02-22T09:17:57.510Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": false,
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": true
+    },
+    {
+      "id": "dev-group-1771751881343",
+      "name": "Simulated group 5:18:01 PM",
+      "description": "Created by Developer Tools for testing",
+      "category": "focus",
+      "location": "Dev",
+      "memberCount": 1,
+      "maxMembers": 50,
+      "isPublic": true,
+      "tags": [
+        "dev",
+        "test"
+      ],
+      "icon": "fas fa-flask",
+      "color": "#6B7280",
+      "createdBy": "1",
+      "createdAt": "2026-02-22T09:18:01.343Z",
+      "updatedAt": "2026-02-22T09:18:01.356Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": false,
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": true
+    },
+    {
+      "id": "dev-group-1771751882211",
+      "name": "Simulated group 5:18:02 PM",
+      "description": "Created by Developer Tools for testing",
+      "category": "focus",
+      "location": "Dev",
+      "memberCount": 1,
+      "maxMembers": 50,
+      "isPublic": true,
+      "tags": [
+        "dev",
+        "test"
+      ],
+      "icon": "fas fa-flask",
+      "color": "#6B7280",
+      "createdBy": "1",
+      "createdAt": "2026-02-22T09:18:02.211Z",
+      "updatedAt": "2026-02-22T09:18:02.225Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": false,
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": true
+    },
+    {
+      "id": "dev-group-1771751890327",
+      "name": "Simulated group 5:18:10 PM",
+      "description": "Created by Developer Tools for testing",
+      "category": "focus",
+      "location": "Dev",
+      "memberCount": 1,
+      "maxMembers": 50,
+      "isPublic": true,
+      "tags": [
+        "dev",
+        "test"
+      ],
+      "icon": "fas fa-flask",
+      "color": "#6B7280",
+      "createdBy": "1",
+      "createdAt": "2026-02-22T09:18:10.327Z",
+      "updatedAt": "2026-02-22T09:18:10.341Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": false,
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": true
+    },
+    {
+      "id": "dev-group-1771752314833",
+      "name": "Simulated group 5:25:14 PM",
+      "description": "Created by Developer Tools for testing",
+      "category": "focus",
+      "location": "Dev",
+      "memberCount": 1,
+      "maxMembers": 50,
+      "isPublic": true,
+      "tags": [
+        "dev",
+        "test"
+      ],
+      "icon": "fas fa-flask",
+      "color": "#6B7280",
+      "createdBy": "1",
+      "createdAt": "2026-02-22T09:25:14.833Z",
+      "updatedAt": "2026-02-22T09:25:14.870Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": false,
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": true
+    },
+    {
+      "id": "dev-group-1771848481435",
+      "name": "Simulated group 8:08:01 PM",
+      "description": "Created by Developer Tools for testing",
+      "category": "focus",
+      "location": "Dev",
+      "memberCount": 1,
+      "maxMembers": 50,
+      "isPublic": true,
+      "tags": [
+        "dev",
+        "test"
+      ],
+      "icon": "fas fa-flask",
+      "color": "#6B7280",
+      "createdBy": "1",
+      "createdAt": "2026-02-23T12:08:01.442Z",
+      "updatedAt": "2026-02-23T12:08:01.452Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": false,
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": true
+    },
+    {
+      "id": "dev-group-1771848612502",
+      "name": "Simulated group 8:10:12 PM",
+      "description": "Created by Developer Tools for testing",
+      "category": "focus",
+      "location": "Dev",
+      "memberCount": 1,
+      "maxMembers": 50,
+      "isPublic": true,
+      "tags": [
+        "dev",
+        "test"
+      ],
+      "icon": "fas fa-flask",
+      "color": "#6B7280",
+      "createdBy": "1",
+      "createdAt": "2026-02-23T12:10:12.502Z",
+      "updatedAt": "2026-02-23T12:10:12.510Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": false,
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": true
+    },
+    {
+      "id": "dev-group-1771849197779",
+      "name": "Simulated group 8:19:57 PM",
+      "description": "Created by Developer Tools for testing",
+      "category": "focus",
+      "location": "Dev",
+      "memberCount": 1,
+      "maxMembers": 50,
+      "isPublic": true,
+      "tags": [
+        "dev",
+        "test"
+      ],
+      "icon": "fas fa-flask",
+      "color": "#6B7280",
+      "createdBy": "1",
+      "createdAt": "2026-02-23T12:19:57.779Z",
+      "updatedAt": "2026-02-23T12:19:57.787Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": false,
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": true
+    },
+    {
+      "id": "group-1771849863875-i3mgcpo6x",
+      "name": "das",
+      "description": "asd",
+      "category": "focus",
+      "location": "Malaysia",
+      "memberCount": 1,
+      "isPublic": true,
+      "tags": [],
+      "icon": "fas fa-users",
+      "color": "#4A90E2",
+      "createdBy": "1",
+      "createdAt": "2026-02-23T12:31:03.875Z",
+      "updatedAt": "2026-02-23T12:31:03.888Z",
+      "rules": [],
+      "events": [],
+      "recentActivity": [],
+      "isJoined": false,
+      "adminIds": [
+        "1"
+      ],
+      "memberIds": [
+        "1"
+      ],
+      "joinRequests": [],
+      "requiresApproval": true
+    }
+  ],
+  "safetyTips": [
+    {
+      "id": "mrt-safety",
+      "title": "MRT Safety",
+      "icon": "fas fa-train",
+      "tips": [
+        "Stand behind the yellow line on platforms",
+        "Look up from your phone when boarding/alighting",
+        "Be aware of platform gaps",
+        "Hold handrails on escalators"
+      ]
+    },
+    {
+      "id": "crossing-safety",
+      "title": "Road Crossing",
+      "icon": "fas fa-walking",
+      "tips": [
+        "Look both ways before crossing",
+        "Use designated crosswalks",
+        "Wait for the green man signal",
+        "Avoid using phone while crossing"
+      ]
+    },
+    {
+      "id": "crowd-safety",
+      "title": "Crowded Areas",
+      "icon": "fas fa-users",
+      "tips": [
+        "Be aware of your surroundings",
+        "Keep personal belongings secure",
+        "Follow crowd flow direction",
+        "Stay alert in busy areas"
+      ]
+    }
+  ],
+  "emergencyContacts": [
+    {
+      "name": "Police",
+      "number": "999",
+      "icon": "fas fa-shield-alt",
+      "color": "#DC3545"
+    },
+    {
+      "name": "Ambulance",
+      "number": "995",
+      "icon": "fas fa-ambulance",
+      "color": "#28A745"
+    },
+    {
+      "name": "Fire Department",
+      "number": "995",
+      "icon": "fas fa-fire",
+      "color": "#FF9800"
+    },
+    {
+      "name": "Non-Emergency",
+      "number": "1800-255-0000",
+      "icon": "fas fa-phone",
+      "color": "#6C757D"
+    }
+  ]
+}

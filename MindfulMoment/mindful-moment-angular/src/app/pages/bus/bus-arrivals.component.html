@@ -1,0 +1,102 @@
+<div class="bus-container">
+  <app-page-back-bar [backUrl]="'/home'" title="Bus arrivals"></app-page-back-bar>
+
+  <div class="bus-header">
+    <div class="header-content">
+      <h1 class="page-title">
+        <i class="fas fa-bus"></i>
+        Bus arrival times
+      </h1>
+      <p class="page-subtitle">Real-time bus arrival times at your stop (LTA Singapore)</p>
+    </div>
+  </div>
+
+  <div class="bus-form setup-section">
+    <label class="form-label" for="stopSearch">Find a stop</label>
+    <p class="field-hint">Search by stop name, road, or 5-digit stop code. The first search can take 10–30s while the stop list is downloaded from LTA (then it is cached for a day).</p>
+    <div class="search-field-wrap">
+      <input
+        id="stopSearch"
+        type="text"
+        class="form-input form-input-wide"
+        [(ngModel)]="stopSearchInput"
+        (ngModelChange)="onStopSearchInput($event)"
+        placeholder="e.g. Orchard, Victoria St, 83139"
+        autocomplete="off"
+        maxlength="120"
+      />
+      <span class="search-loading" *ngIf="stopSearchLoading" aria-live="polite">Loading…</span>
+    </div>
+    <div class="bus-error stop-search-error" *ngIf="stopSearchError && !stopSearchLoading">
+      <i class="fas fa-exclamation-circle"></i>
+      <span>{{ stopSearchError }}</span>
+    </div>
+    <p class="field-hint subtle" *ngIf="stopSearchLoading && !stopSearchError">Loading stop directory from LTA (first time only)…</p>
+    <p
+      class="field-hint subtle"
+      *ngIf="!stopSearchLoading && !stopSearchError && stopSearchInput.trim().length >= 2 && stopMatches.length === 0">
+      No matching stops. Try another name, road, or code.
+    </p>
+    <ul class="stop-suggestions" *ngIf="stopMatches.length > 0" role="listbox" aria-label="Matching bus stops">
+      <li *ngFor="let s of stopMatches">
+        <button type="button" class="stop-suggestion-btn" (click)="selectStop(s)">
+          <span class="stop-suggestion-title">{{ s.Description }}</span>
+          <span class="stop-suggestion-meta">{{ s.RoadName }} · {{ s.BusStopCode }}</span>
+        </button>
+      </li>
+    </ul>
+
+    <label class="form-label" for="busStopCode">Bus stop code</label>
+    <input
+      id="busStopCode"
+      type="text"
+      class="form-input"
+      [(ngModel)]="busStopCode"
+      (ngModelChange)="onBusStopCodeInput()"
+      placeholder="e.g. 83139"
+      maxlength="10"
+      inputmode="numeric"
+    />
+    <p class="field-hint subtle" *ngIf="selectedStopSummary">{{ selectedStopSummary }}</p>
+
+    <label class="form-label optional" for="serviceNo">Service number (optional)</label>
+    <input
+      id="serviceNo"
+      type="text"
+      class="form-input"
+      [(ngModel)]="serviceNo"
+      placeholder="e.g. 10"
+      maxlength="10"
+    />
+    <button
+      type="button"
+      class="get-arrivals-btn"
+      [disabled]="loading || !busStopCode.trim()"
+      (click)="loadArrivals()">
+      <i class="fas" [class.fa-spinner]="loading" [class.fa-spin]="loading" [class.fa-search]="!loading"></i>
+      <span>{{ loading ? 'Loading...' : 'Get arrivals' }}</span>
+    </button>
+  </div>
+
+  <div class="bus-error" *ngIf="error && !loading">
+    <i class="fas fa-exclamation-circle"></i>
+    <span>{{ error }}</span>
+  </div>
+
+  <div class="bus-result" *ngIf="result && !loading">
+    <h3 class="result-title">Stop {{ result.BusStopCode }}</h3>
+    <div class="services-list">
+      <div class="service-card" *ngFor="let svc of result.Services">
+        <div class="service-header">
+          <span class="service-no">{{ svc.ServiceNo }}</span>
+          <span class="service-operator">{{ svc.Operator }}</span>
+        </div>
+        <ul class="eta-list">
+          <li><span class="eta-label">Next:</span> {{ formatEta(svc.NextBus) }}</li>
+          <li><span class="eta-label">2nd:</span> {{ formatEta(svc.NextBus2) }}</li>
+          <li><span class="eta-label">3rd:</span> {{ formatEta(svc.NextBus3) }}</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,168 @@
+<!-- Header Container -->
+<header class="app-header">
+  <div class="header-content">
+    <!-- Logo and Brand -->
+    <div class="brand-section">
+      <div class="logo">
+        <i class="fas fa-leaf"></i>
+      </div>
+      <h1 class="app-title">MindfulMoment</h1>
+    </div>
+
+    <!-- Desktop Navigation -->
+    <nav
+      class="desktop-nav"
+      *ngIf="!(isCompactHeader$ | async) || !currentUser">
+      <a routerLink="/home" routerLinkActive="active" class="nav-link">
+        <i class="fas fa-home"></i>
+        <span>Home</span>
+      </a>
+      <a routerLink="/focus" routerLinkActive="active" class="nav-link">
+        <i class="fas fa-bolt"></i>
+        <span>Focus</span>
+      </a>
+      <a routerLink="/community" routerLinkActive="active" class="nav-link">
+        <i class="fas fa-users"></i>
+        <span>Community</span>
+      </a>
+      <a routerLink="/insights" routerLinkActive="active" class="nav-link">
+        <i class="fas fa-chart-line"></i>
+        <span>Insights</span>
+      </a>
+      <a routerLink="/bus" routerLinkActive="active" class="nav-link">
+        <i class="fas fa-bus"></i>
+        <span>Bus</span>
+      </a>
+      <a routerLink="/admin/users" routerLinkActive="active" class="nav-link" *ngIf="showAdminNav">
+        <i class="fas fa-user-cog"></i>
+        <span>Users</span>
+      </a>
+      <a routerLink="/admin/insights" routerLinkActive="active" class="nav-link" *ngIf="showAdminNav">
+        <i class="fas fa-chart-pie"></i>
+        <span>Overall insights</span>
+      </a>
+    </nav>
+
+    <!-- User Section -->
+    <div class="user-section" *ngIf="currentUser">
+      <div class="user-info">
+        <div class="user-avatar">
+          <i class="fas fa-user"></i>
+        </div>
+        <div class="user-details">
+          <span class="greeting">{{ getGreeting() }}</span>
+          <span class="username">{{ getUserDisplayName() }}</span>
+        </div>
+      </div>
+
+      <!-- Desktop User Menu -->
+      <div class="user-menu" *ngIf="!(isCompactHeader$ | async)">
+        <button mat-icon-button [matMenuTriggerFor]="userMenu"
+          class="user-menu-trigger">
+          <i class="fas fa-chevron-down"></i>
+        </button>
+        <mat-menu #userMenu="matMenu">
+          <button mat-menu-item routerLink="/profile">
+            <i class="fas fa-user"></i>
+            <span>Profile</span>
+          </button>
+          <button mat-menu-item routerLink="/settings">
+            <i class="fas fa-cog"></i>
+            <span>Settings</span>
+          </button>
+          <mat-divider></mat-divider>
+          <button mat-menu-item (click)="logout()">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>Logout</span>
+          </button>
+        </mat-menu>
+      </div>
+
+      <!-- Mobile Menu Button -->
+      <button
+        mat-icon-button
+        type="button"
+        class="mobile-menu-button"
+        *ngIf="isCompactHeader$ | async"
+        (click)="toggleMenu()"
+        [class.active]="isMenuOpen"
+        [attr.aria-expanded]="isMenuOpen"
+        aria-controls="header-mobile-nav"
+        [attr.aria-label]="isMenuOpen ? 'Close menu' : 'Open menu'">
+        <i class="fas fa-bars" *ngIf="!isMenuOpen"></i>
+        <i class="fas fa-times" *ngIf="isMenuOpen"></i>
+      </button>
+    </div>
+
+    <!-- Login/Register Buttons (when not authenticated) -->
+    <div class="auth-buttons" *ngIf="!currentUser">
+      <button mat-button routerLink="/login" class="login-btn">Login</button>
+      <button mat-raised-button color="primary" routerLink="/register"
+        class="register-btn">Register</button>
+    </div>
+  </div>
+
+  <!-- Mobile Navigation Menu -->
+  <div
+    id="header-mobile-nav"
+    class="mobile-nav"
+    *ngIf="(isCompactHeader$ | async) && isMenuOpen"
+    [@slideInOut]>
+    <nav class="mobile-nav-content">
+      <a routerLink="/home" routerLinkActive="active" class="mobile-nav-link"
+        (click)="closeMenu()">
+        <i class="fas fa-home"></i>
+        <span>Home</span>
+      </a>
+      <a routerLink="/focus" routerLinkActive="active" class="mobile-nav-link"
+        (click)="closeMenu()">
+        <i class="fas fa-bolt"></i>
+        <span>Focus Sessions</span>
+      </a>
+      <a routerLink="/community" routerLinkActive="active"
+        class="mobile-nav-link" (click)="closeMenu()">
+        <i class="fas fa-users"></i>
+        <span>Community</span>
+      </a>
+      <a routerLink="/insights" routerLinkActive="active"
+        class="mobile-nav-link" (click)="closeMenu()">
+        <i class="fas fa-chart-line"></i>
+        <span>Insights</span>
+      </a>
+      <a routerLink="/bus" routerLinkActive="active"
+        class="mobile-nav-link" (click)="closeMenu()">
+        <i class="fas fa-bus"></i>
+        <span>Bus</span>
+      </a>
+      <a routerLink="/admin/users" routerLinkActive="active"
+        class="mobile-nav-link" (click)="closeMenu()" *ngIf="showAdminNav">
+        <i class="fas fa-user-cog"></i>
+        <span>Users</span>
+      </a>
+      <a routerLink="/admin/insights" routerLinkActive="active"
+        class="mobile-nav-link" (click)="closeMenu()" *ngIf="showAdminNav">
+        <i class="fas fa-chart-pie"></i>
+        <span>Overall insights</span>
+      </a>
+      <a routerLink="/public-awareness" routerLinkActive="active"
+        class="mobile-nav-link" (click)="closeMenu()">
+        <i class="fas fa-shield-alt"></i>
+        <span>Public Awareness</span>
+      </a>
+      <a routerLink="/profile" routerLinkActive="active" class="mobile-nav-link"
+        (click)="closeMenu()">
+        <i class="fas fa-user"></i>
+        <span>Profile</span>
+      </a>
+      <a routerLink="/settings" routerLinkActive="active"
+        class="mobile-nav-link" (click)="closeMenu()">
+        <i class="fas fa-cog"></i>
+        <span>Settings</span>
+      </a>
+      <button class="mobile-nav-link logout-link" (click)="logout()">
+        <i class="fas fa-sign-out-alt"></i>
+        <span>Logout</span>
+      </button>
+    </nav>
+  </div>
+</header>

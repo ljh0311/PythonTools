@@ -1,0 +1,574 @@
+.insights-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: 1rem;
+}
+
+// Header Styles
+.insights-header {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.header-content {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0 0 0.5rem 0;
+  color: #2C2C2C;
+  font-size: 2rem;
+  font-weight: 700;
+
+  i {
+    color: #4A90E2;
+  }
+}
+
+.page-subtitle {
+  color: #6C757D;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.period-selector {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.period-button {
+  padding: 0.5rem 1rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 20px;
+  background: white;
+  color: #6C757D;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+
+  &:hover {
+    border-color: #4A90E2;
+    color: #4A90E2;
+  }
+
+  &.selected {
+    background: #4A90E2;
+    border-color: #4A90E2;
+    color: white;
+  }
+}
+
+// Section Styles
+.performance-overview,
+.weekly-breakdown,
+.achievement-progress,
+.location-performance,
+.accomplishments-distractions,
+.ai-evaluation-section {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem 0;
+  color: #2C2C2C;
+  font-size: 1.25rem;
+  font-weight: 600;
+
+  i {
+    color: #4A90E2;
+  }
+}
+
+// Performance Metrics
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.metric-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+
+  &:hover {
+    border-color: #4A90E2;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(74, 144, 226, 0.1);
+  }
+}
+
+.metric-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.25rem;
+
+  &.focus { background: #4A90E2; }
+  &.mindful { background: #28A745; }
+  &.social { background: #FF9800; }
+  &.reduction { background: #E91E63; }
+}
+
+.metric-content {
+  flex: 1;
+}
+
+.metric-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #2C2C2C;
+  margin-bottom: 0.25rem;
+}
+
+.metric-label {
+  font-size: 0.9rem;
+  color: #6C757D;
+  margin-bottom: 0.5rem;
+}
+
+.metric-change {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+
+  i {
+    font-size: 0.7rem;
+  }
+}
+
+// Weekly Breakdown Chart
+.chart-container {
+  padding: 1rem;
+  position: relative;
+  height: 300px;
+  width: 100%;
+
+  canvas {
+    max-height: 100%;
+  }
+}
+
+.sessions-trend {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.chart-bars {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  height: 200px;
+  gap: 1rem;
+}
+
+.chart-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+}
+
+.bar-container {
+  height: 150px;
+  display: flex;
+  align-items: end;
+  width: 100%;
+  justify-content: center;
+}
+
+.bar {
+  width: 100%;
+  max-width: 40px;
+  background: linear-gradient(to top, #4A90E2, #28A745);
+  border-radius: 4px 4px 0 0;
+  min-height: 20px;
+  transition: height 0.3s ease;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
+.bar-label {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #6C757D;
+  font-weight: 500;
+}
+
+.bar-value {
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: #2C2C2C;
+  font-weight: 600;
+}
+
+// Achievement Progress
+.achievements-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.achievement-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+
+  &:hover {
+    border-color: #4A90E2;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(74, 144, 226, 0.1);
+  }
+}
+
+.achievement-icon {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #4A90E2, #28A745);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.25rem;
+}
+
+.achievement-content {
+  flex: 1;
+}
+
+.achievement-name {
+  margin: 0 0 0.75rem 0;
+  color: #2C2C2C;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.progress-bar {
+  height: 8px;
+  background: #E0E0E0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4A90E2, #28A745);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 0.8rem;
+  color: #6C757D;
+  font-weight: 500;
+}
+
+// Location Performance
+.location-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.location-card {
+  padding: 1.5rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+
+  &:hover {
+    border-color: #4A90E2;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(74, 144, 226, 0.1);
+  }
+}
+
+.location-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.location-name {
+  margin: 0;
+  color: #2C2C2C;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.location-score {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.location-stats {
+  margin-bottom: 1rem;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.stat-label {
+  color: #6C757D;
+}
+
+.stat-value {
+  color: #2C2C2C;
+  font-weight: 600;
+}
+
+.location-progress {
+  .progress-bar {
+    height: 6px;
+    background: #E0E0E0;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+  }
+}
+
+// Quick Actions
+.quick-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+.quick-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: white;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 100px;
+
+  &:hover {
+    border-color: #4A90E2;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(74, 144, 226, 0.1);
+  }
+
+  i {
+    color: #4A90E2;
+    font-size: 1.25rem;
+  }
+
+  span {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #2C2C2C;
+  }
+}
+
+// Accomplishments & Distractions
+.recent-reflections {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.reflection-card {
+  padding: 1rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  background: #f8f9fa;
+}
+
+.reflection-date {
+  font-weight: 600;
+  color: #4A90E2;
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.reflection-type {
+  font-size: 0.8rem;
+  color: #6C757D;
+  margin-bottom: 0.5rem;
+}
+
+.reflection-accomplishments,
+.reflection-distractions {
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0 0;
+  line-height: 1.5;
+  color: #2C2C2C;
+}
+
+.reflection-empty {
+  font-size: 0.85rem;
+  color: #6C757D;
+  margin: 0.5rem 0 0 0;
+  font-style: italic;
+}
+
+// AI evaluation
+.section-desc {
+  color: #6C757D;
+  font-size: 0.95rem;
+  margin: 0 0 1rem 0;
+}
+
+.ai-generate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  background: #4A90E2;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: #357ABD;
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+}
+
+.ai-error {
+  color: #DC3545;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0 0;
+}
+
+.llm-result {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border-left: 4px solid #4A90E2;
+}
+
+.llm-block {
+  margin-bottom: 1rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  h4 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #2C2C2C;
+    margin: 0 0 0.35rem 0;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #495057;
+  }
+}
+
+// Responsive Design
+@media (max-width: 768px) {
+  .insights-container {
+    padding: 0.5rem;
+  }
+
+  .insights-header,
+  .performance-overview,
+  .weekly-breakdown,
+  .achievement-progress,
+  .location-performance,
+  .accomplishments-distractions,
+  .ai-evaluation-section {
+    padding: 1.5rem;
+  }
+
+  .metrics-grid,
+  .achievements-grid,
+  .location-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-bars {
+    height: 150px;
+  }
+
+  .bar-container {
+    height: 100px;
+  }
+
+  .period-selector {
+    flex-wrap: wrap;
+  }
+
+  .quick-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+// Accessibility
+@media (prefers-reduced-motion: reduce) {
+  .metric-card:hover,
+  .achievement-card:hover,
+  .location-card:hover,
+  .quick-action:hover {
+    transform: none;
+  }
+}

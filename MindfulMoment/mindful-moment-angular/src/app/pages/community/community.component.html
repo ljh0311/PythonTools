@@ -1,0 +1,291 @@
+<!-- Community Page Container -->
+<div class="community-container">
+  <!-- Header -->
+  <div class="community-header">
+    <div class="header-content">
+      <h1 class="page-title">
+        <i class="fas fa-users"></i>
+        Community
+      </h1>
+      <p class="page-subtitle">Connect with like-minded individuals and join groups</p>
+    </div>
+    
+    <!-- Community Stats -->
+    <div class="community-stats improved-stats">
+      <div class="stat-item" title="Total Groups created in the community">
+        <div class="stat-icon"><i class="fas fa-layer-group"></i></div>
+        <div class="stat-value animate-number">{{ communityStats.totalGroups || 0 }}</div>
+        <div class="stat-label">Groups</div>
+      </div>
+      <div class="stat-item" title="Groups you have joined">
+        <div class="stat-icon"><i class="fas fa-user-friends"></i></div>
+        <div class="stat-value animate-number joined">{{ communityStats.joinedGroups || 0 }}</div>
+        <div class="stat-label">Joined</div>
+      </div>
+      <div class="stat-item" title="Total Members in all groups">
+        <div class="stat-icon"><i class="fas fa-users"></i></div>
+        <div class="stat-value animate-number">{{ communityStats.totalMembers || 0 }}</div>
+        <div class="stat-label">Members</div>
+      </div>
+      <div class="stat-item" title="Currently active events in all groups">
+        <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
+        <div class="stat-value animate-number">{{ communityStats.activeEvents || 0 }}</div>
+        <div class="stat-label">Active Events</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Group Button -->
+  <div class="action-bar" *ngIf="currentUser">
+    <button class="create-group-btn" (click)="openCreateGroupModal()">
+      <i class="fas fa-plus"></i>
+      <span>Create New Group</span>
+    </button>
+  </div>
+
+  <!-- My Managed Groups Section -->
+  <app-page-section *ngIf="currentUser && managedGroups.length > 0" title="My Managed Groups" icon="fas fa-crown">
+    <div class="groups-grid">
+      <app-group-card
+        *ngFor="let group of managedGroups"
+        [group]="group"
+        mode="managed"
+        [pendingRequestsCount]="getPendingJoinRequests(group).length"
+        (view)="viewGroupDetails($event)"
+        (edit)="openEditGroupModal($event)"
+        (delete)="deleteGroup($event)"
+        (manageRequests)="openJoinRequestsModal($event)"
+      ></app-group-card>
+    </div>
+  </app-page-section>
+
+  <!-- Search and Filter -->
+  <div class="search-filter-section">
+    <div class="search-bar">
+      <i class="fas fa-search"></i>
+      <input
+        type="text"
+        placeholder="Search groups..."
+        [(ngModel)]="searchQuery"
+        class="search-input"
+      />
+    </div>
+    
+    <div class="category-filter">
+      <div
+        *ngFor="let category of categories"
+        class="category-chip"
+        [class.selected]="selectedCategory === category.id"
+        (click)="selectedCategory = category.id"
+      >
+        <i [class]="category.icon"></i>
+        <span>{{ category.name }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Joined Groups Section -->
+  <app-page-section *ngIf="joinedGroups.length > 0" title="My Groups" icon="fas fa-heart">
+    <div class="groups-grid">
+      <app-group-card
+        *ngFor="let group of joinedGroups"
+        [group]="group"
+        mode="joined"
+        (view)="viewGroupDetails($event)"
+        (leave)="leaveGroup($event)"
+      ></app-group-card>
+    </div>
+  </app-page-section>
+
+  <!-- Available Groups Section -->
+  <app-page-section title="Available Groups" icon="fas fa-globe">
+    <div class="loading-indicator" *ngIf="isLoading">
+      <i class="fas fa-spinner fa-spin"></i>
+      <span>Loading groups...</span>
+    </div>
+    
+    <div class="groups-grid" *ngIf="!isLoading">
+      <app-group-card
+        *ngFor="let group of filteredGroups"
+        [group]="group"
+        mode="available"
+        (view)="viewGroupDetails($event)"
+        (join)="joinGroup($event)"
+      ></app-group-card>
+    </div>
+    
+    <div class="no-groups" *ngIf="!isLoading && filteredGroups.length === 0">
+      <i class="fas fa-search"></i>
+      <h4>No groups found</h4>
+      <p>Try adjusting your search or filter criteria</p>
+    </div>
+  </app-page-section>
+
+  <!-- Quick Actions -->
+  <div class="quick-actions">
+    <button class="quick-action" (click)="navigateToHome()">
+      <i class="fas fa-home"></i>
+      <span>Home</span>
+    </button>
+    <button class="quick-action" (click)="navigateToEvents()">
+      <i class="fas fa-calendar"></i>
+      <span>Events</span>
+    </button>
+  </div>
+
+  <!-- Create/Edit Group Modal -->
+  <div class="modal-overlay" *ngIf="showCreateGroupModal || showEditGroupModal" (click)="closeModals()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ showCreateGroupModal ? 'Create New Group' : 'Edit Group' }}</h3>
+        <button class="modal-close" (click)="closeModals()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Group Name *</label>
+          <input type="text" [(ngModel)]="groupForm.name" placeholder="Enter group name" class="form-input" />
+        </div>
+        
+        <div class="form-group">
+          <label>Description</label>
+          <textarea [(ngModel)]="groupForm.description" placeholder="Describe your group" class="form-textarea" rows="3"></textarea>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select [(ngModel)]="groupForm.category" class="form-select">
+              <option value="focus">Focus & Mindfulness</option>
+              <option value="safety">Public Safety</option>
+              <option value="wellness">Wellness</option>
+              <option value="social">Social Connection</option>
+              <option value="learning">Learning</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label>Location</label>
+            <input type="text" [(ngModel)]="groupForm.location" placeholder="City, Country" class="form-input" />
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label>Max Members (optional)</label>
+            <input type="number" [(ngModel)]="groupForm.maxMembers" placeholder="No limit" class="form-input" min="1" />
+          </div>
+          
+          <div class="form-group">
+            <label>Icon</label>
+            <select [(ngModel)]="groupForm.icon" class="form-select">
+              <option *ngFor="let icon of availableIcons" [value]="icon.value">
+                {{ icon.label }}
+              </option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Color</label>
+          <input type="color" [(ngModel)]="groupForm.color" class="form-color" />
+        </div>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" [(ngModel)]="groupForm.isPublic" />
+            Public Group (anyone can see and join)
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label>
+            <input type="checkbox" [(ngModel)]="groupForm.requiresApproval" />
+            Require Admin Approval for Joining
+          </label>
+        </div>
+        
+        <div class="form-group">
+          <label>Tags</label>
+          <div class="tag-input-group">
+            <input 
+              type="text" 
+              [(ngModel)]="groupForm.tagInput" 
+              placeholder="Add a tag and press Enter"
+              class="form-input"
+              (keyup.enter)="addTag()"
+            />
+            <button class="btn-add-tag" (click)="addTag()">
+              <i class="fas fa-plus"></i>
+            </button>
+          </div>
+          <div class="tags-list" *ngIf="groupForm.tags.length > 0">
+            <span class="tag-item" *ngFor="let tag of groupForm.tags">
+              {{ tag }}
+              <button class="tag-remove" (click)="removeTag(tag)">
+                <i class="fas fa-times"></i>
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn-cancel" (click)="closeModals()">Cancel</button>
+        <button class="btn-submit" (click)="showCreateGroupModal ? createGroup() : updateGroup()">
+          {{ showCreateGroupModal ? 'Create Group' : 'Update Group' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Join Requests Modal -->
+  <div class="modal-overlay" *ngIf="showJoinRequestsModal && selectedGroup" (click)="closeModals()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Join Requests - {{ selectedGroup.name }}</h3>
+        <button class="modal-close" (click)="closeModals()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      
+      <div class="modal-body">
+        <div *ngIf="getPendingJoinRequests(selectedGroup).length === 0" class="no-requests">
+          <i class="fas fa-check-circle"></i>
+          <p>No pending join requests</p>
+        </div>
+        
+        <div class="join-requests-list" *ngIf="getPendingJoinRequests(selectedGroup).length > 0">
+          <div class="join-request-item" *ngFor="let request of getPendingJoinRequests(selectedGroup)">
+            <div class="request-user">
+              <div class="user-avatar">
+                <i class="fas fa-user"></i>
+              </div>
+              <div class="user-info">
+                <div class="user-name">{{ request.userName }}</div>
+                <div class="request-date">{{ request.requestedAt | date:'short' }}</div>
+                <div class="request-message" *ngIf="request.message">{{ request.message }}</div>
+              </div>
+            </div>
+            <div class="request-actions">
+              <button class="btn-approve" (click)="approveJoinRequest(request)">
+                <i class="fas fa-check"></i>
+                Approve
+              </button>
+              <button class="btn-reject" (click)="rejectJoinRequest(request)">
+                <i class="fas fa-times"></i>
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn-cancel" (click)="closeModals()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

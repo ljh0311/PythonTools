@@ -1,0 +1,89 @@
+<div class="dev-box-panel">
+  <div class="dev-box-header-row">
+    <h2 class="dev-box-title">Developer Tools</h2>
+    <button
+      type="button"
+      class="dev-box-close"
+      aria-label="Close"
+      (click)="closeRequested.emit()"
+      title="Close"
+    >&times;</button>
+  </div>
+
+  <div class="message">
+    <div>
+      <strong>Environment:</strong>
+      <span>{{ environment.production ? 'Production' : 'Development' }}</span>
+    </div>
+    <div>
+      <strong>User:</strong>
+      <span *ngIf="currentUser; else notLoggedIn">{{ currentUser.email }}</span>
+      <ng-template #notLoggedIn>Not signed in</ng-template>
+    </div>
+    <div>
+      <strong>App Version:</strong>
+      <span>{{ appVersion }}</span>
+    </div>
+    <div>
+      <strong>Build Date:</strong>
+      <span>{{ buildDate }}</span>
+    </div>
+  </div>
+
+  <div class="sim-message" *ngIf="simMessage">{{ simMessage }}</div>
+
+  <p class="sim-label">Simulate (dev)</p>
+  <div class="sim-actions">
+    <button type="button" class="sim-btn" (click)="simulateNewGroup()" title="Create a fake community group">
+      <i class="fas fa-users"></i>
+      New group
+    </button>
+    <button type="button" class="sim-btn" (click)="simulateJoinRequest()" title="Add a fake join request to a group you admin">
+      <i class="fas fa-user-plus"></i>
+      Join request
+    </button>
+    <button type="button" class="sim-btn" (click)="simulateFocusSession()" title="Add a fake completed focus session">
+      <i class="fas fa-bolt"></i>
+      Focus session
+    </button>
+  </div>
+
+  <p class="sim-label">Focus session simulation (during active session)</p>
+  <div class="sim-actions">
+    <button type="button" class="sim-btn" (click)="simulateDistraction(DistractionType.PHONE)" title="Simulate phone distraction">
+      <i class="fas fa-mobile-alt"></i>
+      Phone
+    </button>
+    <button type="button" class="sim-btn" (click)="simulateDistraction(DistractionType.NOISE)" title="Simulate noise distraction">
+      <i class="fas fa-volume-up"></i>
+      Noise
+    </button>
+    <button type="button" class="sim-btn" (click)="simulateDistraction(DistractionType.PEOPLE)" title="Simulate people distraction">
+      <i class="fas fa-users"></i>
+      People
+    </button>
+    <button type="button" class="sim-btn" (click)="simulateDistraction(DistractionType.THOUGHTS)" title="Simulate thoughts distraction">
+      <i class="fas fa-brain"></i>
+      Thoughts
+    </button>
+    <button type="button" class="sim-btn" (click)="simulateDistraction(DistractionType.ENVIRONMENT)" title="Simulate environment distraction">
+      <i class="fas fa-leaf"></i>
+      Environment
+    </button>
+    <button type="button" class="sim-btn" (click)="simulateNotification()" title="Simulate notification">
+      <i class="fas fa-bell"></i>
+      Notification
+    </button>
+  </div>
+
+  <div class="actions">
+    <a class="read" href="#" (click)="clearLocalStorage(); $event.preventDefault();">
+      <i class="fas fa-trash"></i>
+      Clear Local Storage
+    </a>
+    <a class="mark-as-read" href="#" (click)="reloadApp(); $event.preventDefault();">
+      <i class="fas fa-sync-alt"></i>
+      Reload App
+    </a>
+  </div>
+</div>

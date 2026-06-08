@@ -1,0 +1,250 @@
+.bus-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: 1rem;
+}
+
+.bus-header {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.bus-header .header-content {
+  text-align: center;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0 0 0.5rem 0;
+  color: #2C2C2C;
+  font-size: 2rem;
+  font-weight: 700;
+
+  i {
+    color: #4A90E2;
+  }
+}
+
+.page-subtitle {
+  color: #6C757D;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.bus-form {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.setup-section .form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #2C2C2C;
+
+  &.optional {
+    font-weight: 500;
+    color: #6C757D;
+  }
+}
+
+.field-hint {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.85rem;
+  color: #6C757D;
+  line-height: 1.4;
+
+  &.subtle {
+    margin-top: -0.5rem;
+    margin-bottom: 1rem;
+    color: #4A90E2;
+    font-weight: 500;
+  }
+}
+
+.form-input {
+  width: 100%;
+  max-width: 12rem;
+  padding: 0.6rem 0.75rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 8px;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+
+  &.form-input-wide {
+    max-width: 100%;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #4A90E2;
+  }
+}
+
+.search-field-wrap {
+  position: relative;
+  margin-bottom: 0.25rem;
+}
+
+.search-loading {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.8rem;
+  color: #6C757D;
+  pointer-events: none;
+}
+
+.stop-suggestions {
+  list-style: none;
+  margin: 0 0 1rem 0;
+  padding: 0;
+  border: 1px solid #E0E0E0;
+  border-radius: 8px;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: #fafafa;
+}
+
+.stop-suggestion-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: none;
+  border-bottom: 1px solid #eee;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: rgba(74, 144, 226, 0.08);
+  }
+}
+
+.stop-suggestion-title {
+  font-weight: 600;
+  color: #2C2C2C;
+}
+
+.stop-suggestion-meta {
+  font-size: 0.8rem;
+  color: #6C757D;
+}
+
+.get-arrivals-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #4A90E2;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: #3a7bc8;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.bus-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  border-radius: 8px;
+  color: #c53030;
+  margin-bottom: 1rem;
+
+  i {
+    flex-shrink: 0;
+  }
+}
+
+.bus-result {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.result-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+  color: #2C2C2C;
+}
+
+.services-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.service-card {
+  padding: 1rem;
+  border: 1px solid #E0E0E0;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.service-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.service-no {
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: #4A90E2;
+}
+
+.service-operator {
+  font-size: 0.85rem;
+  color: #6C757D;
+}
+
+.eta-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.eta-list li {
+  padding: 0.25rem 0;
+  font-size: 0.95rem;
+}
+
+.eta-label {
+  display: inline-block;
+  min-width: 2.5rem;
+  color: #6C757D;
+}

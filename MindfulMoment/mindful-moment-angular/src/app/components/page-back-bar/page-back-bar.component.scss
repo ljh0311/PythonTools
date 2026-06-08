@@ -1,0 +1,37 @@
+.page-back-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  margin-bottom: 1rem;
+  background: white;
+  border-radius: 16px;
+  padding: 1rem 1.5rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #4A90E2;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: #357ABD;
+  }
+
+  i {
+    font-size: 1rem;
+  }
+}
+
+.back-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2C2C2C;
+}

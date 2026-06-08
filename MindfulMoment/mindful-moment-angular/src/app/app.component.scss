@@ -1,0 +1,138 @@
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+// Skip Navigation Link for Accessibility
+.skip-nav-link {
+  position: absolute;
+  top: -100px;
+  left: 0;
+  z-index: 10000;
+  padding: 1rem 1.5rem;
+  background: var(--primary-color, #4A90E2);
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+  border-radius: 0 0 4px 0;
+  transition: top 0.3s ease;
+
+  &:focus {
+    top: 0;
+    outline: 3px solid white;
+    outline-offset: 2px;
+  }
+}
+
+.main-content {
+  flex: 1;
+  padding: 1rem;
+  padding-bottom: 80px; // Space for bottom nav on mobile
+  transition: margin-left 0.2s ease;
+
+  @media (min-width: 769px) {
+    padding: 2rem;
+    padding-bottom: 2rem;
+  }
+
+  &.dev-sidebar-open {
+    margin-left: 280px;
+  }
+  
+  // No header layout (for login/register pages)
+  &.no-header {
+    padding: 0;
+    padding-bottom: 0;
+    
+    @media (min-width: 769px) {
+      padding: 0;
+    }
+  }
+}
+
+// Dev sidebar (development only)
+.dev-sidebar-toggle {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 997;
+  width: 32px;
+  padding: 8px 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fff;
+  background: #3b82f6;
+  border: none;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+
+  &:hover {
+    background: #2563eb;
+  }
+
+  &.open {
+    left: 280px;
+    border-radius: 4px 0 0 4px;
+  }
+}
+
+.dev-sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 280px;
+  z-index: 996;
+  background: #fff;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+}
+
+// Global styles for mobile-first design
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// Smooth scrolling
+html {
+  scroll-behavior: smooth;
+}
+
+// Focus styles for accessibility
+*:focus {
+  outline: 2px solid #4A90E2;
+  outline-offset: 2px;
+}
+
+// Custom scrollbar
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4A90E2;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #357ABD;
+}

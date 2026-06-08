@@ -1,0 +1,508 @@
+.public-awareness-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: 1rem;
+}
+
+// Header Styles
+.awareness-header {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.header-content {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0 0 0.5rem 0;
+  color: #2C2C2C;
+  font-size: 2rem;
+  font-weight: 700;
+
+  i {
+    color: #4A90E2;
+  }
+}
+
+.page-subtitle {
+  color: #6C757D;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.location-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: #F8F9FA;
+  border-radius: 12px;
+  border: 2px solid #E0E0E0;
+
+  &.in-public {
+    border-color: #28A745;
+    background: linear-gradient(135deg, rgba(40, 167, 69, 0.05), rgba(74, 144, 226, 0.05));
+  }
+}
+
+.status-indicator {
+  width: 50px;
+  height: 50px;
+  background: #6C757D;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.25rem;
+
+  .location-status.in-public & {
+    background: #28A745;
+  }
+}
+
+.status-content {
+  flex: 1;
+}
+
+.location-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2C2C2C;
+  margin-bottom: 0.25rem;
+}
+
+.status-text {
+  font-size: 0.9rem;
+  color: #6C757D;
+}
+
+// Session Controls
+.session-controls {
+  margin-bottom: 2rem;
+}
+
+.session-card {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  border: 2px solid #E0E0E0;
+
+  &.active {
+    border-color: #28A745;
+    background: linear-gradient(135deg, rgba(40, 167, 69, 0.02), rgba(74, 144, 226, 0.02));
+  }
+}
+
+.session-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.session-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: #2C2C2C;
+  font-size: 1.25rem;
+  font-weight: 600;
+
+  i {
+    color: #4A90E2;
+  }
+}
+
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: #6C757D;
+  color: white;
+
+  &.active {
+    background: #28A745;
+  }
+}
+
+.session-content {
+  .session-description {
+    color: #6C757D;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: 0 0 1.5rem 0;
+  }
+}
+
+.session-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+
+  &.start {
+    background: #28A745;
+    color: white;
+
+    &:hover {
+      background: #218838;
+      transform: translateY(-2px);
+    }
+  }
+
+  &.stop {
+    background: #DC3545;
+    color: white;
+
+    &:hover {
+      background: #C82333;
+      transform: translateY(-2px);
+    }
+  }
+
+  i {
+    font-size: 0.8rem;
+  }
+}
+
+// Section Styles
+.safety-tips,
+.emergency-contacts,
+.awareness-stats {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.static-indicator {
+  display: inline-flex;
+  align-items: center;
+  color: #FF9800;
+  font-size: 0.75rem;
+  cursor: help;
+  margin-left: 0.5rem;
+
+  i {
+    font-size: 0.7rem;
+  }
+
+  &:hover {
+    color: #F57C00;
+  }
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem 0;
+  color: #2C2C2C;
+  font-size: 1.25rem;
+  font-weight: 600;
+
+  i {
+    color: #4A90E2;
+  }
+}
+
+// Safety Tips
+.tips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.tip-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+
+  &:hover {
+    border-color: #4A90E2;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(74, 144, 226, 0.1);
+  }
+}
+
+.tip-icon {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, #4A90E2, #28A745);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.25rem;
+}
+
+.tip-content {
+  flex: 1;
+}
+
+.tip-title {
+  margin: 0 0 0.5rem 0;
+  color: #2C2C2C;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.tip-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    font-size: 0.8rem;
+    color: #6C757D;
+    margin-bottom: 0.25rem;
+    position: relative;
+    padding-left: 1rem;
+
+    &::before {
+      content: '•';
+      position: absolute;
+      left: 0;
+      color: #4A90E2;
+    }
+
+    &.more-tips {
+      color: #4A90E2;
+      font-weight: 500;
+    }
+  }
+}
+
+.tip-arrow {
+  color: #6C757D;
+  font-size: 0.9rem;
+}
+
+// Emergency Contacts
+.contacts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.contact-button {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  }
+}
+
+.contact-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1rem;
+}
+
+.contact-content {
+  flex: 1;
+}
+
+.contact-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2C2C2C;
+  margin-bottom: 0.25rem;
+}
+
+.contact-number {
+  font-size: 0.8rem;
+  color: #6C757D;
+  font-family: 'Courier New', monospace;
+}
+
+.contact-action {
+  color: #4A90E2;
+  font-size: 1.25rem;
+}
+
+// Awareness Stats
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+
+  &:hover {
+    border-color: #4A90E2;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(74, 144, 226, 0.1);
+  }
+}
+
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #4A90E2, #28A745);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1rem;
+}
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #2C2C2C;
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #6C757D;
+}
+
+// Quick Actions
+.quick-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+.quick-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: white;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 100px;
+
+  &:hover {
+    border-color: #4A90E2;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(74, 144, 226, 0.1);
+  }
+
+  i {
+    color: #4A90E2;
+    font-size: 1.25rem;
+  }
+
+  span {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #2C2C2C;
+  }
+}
+
+// Responsive Design
+@media (max-width: 768px) {
+  .public-awareness-container {
+    padding: 0.5rem;
+  }
+
+  .awareness-header,
+  .session-card,
+  .safety-tips,
+  .emergency-contacts,
+  .awareness-stats {
+    padding: 1.5rem;
+  }
+
+  .tips-grid,
+  .contacts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .session-actions {
+    flex-direction: column;
+  }
+
+  .quick-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+// Accessibility
+@media (prefers-reduced-motion: reduce) {
+  .tip-card:hover,
+  .contact-button:hover,
+  .stat-card:hover,
+  .action-button:hover,
+  .quick-action:hover {
+    transform: none;
+  }
+}

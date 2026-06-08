@@ -1,0 +1,144 @@
+{
+  "// MindfulMoment User Settings": "Configuration file for user preferences and application behavior",
+  
+  "theme": "light",
+  "themeOptions": ["light", "dark", "system"],
+  
+  "notifications": {
+    "enabled": true,
+    "reminders": true,
+    "sound": true,
+    "vibration": false,
+    "frequency": "moderate",
+    "frequencyOptions": ["frequent", "moderate", "minimal", "custom"],
+    "quietHours": {
+      "enabled": false,
+      "start": "22:00",
+      "end": "08:00"
+    }
+  },
+  
+  "privacy": {
+    "tracking": false,
+    "shareUsageStats": false,
+    "anonymousMode": true,
+    "locationSharing": false,
+    "dataRetention": "30days",
+    "dataRetentionOptions": ["7days", "30days", "90days", "1year", "forever"]
+  },
+  
+  "focusSession": {
+    "defaultDurationMinutes": 25,
+    "autoStartBreak": true,
+    "breakDurationMinutes": 5,
+    "showProgress": true,
+    "blockNotifications": false,
+    "autoPauseOnInactivity": true,
+    "inactivityThreshold": 300,
+    "sessionTypes": {
+      "pomodoro": {
+        "workDuration": 25,
+        "breakDuration": 5,
+        "longBreakDuration": 15,
+        "sessionsBeforeLongBreak": 4
+      },
+      "custom": {
+        "workDuration": 30,
+        "breakDuration": 10
+      }
+    }
+  },
+  
+  "insights": {
+    "showWeeklySummary": true,
+    "showMonthlySummary": true,
+    "showDailyProgress": true,
+    "showProductivityScore": true,
+    "showStreakTracking": true,
+    "dataSharing": {
+      "withCommunity": false,
+      "withResearch": false
+    }
+  },
+  
+  "community": {
+    "showLeaderboard": true,
+    "showChallenges": true,
+    "anonymousParticipation": true,
+    "allowFriendRequests": false,
+    "showOnlineStatus": false,
+    "groupNotifications": true
+  },
+  
+  "publicAwareness": {
+    "enabled": true,
+    "alertFrequency": 30,
+    "alertFrequencyOptions": [15, 30, 45, 60],
+    "safetyAlerts": true,
+    "socialPrompts": true,
+    "mrtZoneDetection": true,
+    "locationBasedAlerts": true,
+    "wifiBasedDetection": true,
+    "homeSettings": {
+      "wifiNetworks": [],
+      "location": null,
+      "radius": 100
+    }
+  },
+  
+  "language": "en",
+  "languageOptions": ["en", "zh", "ms", "ta"],
+  
+  "accessibility": {
+    "fontSize": "medium",
+    "fontSizeOptions": ["small", "medium", "large", "xlarge"],
+    "highContrast": false,
+    "screenReader": false,
+    "reduceMotion": true,
+    "colorBlindness": "none",
+    "colorBlindnessOptions": ["none", "protanopia", "deuteranopia", "tritanopia"],
+    "keyboardNavigation": true,
+    "focusIndicators": true
+  },
+  
+  "timezone": "UTC",
+  "timezoneOptions": ["UTC", "Asia/Singapore", "auto"],
+  
+  "dataManagement": {
+    "autoBackup": true,
+    "backupFrequency": "weekly",
+    "backupFrequencyOptions": ["daily", "weekly", "monthly"],
+    "cloudSync": false,
+    "exportFormat": "json",
+    "exportFormatOptions": ["json", "csv", "pdf"]
+  },
+  
+  "performance": {
+    "cacheEnabled": true,
+    "offlineMode": true,
+    "dataCompression": true,
+    "backgroundSync": false
+  },
+  
+  "security": {
+    "requirePassword": false,
+    "sessionTimeout": 3600,
+    "sessionTimeoutOptions": [1800, 3600, 7200, 14400],
+    "twoFactorAuth": false,
+    "loginNotifications": true
+  },
+  
+  "experimental": {
+    "betaFeatures": false,
+    "aiInsights": false,
+    "voiceCommands": false,
+    "gestureControl": false
+  },
+  
+  "metadata": {
+    "version": "1.0.0",
+    "lastUpdated": "",
+    "createdAt": "",
+    "userId": ""
+  }
+}
