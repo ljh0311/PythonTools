@@ -5,6 +5,7 @@ import uuid
 import base64
 import tempfile
 import shutil
+import time
 from flask import Flask, request, jsonify, session, send_from_directory
 from werkzeug.utils import secure_filename
 import logging
@@ -27,6 +28,96 @@ app.config['TEMP_FOLDER'] = tempfile.mkdtemp()
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['RESULTS_FOLDER'], exist_ok=True)
 
+CLEANUP_MAX_AGE_DAYS = int(os.environ.get('CLEANUP_MAX_AGE_DAYS', '30'))
+CLEANUP_TEMP_MAX_AGE_HOURS = int(os.environ.get('CLEANUP_TEMP_MAX_AGE_HOURS', '24'))
+
+
+def _get_disk_storage():
+    """Disk usage for the app working directory, in MB."""
+    total, used, _ = shutil.disk_usage(os.path.abspath('.'))
+    mb = 1024 * 1024
+    return {'used': round(used / mb, 2), 'total': round(total / mb, 2)}
+
+
+def _path_under_directory(file_path, base_dir):
+    base = os.path.realpath(base_dir)
+    path = os.path.realpath(file_path)
+    return path == base or path.startswith(base + os.sep)
+
+
+def _cleanup_old_files_in_directory(directory, max_age_seconds):
+    """
+    Delete regular files in directory older than max_age_seconds.
+    Returns (removed_paths, error_count, freed_bytes).
+    """
+    removed = []
+    errors = 0
+    freed_bytes = 0
+    if not os.path.isdir(directory):
+        return removed, errors, freed_bytes
+
+    cutoff = time.time() - max_age_seconds
+    for name in os.listdir(directory):
+        file_path = os.path.join(directory, name)
+        if not os.path.isfile(file_path):
+            continue
+        if not _path_under_directory(file_path, directory):
+            errors += 1
+            logger.warning('Skipping file outside cleanup directory: %s', file_path)
+            continue
+        try:
+            if os.path.getmtime(file_path) >= cutoff:
+                continue
+            size = os.path.getsize(file_path)
+            os.remove(file_path)
+            removed.append(file_path)
+            freed_bytes += size
+        except OSError as e:
+            errors += 1
+            logger.warning('Failed to remove %s: %s', file_path, e)
+
+    return removed, errors, freed_bytes
+
+
+def _run_storage_cleanup(max_age_days=None):
+    """Remove old uploads, results, and temp files. Returns cleanup summary dict."""
+    days = CLEANUP_MAX_AGE_DAYS if max_age_days is None else max(1, int(max_age_days))
+    max_age_seconds = days * 24 * 60 * 60
+    temp_max_age_seconds = CLEANUP_TEMP_MAX_AGE_HOURS * 60 * 60
+
+    folders = [
+        (app.config['UPLOAD_FOLDER'], max_age_seconds),
+        (app.config['RESULTS_FOLDER'], max_age_seconds),
+    ]
+    temp_folder = app.config.get('TEMP_FOLDER')
+    if temp_folder and os.path.isdir(temp_folder):
+        folders.append((temp_folder, temp_max_age_seconds))
+
+    all_removed = []
+    total_errors = 0
+    total_freed_bytes = 0
+
+    for folder, age_seconds in folders:
+        removed, errors, freed = _cleanup_old_files_in_directory(folder, age_seconds)
+        all_removed.extend(removed)
+        total_errors += errors
+        total_freed_bytes += freed
+
+    display_paths = [
+        os.path.relpath(p, os.path.abspath('.')).replace('\\', '/')
+        for p in all_removed
+    ]
+
+    return {
+        'moved': len(all_removed),
+        'errors': total_errors,
+        'freed': round(total_freed_bytes / (1024 * 1024), 2),
+        'movedFiles': display_paths,
+        'storage': _get_disk_storage(),
+        'max_age_days': days,
+    }
+
+
 # Helper functions (allowed_file, save_image, etc.)
 def allowed_file(filename):
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'bmp', 'svg'}
@@ -37,19 +128,21 @@ def save_image(img, folder=None, format='png', quality=95):
         folder = app.config['RESULTS_FOLDER']
     
     ext = format.lower()
+    now_str = datetime.now().strftime("%d%m%Y_%H%M")
     if ext == 'jpg' or ext == 'jpeg':
         ext = 'jpg'
-        filename = f"{uuid.uuid4()}.jpg"
+        filename = f"{now_str}_{uuid.uuid4()}.jpg"
         filepath = os.path.join(folder, filename)
         cv2.imwrite(filepath, img, [cv2.IMWRITE_JPEG_QUALITY, quality])
     elif ext == 'webp':
-        filename = f"{uuid.uuid4()}.webp"
+        filename = f"{now_str}_{uuid.uuid4()}.webp"
         filepath = os.path.join(folder, filename)
         cv2.imwrite(filepath, img, [cv2.IMWRITE_WEBP_QUALITY, quality])
     else:  # PNG default
-        filename = f"{uuid.uuid4()}.png"
+        filename = f"{now_str}_{uuid.uuid4()}.png"
         filepath = os.path.join(folder, filename)
         cv2.imwrite(filepath, img)
+   
     return filename
 
 def crop_result(img):
@@ -1277,42 +1370,123 @@ def merge():
 
 @app.route('/run_tests')
 def run_tests():
-    # Dummy implementation for now
-    # Replace with your real test logic
+    import time
+    import numpy as np
+
+    tests = []
     try:
-        # Simulate test results
-        results = [
-            {'name': 'Test 1', 'success': True, 'duration': 1.2},
-            {'name': 'Test 2', 'success': False, 'duration': 0.8, 'error': 'Some error'},
-        ]
-        return jsonify({'success': True, 'results': results})
+        # 1. Test: Feature Detection with OpenCV
+        test_name = "OpenCV Feature Detection"
+        try:
+            import cv2
+            img = np.zeros((100, 100, 3), dtype=np.uint8)
+            cv2.circle(img, (50, 50), 25, (255,255,255), -1)
+            start = time.time()
+            orb = cv2.ORB_create()
+            kp, desc = orb.detectAndCompute(img, None)
+            duration = time.time() - start
+            tests.append({
+                'name': test_name,
+                'success': isinstance(kp, list) and len(kp) > 0 and desc is not None,
+                'duration': round(duration, 3),
+                'error': None if (isinstance(kp, list) and len(kp) > 0 and desc is not None) else "No keypoints/descriptors detected"
+            })
+        except Exception as e:
+            tests.append({'name': test_name, 'success': False, 'duration': 0, 'error': str(e)})
+
+        # 2. Test: Image Merge - Simple Overlay (if merger, do_simple_blend exist)
+        test_name = "Simple Overlay Blend"
+        try:
+            from io import BytesIO
+            from PIL import Image
+            # Create two sample images
+            img1 = Image.new('RGB', (100, 100), color = 'red')
+            img2 = Image.new('RGB', (100, 100), color = 'green')
+            images = [np.array(img1), np.array(img2)]
+            # Simulate the expected merger interface (if available)
+            if 'ImageMerger' in globals():
+                merger = ImageMerger(images)
+                start = time.time()
+                result = merger.do_simple_blend(alpha=0.5)
+                duration = time.time() - start
+                success = isinstance(result, np.ndarray) and result.shape[0] == 100 and result.shape[1] == 100
+                tests.append({
+                    'name': test_name,
+                    'success': success,
+                    'duration': round(duration, 3),
+                    'error': None if success else "Blend result not as expected"
+                })
+            else:
+                tests.append({'name': test_name, 'success': False, 'duration': 0, 'error': "ImageMerger not defined"})
+        except Exception as e:
+            tests.append({'name': test_name, 'success': False, 'duration': 0, 'error': str(e)})
+
+        # 3. Test: Filesystem Save and Delete
+        test_name = "Filesystem Save/Delete"
+        try:
+            tmp_filepath = 'test_dummy_img.png'
+            # Save a dummy file
+            img = np.zeros((32, 32, 3), dtype=np.uint8)
+            import cv2
+            cv2.imwrite(tmp_filepath, img)
+            exists_after_write = os.path.exists(tmp_filepath)
+            # Now, delete
+            os.remove(tmp_filepath)
+            exists_after_delete = os.path.exists(tmp_filepath)
+            tests.append({
+                'name': test_name,
+                'success': exists_after_write and not exists_after_delete,
+                'duration': 0,
+                'error': None if (exists_after_write and not exists_after_delete) else "File save/delete failed"
+            })
+        except Exception as e:
+            tests.append({'name': test_name, 'success': False, 'duration': 0, 'error': str(e)})
+
+        # 4. Test: API Returns (synthetic)
+        test_name = "Storage Info API"
+        try:
+            from flask import url_for
+            with app.test_client() as c:
+                resp = c.get('/storage_info')
+                data = resp.get_json()
+                ok = bool(data and data.get('success') and 'storage' in data)
+                tests.append({
+                    'name': test_name,
+                    'success': ok,
+                    'duration': 0,
+                    'error': None if ok else f"Unexpected response: {data}"
+                })
+        except Exception as e:
+            tests.append({'name': test_name, 'success': False, 'duration': 0, 'error': str(e)})
+
+        passed = sum(1 for x in tests if x['success'])
+        failed = len(tests) - passed
+
+        return jsonify({'success': True, 'results': tests, 'passed': passed, 'failed': failed})
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/storage_info')
 def storage_info():
     """Return storage usage without running cleanup. used/total in MB."""
     try:
-        total, used, free = shutil.disk_usage(os.path.abspath('.'))
-        mb = 1024 * 1024
-        storage = {'used': round(used / mb, 2), 'total': round(total / mb, 2)}
-        return jsonify({'success': True, 'storage': storage})
+        return jsonify({'success': True, 'storage': _get_disk_storage()})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/run_cleanup')
 def run_cleanup():
-    # Dummy implementation for now
-    # Replace with your real cleanup logic
+    """Delete uploads, results, and temp files older than the configured age."""
     try:
-        moved = 5
-        errors = 0
-        freed = 12.3
-        total, used, _ = shutil.disk_usage(os.path.abspath('.'))
-        mb = 1024 * 1024
-        storage = {'used': round(used / mb, 2), 'total': round(total / mb, 2)}
-        return jsonify({'success': True, 'moved': moved, 'errors': errors, 'freed': freed, 'storage': storage})
+        max_age_days = request.args.get('days', type=int)
+        summary = _run_storage_cleanup(max_age_days=max_age_days)
+        logger.info(
+            'Cleanup finished: removed=%s errors=%s freed_mb=%s max_age_days=%s',
+            summary['moved'], summary['errors'], summary['freed'], summary['max_age_days'],
+        )
+        return jsonify({'success': True, **summary})
     except Exception as e:
+        logger.error('Cleanup failed: %s', e)
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/delete_files', methods=['POST'])

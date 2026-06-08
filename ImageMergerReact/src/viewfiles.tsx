@@ -197,19 +197,23 @@ const ViewFilesPage: React.FC = () => {
                       onChange={e => {
                         const val = e.target.value;
                         if (!val) return;
-                        
+
                         const now = Date.now();
                         let cutoffMs = 0;
-                        
+
                         // Calculate cutoff time in milliseconds
-                        if (val === "1mo") {
+                        if (val === "1d") {
+                          cutoffMs = now - (1 * 24 * 60 * 60 * 1000); // 1 day
+                        } else if (val === "1w") {
+                          cutoffMs = now - (7 * 24 * 60 * 60 * 1000); // 1 week
+                        } else if (val === "1mo") {
                           cutoffMs = now - (30 * 24 * 60 * 60 * 1000); // 30 days
                         } else if (val === "3mo") {
                           cutoffMs = now - (90 * 24 * 60 * 60 * 1000); // 90 days
                         } else if (val === "6mo") {
                           cutoffMs = now - (180 * 24 * 60 * 60 * 1000); // 180 days
                         }
-                        
+
                         // Filter files modified before the cutoff time
                         const toSelect = uploads
                           .filter(f => {
@@ -217,19 +221,44 @@ const ViewFilesPage: React.FC = () => {
                             return fileModifiedMs > 0 && fileModifiedMs < cutoffMs;
                           })
                           .map(f => f.path);
-                        
+
                         // Add to selected, avoiding duplicates
                         setSelected(prev => Array.from(new Set([...prev, ...toSelect])));
-                        
+
                         // Reset select to default
                         e.target.value = "";
                       }}
                     >
                       <option value="">By time...</option>
+                      <option value="1d">More than 1 day ago</option>
+                      <option value="1w">More than 1 week ago</option>
                       <option value="1mo">More than 1 month ago</option>
                       <option value="3mo">More than 3 months ago</option>
                       <option value="6mo">More than 6 months ago</option>
                     </select>
+
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary me-1"
+                      style={{minWidth: 90}}
+                      onClick={() => {
+                        // If all uploads are selected, deselect all. Otherwise, select all.
+                        const allPaths = uploads.map(f => f.path);
+                        const alreadyAllSelected = allPaths.length > 0 && allPaths.every(p => selected.includes(p));
+                        if (alreadyAllSelected) {
+                          setSelected(prev => prev.filter(p => !allPaths.includes(p)));
+                        } else {
+                          setSelected(prev => Array.from(new Set([...prev, ...allPaths])));
+                        }
+                      }}
+                    >
+                      {(() => {
+                        const allPaths = uploads.map(f => f.path);
+                        const alreadyAllSelected = allPaths.length > 0 && allPaths.every(p => selected.includes(p));
+                        return alreadyAllSelected ? "Deselect all" : "Select all";
+                      })()}
+                    </button>
+
                   </div>
                   <div className="d-flex align-items-center">
                     <label htmlFor="sortUploads" className="form-label me-2 mb-0">
@@ -280,10 +309,10 @@ const ViewFilesPage: React.FC = () => {
                       onChange={e => {
                         const val = e.target.value;
                         if (!val) return;
-                        
+
                         const now = Date.now();
                         let cutoffMs = 0;
-                        
+
                         // Calculate cutoff time in milliseconds
                         if (val === "1mo") {
                           cutoffMs = now - (30 * 24 * 60 * 60 * 1000); // 30 days
@@ -292,7 +321,7 @@ const ViewFilesPage: React.FC = () => {
                         } else if (val === "6mo") {
                           cutoffMs = now - (180 * 24 * 60 * 60 * 1000); // 180 days
                         }
-                        
+
                         // Filter files modified before the cutoff time
                         const toSelect = results
                           .filter(f => {
@@ -300,10 +329,10 @@ const ViewFilesPage: React.FC = () => {
                             return fileModifiedMs > 0 && fileModifiedMs < cutoffMs;
                           })
                           .map(f => f.path);
-                        
+
                         // Add to selected, avoiding duplicates
                         setSelected(prev => Array.from(new Set([...prev, ...toSelect])));
-                        
+
                         // Reset select to default
                         e.target.value = "";
                       }}
@@ -313,6 +342,27 @@ const ViewFilesPage: React.FC = () => {
                       <option value="3mo">More than 3 months ago</option>
                       <option value="6mo">More than 6 months ago</option>
                     </select>
+                    <button
+                      className="btn btn-outline-secondary btn-sm ms-2"
+                      type="button"
+                      onClick={() => {
+                        const allPaths = results.map(f => f.path);
+                        const alreadyAllSelected =
+                          allPaths.length > 0 && allPaths.every(p => selected.includes(p));
+                        if (alreadyAllSelected) {
+                          setSelected(prev => prev.filter(p => !allPaths.includes(p)));
+                        } else {
+                          setSelected(prev => Array.from(new Set([...prev, ...allPaths])));
+                        }
+                      }}
+                    >
+                      {(() => {
+                        const allPaths = results.map(f => f.path);
+                        const alreadyAllSelected =
+                          allPaths.length > 0 && allPaths.every(p => selected.includes(p));
+                        return alreadyAllSelected ? "Deselect all" : "Select all";
+                      })()}
+                    </button>
                   </div>
                   <div className="d-flex align-items-center">
                     <label htmlFor="sortResults" className="form-label me-2 mb-0">
