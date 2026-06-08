@@ -1,24 +1,36 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, scrolledtext
 import os
 import sqlite3
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import calendar
+import re
 import matplotlib
 matplotlib.use('TkAgg')  # Set backend before importing pyplot
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from tkcalendar import Calendar
+from date_picker import open_date_picker, add_date_picker_button
 from openpyxl.styles import Font
 import traceback
 import functools
+import threading
+
+import report_ai_insights
 
 # Constants
-DATE_FORMAT = "%d/%m/%Y"
-DB_DATE_FORMAT = "%Y-%m-%d"  # Format for dates stored in the database
-DEFAULT_DATE_RANGE = ("01/04/2025", "30/04/2025")  # Fallback dates
+DATE_FORMAT = "%d-%m-%Y"
+DB_DATE_FORMAT = "%d-%m-%Y"  # Format for dates stored in the database
+DEFAULT_DATE_RANGE = ("01-04-2025", "30-04-2025")  # Fallback dates
+# SQLite TEXT dd-mm-yyyy does not sort chronologically; use this in ORDER BY / comparisons.
+CHRONO_ORDER_BY_DATE_ASC = (
+    "ORDER BY (substr(date, 7, 4) || substr(date, 4, 2) || substr(date, 1, 2))"
+)
+CHRONO_ORDER_BY_DATE_DESC = (
+    "ORDER BY (substr(date, 7, 4) || substr(date, 4, 2) || substr(date, 1, 2)) DESC"
+)
 
 # Decorator for error handling
 def handle_errors(show_message=True, return_value=None):
@@ -48,49 +60,39 @@ class DateUtils:
     """Utility class for date operations"""
     
     @staticmethod
+    def parse_date_string(date_str):
+        """Parse supported date strings and return a date object or None."""
+        if not date_str:
+            return None
+        for fmt in (DATE_FORMAT, DB_DATE_FORMAT, "%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(date_str, fmt).date()
+            except ValueError:
+                continue
+        return None
+    
+    @staticmethod
     def format_date_for_display(date_str):
-        """Convert a date string to display format (dd/mm/yyyy)"""
+        """Convert a date string to display format (dd-mm-yyyy)."""
         if not date_str:
             return ""
             
-        try:
-            # If the date is in DB format (yyyy-mm-dd)
-            if '-' in date_str:
-                date_obj = datetime.strptime(date_str, DB_DATE_FORMAT).date()
-                return date_obj.strftime(DATE_FORMAT)
-            # If already in display format
-            elif '/' in date_str:
-                # Validate the format
-                datetime.strptime(date_str, DATE_FORMAT)
-                return date_str
-            else:
-                # Unknown format
-                return date_str
-        except ValueError:
-            # Return original if conversion fails
+        parsed_date = DateUtils.parse_date_string(date_str)
+        if parsed_date:
+            return parsed_date.strftime(DATE_FORMAT)
+        else:
             return date_str
     
     @staticmethod
     def format_date_for_db(date_str):
-        """Convert a date string to database format (yyyy-mm-dd)"""
+        """Convert a date string to database format (dd-mm-yyyy)."""
         if not date_str:
             return date_str
             
-        try:
-            # If already in DB format
-            if '-' in date_str:
-                # Validate the format
-                datetime.strptime(date_str, DB_DATE_FORMAT)
-                return date_str
-            # If in display format
-            elif '/' in date_str:
-                date_obj = datetime.strptime(date_str, DATE_FORMAT).date()
-                return date_obj.strftime(DB_DATE_FORMAT)
-            else:
-                # Unknown format
-                return date_str
-        except ValueError:
-            # Return original if conversion fails
+        parsed_date = DateUtils.parse_date_string(date_str)
+        if parsed_date:
+            return parsed_date.strftime(DB_DATE_FORMAT)
+        else:
             return date_str
     
     @staticmethod
@@ -99,22 +101,16 @@ class DateUtils:
         if not date_str:
             return datetime.now().date()
             
-        try:
-            if '/' in date_str:
-                return datetime.strptime(date_str, DATE_FORMAT).date()
-            elif '-' in date_str:
-                return datetime.strptime(date_str, DB_DATE_FORMAT).date()
-            else:
-                # Default to today if format unknown
-                return datetime.now().date()
-        except ValueError:
-            # Return today if conversion fails
+        parsed_date = DateUtils.parse_date_string(date_str)
+        if parsed_date:
+            return parsed_date
+        else:
             return datetime.now().date()
     
     @staticmethod
     def date_to_string(date_obj, for_db=False):
         """Convert a date object to string in the appropriate format"""
-        if not isinstance(date_obj, (datetime.date, datetime.datetime)):
+        if not isinstance(date_obj, (date, datetime)):
             return ""
             
         if for_db:
@@ -192,6 +188,88 @@ class DateUtils:
         # Default to this month
         start_date = today.replace(day=1)
         return start_date, today
+
+    @staticmethod
+    def sql_chrono_key(column="date"):
+        """Chronological ordering / comparison for TEXT dates stored as dd-mm-yyyy."""
+        return f"(substr({column}, 7, 4) || substr({column}, 4, 2) || substr({column}, 1, 2))"
+
+    @staticmethod
+    def chrono_sort_bounds(from_str, to_str):
+        """Return (low_yyyymmdd, high_yyyymmdd) for SQL comparison, or (None, None)."""
+        d1 = DateUtils.parse_date_string((from_str or "").strip())
+        d2 = DateUtils.parse_date_string((to_str or "").strip())
+        if not d1 or not d2:
+            return None, None
+        lo, hi = (d1, d2) if d1 <= d2 else (d2, d1)
+        return lo.strftime("%Y%m%d"), hi.strftime("%Y%m%d")
+
+    @staticmethod
+    def time_logs_where_chrono(from_date, to_date):
+        """SQL fragment + params for chronological filter on time_logs.date (dd-mm-yyyy TEXT)."""
+        chrono = DateUtils.sql_chrono_key("date")
+        params = []
+        parts = []
+        fd = (from_date or "").strip()
+        td = (to_date or "").strip()
+        if fd and td:
+            lo, hi = DateUtils.chrono_sort_bounds(fd, td)
+            if lo and hi:
+                parts.append(f" AND ({chrono} >= ? AND {chrono} <= ?)")
+                params.extend([lo, hi])
+        elif fd:
+            d = DateUtils.parse_date_string(fd)
+            if d:
+                parts.append(f" AND {chrono} >= ?")
+                params.append(d.strftime("%Y%m%d"))
+        elif td:
+            d = DateUtils.parse_date_string(td)
+            if d:
+                parts.append(f" AND {chrono} <= ?")
+                params.append(d.strftime("%Y%m%d"))
+        return "".join(parts), params
+
+    @staticmethod
+    def migrate_stored_dates_to_db_format(cursor, conn):
+        """Rewrite mixed-format date TEXT columns to dd-mm-yyyy (DB_DATE_FORMAT)."""
+        updates = 0
+        for table, col, pk in (
+            ("time_logs", "date", "id"),
+            ("payroll_periods", "start_date", "id"),
+            ("payroll_periods", "end_date", "id"),
+        ):
+            cursor.execute(
+                f"SELECT {pk}, {col} FROM {table} WHERE {col} IS NOT NULL AND TRIM({col}) != ''"
+            )
+            for pk_val, raw in cursor.fetchall():
+                parsed = DateUtils.parse_date_string(str(raw).strip())
+                if not parsed:
+                    continue
+                normalized = parsed.strftime(DB_DATE_FORMAT)
+                if normalized != str(raw).strip():
+                    cursor.execute(
+                        f"UPDATE {table} SET {col} = ? WHERE {pk} = ?",
+                        (normalized, pk_val),
+                    )
+                    updates += 1
+        if updates:
+            conn.commit()
+            print(f"Normalized {updates} date value(s) to {DB_DATE_FORMAT} in database")
+
+    @staticmethod
+    def min_max_dates_in_time_logs(cursor):
+        """Chronological min/max of time_logs.date (parses mixed legacy TEXT)."""
+        cursor.execute(
+            "SELECT date FROM time_logs WHERE date IS NOT NULL AND TRIM(date) != ''"
+        )
+        parsed = []
+        for (s,) in cursor.fetchall():
+            d = DateUtils.parse_date_string(str(s).strip())
+            if d:
+                parsed.append(d)
+        if not parsed:
+            return None, None
+        return min(parsed), max(parsed)
 
 
 class DBUtils:
@@ -317,21 +395,23 @@ class DBUtils:
             list: Query results or empty list if error
         """
         try:
-            # Convert dates to database format
-            db_from_date = DateUtils.format_date_for_db(from_date) if from_date else None
-            db_to_date = DateUtils.format_date_for_db(to_date) if to_date else None
-            
             # Build query
             query = f"SELECT * FROM {table} WHERE 1=1"
             params = []
-            
-            if db_from_date:
-                query += " AND date >= ?"
-                params.append(db_from_date)
-                
-            if db_to_date:
-                query += " AND date <= ?"
-                params.append(db_to_date)
+
+            if table == "time_logs":
+                clause, extra = DateUtils.time_logs_where_chrono(from_date or "", to_date or "")
+                query += clause
+                params.extend(extra)
+            else:
+                db_from_date = DateUtils.format_date_for_db(from_date) if from_date else None
+                db_to_date = DateUtils.format_date_for_db(to_date) if to_date else None
+                if db_from_date:
+                    query += " AND date >= ?"
+                    params.append(db_from_date)
+                if db_to_date:
+                    query += " AND date <= ?"
+                    params.append(db_to_date)
                 
             # Add any additional conditions
             if additional_conditions:
@@ -355,12 +435,12 @@ class TimeLoggerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Work Time Logger")
-        self.root.geometry("1200x750")  # Increased window size
+        self.root.geometry("1280x820")
         self.root.resizable(True, True)
         
         # Configure matplotlib to avoid memory leaks
         plt.rcParams['figure.max_open_warning'] = 10
-        matplotlib.rcParams['figure.figsize'] = [9, 10]
+        matplotlib.rcParams['figure.figsize'] = [12, 8]
         
         # Set application theme and styles
         self.set_application_theme()
@@ -385,6 +465,72 @@ class TimeLoggerApp:
         
         # Initialize date range with available dates
         self.update_date_range()
+
+    def _validate_time_entry_chars(self, proposed):
+        """Allow only partial HH:MM typing states."""
+        if proposed == "":
+            return True
+        return bool(re.fullmatch(r"\d{0,2}:?\d{0,2}", proposed))
+
+    def normalize_time_text(self, raw_value):
+        """Normalize flexible time input into HH:MM."""
+        value = (raw_value or "").strip()
+        if not value:
+            raise ValueError("Time cannot be empty")
+
+        # Accept compact forms like 930 or 0830.
+        if value.isdigit():
+            if len(value) in (1, 2):
+                hours = int(value)
+                minutes = 0
+            elif len(value) == 3:
+                hours = int(value[0])
+                minutes = int(value[1:])
+            elif len(value) == 4:
+                hours = int(value[:2])
+                minutes = int(value[2:])
+            else:
+                raise ValueError("Use HH:MM format (example: 09:30)")
+        else:
+            match = re.fullmatch(r"(\d{1,2}):(\d{1,2})", value)
+            if not match:
+                raise ValueError("Use HH:MM format (example: 09:30)")
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+
+        if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+            raise ValueError("Time must be between 00:00 and 23:59")
+
+        return f"{hours:02d}:{minutes:02d}"
+
+    def _on_time_entry_focus_out(self, time_var):
+        """Normalize time input when user leaves the field."""
+        value = (time_var.get() or "").strip()
+        if not value:
+            return
+        try:
+            time_var.set(self.normalize_time_text(value))
+        except ValueError:
+            # Keep user input unchanged; hard validation happens on calculate/save.
+            pass
+
+    def _increment_time_var(self, time_var, minutes_delta):
+        """Adjust a time field in minute increments via keyboard."""
+        try:
+            normalized = self.normalize_time_text(time_var.get() or "00:00")
+            time_value = datetime.strptime(normalized, "%H:%M")
+            updated = time_value + timedelta(minutes=minutes_delta)
+            time_var.set(updated.strftime("%H:%M"))
+        except ValueError:
+            time_var.set("00:00")
+
+    def _bind_time_entry(self, entry_widget, time_var):
+        """Attach validation and keyboard helpers to a time entry."""
+        validate_cmd = (self.root.register(self._validate_time_entry_chars), "%P")
+        entry_widget.configure(validate="key", validatecommand=validate_cmd)
+        entry_widget.bind("<FocusOut>", lambda _e, var=time_var: self._on_time_entry_focus_out(var))
+        entry_widget.bind("<Up>", lambda _e, var=time_var: (self._increment_time_var(var, 15), "break")[1])
+        entry_widget.bind("<Down>", lambda _e, var=time_var: (self._increment_time_var(var, -15), "break")[1])
         
     def set_application_theme(self):
         """Set up custom styles and theme for the application"""
@@ -522,6 +668,7 @@ class TimeLoggerApp:
         ''')
         
         self.conn.commit()
+        DateUtils.migrate_stored_dates_to_db_format(self.cursor, self.conn)
         
     def ensure_csv_exists(self):
         """Make sure the CSV file exists with correct headers"""
@@ -535,7 +682,10 @@ class TimeLoggerApp:
         """Sync all records from the database to the CSV file"""
         try:
             # Get all records from database
-            self.cursor.execute("SELECT date, start_time, end_time, break_duration, hourly_rate, total_hours, total_earnings, notes FROM time_logs ORDER BY date")
+            self.cursor.execute(
+                "SELECT date, start_time, end_time, break_duration, hourly_rate, total_hours, total_earnings, notes FROM time_logs "
+                + CHRONO_ORDER_BY_DATE_ASC
+            )
             records = self.cursor.fetchall()
             
             # Write to CSV file (overwriting existing content)
@@ -584,7 +734,7 @@ class TimeLoggerApp:
         date_frame.pack(fill="both", expand=True, pady=(0, 10))
         
         # Add calendar for date selection with new date format
-        self.cal = Calendar(date_frame, selectmode='day', date_pattern='dd/mm/yyyy', 
+        self.cal = Calendar(date_frame, selectmode='day', date_pattern='dd-mm-yyyy', 
                           background=self.primary_color, foreground="white",
                           headersbackground=self.secondary_color, headersforeground="white")
         self.cal.pack(padx=15, pady=15, fill="both", expand=True)
@@ -619,6 +769,7 @@ class TimeLoggerApp:
         self.start_time_var = tk.StringVar()
         start_entry = ttk.Entry(time_section, textvariable=self.start_time_var, width=12)
         start_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        self._bind_time_entry(start_entry, self.start_time_var)
         
         # End time
         end_label = ttk.Label(time_section, text="End Time (HH:MM):", font=("Arial", 10, "bold"))
@@ -627,6 +778,14 @@ class TimeLoggerApp:
         self.end_time_var = tk.StringVar()
         end_entry = ttk.Entry(time_section, textvariable=self.end_time_var, width=12)
         end_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        self._bind_time_entry(end_entry, self.end_time_var)
+
+        time_hint = ttk.Label(
+            time_section,
+            text="Tip: accepts 930 or 9:30. Use Up/Down for ±15 min.",
+            font=("Arial", 8)
+        )
+        time_hint.grid(row=0, column=2, rowspan=2, padx=(10, 5), pady=5, sticky="w")
         
         # Break duration
         break_label = ttk.Label(time_section, text="Break Duration (minutes):", font=("Arial", 10, "bold"))
@@ -728,11 +887,17 @@ class TimeLoggerApp:
         self.from_date_var = tk.StringVar()
         from_entry = ttk.Entry(date_section, textvariable=self.from_date_var, width=12)
         from_entry.grid(row=0, column=2, padx=2, pady=5, sticky="w")
-        
-        ttk.Label(date_section, text="To:").grid(row=0, column=3, padx=(10, 2), pady=5, sticky="w")
+        add_date_picker_button(
+            date_section, self.from_date_var, self.root, title="Filter — From date"
+        ).grid(row=0, column=3, padx=2, pady=5)
+
+        ttk.Label(date_section, text="To:").grid(row=0, column=4, padx=(10, 2), pady=5, sticky="w")
         self.to_date_var = tk.StringVar()
         to_entry = ttk.Entry(date_section, textvariable=self.to_date_var, width=12)
-        to_entry.grid(row=0, column=4, padx=2, pady=5, sticky="w")
+        to_entry.grid(row=0, column=5, padx=2, pady=5, sticky="w")
+        add_date_picker_button(
+            date_section, self.to_date_var, self.root, title="Filter — To date"
+        ).grid(row=0, column=6, padx=2, pady=5)
         
         # Filter buttons
         button_section = ttk.Frame(filter_container)
@@ -843,15 +1008,97 @@ class TimeLoggerApp:
             self.tree.delete(i)
             
         # Get records from database
-        records = self.db_utils.execute_query("SELECT * FROM time_logs ORDER BY date DESC")
+        records = self.db_utils.execute_query("SELECT * FROM time_logs " + CHRONO_ORDER_BY_DATE_DESC)
         
         # Insert into treeview
         for record in records:
             formatted_record = self.format_record_for_treeview(record)
             self.tree.insert("", "end", values=formatted_record)
+
+        # Keep current/default sort after reloading data
+        self.apply_current_tree_sort()
             
         # Update summary statistics
         self.update_record_summary(records)
+
+    def _tree_sort_key(self, column, raw_value):
+        """Build a comparable key for a treeview column value."""
+        value = "" if raw_value is None else str(raw_value).strip()
+
+        if column in ("id", "break_duration"):
+            try:
+                return int(float(value))
+            except ValueError:
+                return -1
+
+        if column in ("hourly_rate", "total_hours", "total_earnings"):
+            cleaned = value.replace("$", "").replace(",", "")
+            try:
+                return float(cleaned)
+            except ValueError:
+                return float("-inf")
+
+        if column == "date":
+            parsed = DateUtils.parse_date_string(value)
+            if parsed:
+                return datetime.combine(parsed, datetime.min.time())
+            return datetime.min
+
+        if column in ("start_time", "end_time"):
+            try:
+                return datetime.strptime(value, "%H:%M")
+            except ValueError:
+                return datetime.min
+
+        return value.lower()
+
+    def update_treeview_sort_headers(self):
+        """Update treeview header text to reflect active sort state."""
+        arrow = "▼" if self.tree_sort_desc else "▲"
+        label_map = {
+            "id": "ID",
+            "date": "Date",
+            "start_time": "Start Time",
+            "end_time": "End Time",
+            "break_duration": "Break (min)",
+            "hourly_rate": "Rate ($/hr)",
+            "total_hours": "Hours",
+            "total_earnings": "Earnings ($)",
+            "notes": "Notes",
+        }
+
+        for col, label in label_map.items():
+            text = f"{label} {arrow}" if col == self.tree_sort_column else label
+            self.tree.heading(col, text=text, command=lambda c=col: self.sort_treeview_by_column(c))
+
+    def sort_treeview_by_column(self, column):
+        """Sort treeview rows by a selected column."""
+        if self.tree_sort_column == column:
+            self.tree_sort_desc = not self.tree_sort_desc
+        else:
+            self.tree_sort_column = column
+            self.tree_sort_desc = (column == "date")
+
+        self.apply_current_tree_sort()
+
+    def apply_current_tree_sort(self):
+        """Apply current sorting state to visible treeview rows."""
+        if not hasattr(self, "tree"):
+            return
+
+        items = []
+        for item_id in self.tree.get_children(""):
+            values = self.tree.item(item_id, "values")
+            value_map = dict(zip(self.tree_columns, values))
+            key_value = self._tree_sort_key(self.tree_sort_column, value_map.get(self.tree_sort_column))
+            items.append((key_value, item_id))
+
+        items.sort(key=lambda x: x[0], reverse=self.tree_sort_desc)
+
+        for index, (_, item_id) in enumerate(items):
+            self.tree.move(item_id, "", index)
+
+        self.update_treeview_sort_headers()
     
     def update_record_summary(self, records):
         """Update the summary statistics for current records"""
@@ -873,299 +1120,307 @@ class TimeLoggerApp:
         self.filter_total_hours_var.set(f"{total_hours:.2f}")
         self.filter_total_earnings_var.set(f"${total_earnings:.2f}")
         
-        # Determine date range from records
+        # Determine date range from records (chronological, not lexicographic on strings)
         try:
-            dates = [record[1] for record in records]
-            min_date = min(dates)
-            max_date = max(dates)
-            self.date_range_var.set(f"{min_date} to {max_date}")
+            parsed_dates = []
+            for record in records:
+                d = DateUtils.parse_date_string(str(record[1]).strip()) if record[1] else None
+                if d:
+                    parsed_dates.append(d)
+            if parsed_dates:
+                lo, hi = min(parsed_dates), max(parsed_dates)
+                self.date_range_var.set(
+                    f"{lo.strftime(DATE_FORMAT)} to {hi.strftime(DATE_FORMAT)}"
+                )
+            else:
+                self.date_range_var.set("All dates")
         except (ValueError, TypeError):
             self.date_range_var.set("All dates")
     
     def create_payroll_tab(self):
-        """Create a tab for managing payroll periods"""
+        """Create a tab for managing payroll periods (form + list, date pickers)."""
         payroll_frame = ttk.Frame(self.notebook)
         self.notebook.add(payroll_frame, text="Payroll Periods")
-        
-        # Create left frame for adding new periods
-        add_frame = ttk.LabelFrame(payroll_frame, text="Define Payroll Period")
-        add_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        
-        # Period name
-        ttk.Label(add_frame, text="Period Name:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+
+        outer = ttk.Frame(payroll_frame, padding=10)
+        outer.pack(fill="both", expand=True)
+        outer.columnconfigure(0, weight=1)
+        outer.columnconfigure(1, weight=2)
+        outer.rowconfigure(0, weight=1)
+
+        # --- Left: create / plan ---
+        add_frame = ttk.LabelFrame(outer, text="New payroll period", padding=12)
+        add_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=4)
+        add_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(
+            add_frame,
+            text="Use the calendar buttons or type dates as dd-mm-yyyy.",
+            foreground="gray",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+
+        ttk.Label(add_frame, text="Period name").grid(row=1, column=0, sticky="nw", pady=4)
         self.period_name_var = tk.StringVar()
-        ttk.Entry(add_frame, textvariable=self.period_name_var, width=25).grid(row=0, column=1, padx=5, pady=5, sticky="w")
-        
-        # Payroll period type
-        ttk.Label(add_frame, text="Period Type:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(add_frame, textvariable=self.period_name_var, width=28).grid(
+            row=1, column=1, columnspan=2, sticky="ew", padx=(8, 0), pady=4
+        )
+
+        ttk.Label(add_frame, text="Period type").grid(row=2, column=0, sticky="nw", pady=4)
         self.period_type_var = tk.StringVar(value="Monthly")
         period_types = ["Monthly", "Bi-weekly", "Weekly", "Yearly", "Custom"]
-        ttk.Combobox(add_frame, textvariable=self.period_type_var, values=period_types, 
-                    state="readonly", width=15).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-        
-        # Start date
-        ttk.Label(add_frame, text="Start Date (dd/mm/yyyy):").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        type_row = ttk.Frame(add_frame)
+        type_row.grid(row=2, column=1, columnspan=2, sticky="ew", padx=(8, 0), pady=4)
+        ttk.Combobox(
+            type_row,
+            textvariable=self.period_type_var,
+            values=period_types,
+            state="readonly",
+            width=18,
+        ).pack(side=tk.LEFT)
+        ttk.Button(type_row, text="Apply type", command=self.apply_period_type).pack(
+            side=tk.LEFT, padx=(10, 0)
+        )
+
+        ttk.Label(add_frame, text="Start").grid(row=3, column=0, sticky="nw", pady=4)
         self.period_start_var = tk.StringVar()
-        ttk.Entry(add_frame, textvariable=self.period_start_var, width=12).grid(row=2, column=1, padx=5, pady=5, sticky="w")
-        
-        # End date
-        ttk.Label(add_frame, text="End Date (dd/mm/yyyy):").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        start_row = ttk.Frame(add_frame)
+        start_row.grid(row=3, column=1, columnspan=2, sticky="ew", padx=(8, 0), pady=4)
+        start_row.columnconfigure(0, weight=1)
+        ttk.Entry(start_row, textvariable=self.period_start_var, width=14).grid(
+            row=0, column=0, sticky="ew"
+        )
+        add_date_picker_button(
+            start_row, self.period_start_var, self.root, title="Payroll start date"
+        ).grid(row=0, column=1, padx=(6, 0))
+
+        ttk.Label(add_frame, text="End").grid(row=4, column=0, sticky="nw", pady=4)
         self.period_end_var = tk.StringVar()
-        ttk.Entry(add_frame, textvariable=self.period_end_var, width=12).grid(row=3, column=1, padx=5, pady=5, sticky="w")
-        
-        # Default period checkbox
+        end_row = ttk.Frame(add_frame)
+        end_row.grid(row=4, column=1, columnspan=2, sticky="ew", padx=(8, 0), pady=4)
+        end_row.columnconfigure(0, weight=1)
+        ttk.Entry(end_row, textvariable=self.period_end_var, width=14).grid(
+            row=0, column=0, sticky="ew"
+        )
+        add_date_picker_button(
+            end_row, self.period_end_var, self.root, title="Payroll end date"
+        ).grid(row=0, column=1, padx=(6, 0))
+
         self.default_period_var = tk.BooleanVar()
-        ttk.Checkbutton(add_frame, text="Set as default payroll period", 
-                       variable=self.default_period_var).grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-        
-        # Generate recurring periods
-        ttk.Label(add_frame, text="Generate Recurring Periods:").grid(row=5, column=0, padx=5, pady=5, sticky="w")
+        ttk.Checkbutton(
+            add_frame,
+            text="Set as default (used by “Current Payroll Period” in Reports)",
+            variable=self.default_period_var,
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(10, 4))
+
+        ttk.Label(add_frame, text="Bulk generate").grid(row=6, column=0, sticky="nw", pady=4)
+        gen_row = ttk.Frame(add_frame)
+        gen_row.grid(row=6, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=4)
         self.num_periods_var = tk.IntVar(value=6)
-        ttk.Spinbox(add_frame, from_=1, to=24, textvariable=self.num_periods_var, width=5).grid(row=5, column=1, padx=5, pady=5, sticky="w")
-        
-        # Apply period type changes
-        ttk.Button(add_frame, text="Apply Selected Period Type", 
-                  command=self.apply_period_type).grid(row=1, column=2, padx=5, pady=5, sticky="w")
-        
-        # Payroll pattern description
-        pattern_frame = ttk.LabelFrame(add_frame, text="Common Patterns")
-        pattern_frame.grid(row=6, column=0, columnspan=3, padx=5, pady=10, sticky="ew")
-        
+        ttk.Spinbox(gen_row, from_=1, to=24, textvariable=self.num_periods_var, width=6).pack(
+            side=tk.LEFT
+        )
+        ttk.Label(gen_row, text="periods ahead").pack(side=tk.LEFT, padx=(6, 0))
+
+        pattern_frame = ttk.LabelFrame(add_frame, text="Quick presets", padding=8)
+        pattern_frame.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(14, 8))
+
         def set_monthly_pattern():
-            # Set pattern for 2nd of month to 1st of next month
             self.period_type_var.set("Monthly")
             self.apply_period_type()
-        
+
         def set_biweekly_pattern():
-            # Set pattern for biweekly payroll
             self.period_type_var.set("Bi-weekly")
             self.apply_period_type()
-        
+
         def set_weekly_pattern():
-            # Set pattern for weekly payroll (Monday to Sunday)
             self.period_type_var.set("Weekly")
             self.apply_period_type()
-        
+
         def set_yearly_pattern():
-            # Set pattern for yearly payroll (Jan 1 to Dec 31)
             self.period_type_var.set("Yearly")
             self.apply_period_type()
-        
-        # Pattern buttons
-        ttk.Button(pattern_frame, text="Monthly (26th-25th)", command=set_monthly_pattern).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(pattern_frame, text="Bi-weekly", command=set_biweekly_pattern).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(pattern_frame, text="Weekly", command=set_weekly_pattern).grid(row=0, column=2, padx=5, pady=5)
-        ttk.Button(pattern_frame, text="Yearly", command=set_yearly_pattern).grid(row=0, column=3, padx=5, pady=5)
-        
-        # Action buttons
-        button_frame = ttk.Frame(add_frame)
-        button_frame.grid(row=7, column=0, columnspan=3, padx=5, pady=10)
-        
-        ttk.Button(button_frame, text="Add Payroll Period", command=self.add_payroll_period).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Generate Recurring Periods", command=self.generate_recurring_periods).pack(side=tk.LEFT, padx=5)
-        
-        # Create right frame for listing existing periods
-        list_frame = ttk.LabelFrame(payroll_frame, text="Existing Payroll Periods")
-        list_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
-        
-        # Create treeview for payroll periods
+
+        ttk.Button(pattern_frame, text="Monthly (26th–25th)", command=set_monthly_pattern).grid(
+            row=0, column=0, padx=4, pady=4
+        )
+        ttk.Button(pattern_frame, text="Bi-weekly", command=set_biweekly_pattern).grid(
+            row=0, column=1, padx=4, pady=4
+        )
+        ttk.Button(pattern_frame, text="Weekly", command=set_weekly_pattern).grid(
+            row=0, column=2, padx=4, pady=4
+        )
+        ttk.Button(pattern_frame, text="Yearly", command=set_yearly_pattern).grid(
+            row=0, column=3, padx=4, pady=4
+        )
+
+        actions = ttk.Frame(add_frame)
+        actions.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        ttk.Button(
+            actions,
+            text="Add period",
+            command=self.add_payroll_period,
+            style="Accent.TButton",
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(actions, text="Generate recurring", command=self.generate_recurring_periods).pack(
+            side=tk.LEFT
+        )
+
+        # --- Right: saved periods ---
+        list_frame = ttk.LabelFrame(outer, text="Saved periods", padding=10)
+        list_frame.grid(row=0, column=1, sticky="nsew", padx=(8, 0), pady=4)
+        list_frame.rowconfigure(1, weight=1)
+        list_frame.columnconfigure(0, weight=1)
+
+        toolbar = ttk.Frame(list_frame)
+        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Button(toolbar, text="Set default", command=self.set_default_period).pack(
+            side=tk.LEFT, padx=(0, 6)
+        )
+        ttk.Button(toolbar, text="Delete", command=self.delete_period).pack(side=tk.LEFT, padx=4)
+        ttk.Button(toolbar, text="Refresh", command=self.load_payroll_periods).pack(side=tk.LEFT, padx=4)
+        ttk.Button(toolbar, text="Use in report", command=self.report_for_period).pack(
+            side=tk.LEFT, padx=4
+        )
+
+        tree_wrap = ttk.Frame(list_frame)
+        tree_wrap.grid(row=1, column=0, sticky="nsew")
+        tree_wrap.columnconfigure(0, weight=1)
+        tree_wrap.rowconfigure(0, weight=1)
+
         columns = ("id", "period_name", "start_date", "end_date", "is_default")
-        self.period_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=15)
-        
-        # Configure column headings
+        self.period_tree = ttk.Treeview(
+            tree_wrap, columns=columns, show="headings", height=18
+        )
         self.period_tree.heading("id", text="ID")
-        self.period_tree.heading("period_name", text="Period Name")
-        self.period_tree.heading("start_date", text="Start Date")
-        self.period_tree.heading("end_date", text="End Date")
+        self.period_tree.heading("period_name", text="Name")
+        self.period_tree.heading("start_date", text="Start")
+        self.period_tree.heading("end_date", text="End")
         self.period_tree.heading("is_default", text="Default")
-        
-        # Configure column widths
-        self.period_tree.column("id", width=40)
-        self.period_tree.column("period_name", width=200)
-        self.period_tree.column("start_date", width=100)
-        self.period_tree.column("end_date", width=100)
-        self.period_tree.column("is_default", width=60)
-        
-        # Add scrollbar
-        period_scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.period_tree.yview)
+        self.period_tree.column("id", width=44, anchor="center")
+        self.period_tree.column("period_name", width=220)
+        self.period_tree.column("start_date", width=100, anchor="center")
+        self.period_tree.column("end_date", width=100, anchor="center")
+        self.period_tree.column("is_default", width=70, anchor="center")
+
+        period_scroll = ttk.Scrollbar(
+            tree_wrap, orient="vertical", command=self.period_tree.yview
+        )
         self.period_tree.configure(yscrollcommand=period_scroll.set)
-        
-        # Layout
-        self.period_tree.pack(side=tk.LEFT, fill="both", expand=True)
-        period_scroll.pack(side=tk.RIGHT, fill="y")
-        
-        # Period management buttons
-        period_button_frame = ttk.Frame(list_frame)
-        period_button_frame.pack(fill="x", pady=5)
-        
-        ttk.Button(period_button_frame, text="Set as Default", command=self.set_default_period).pack(side=tk.LEFT, padx=5)
-        ttk.Button(period_button_frame, text="Delete Period", command=self.delete_period).pack(side=tk.LEFT, padx=5)
-        ttk.Button(period_button_frame, text="Refresh", command=self.load_payroll_periods).pack(side=tk.LEFT, padx=5)
-        ttk.Button(period_button_frame, text="Run Report", command=self.report_for_period).pack(side=tk.LEFT, padx=5)
-        
-        # Make the grid layout flexible
-        payroll_frame.columnconfigure(0, weight=1)
-        payroll_frame.columnconfigure(1, weight=1)
-        payroll_frame.rowconfigure(0, weight=1)
-        
-        # Load existing payroll periods
+        self.period_tree.grid(row=0, column=0, sticky="nsew")
+        period_scroll.grid(row=0, column=1, sticky="ns")
+
         self.load_payroll_periods()
-        
+
     def create_report_tab(self):
         """Create the tab for generating reports and visualizations"""
         report_frame = ttk.Frame(self.notebook)
         self.notebook.add(report_frame, text="Reports & Statistics")
-        
-        # Main container with padding
+
         main_container = ttk.Frame(report_frame)
-        main_container.pack(fill="both", expand=True, padx=20, pady=15)
-        
-        # Report options
-        options_frame = ttk.LabelFrame(main_container, text="Report Options")
-        options_frame.pack(fill="x", pady=10)
-        
-        # Report type selection
-        report_type_frame = ttk.Frame(options_frame)
-        report_type_frame.pack(fill="x", padx=15, pady=10)
-        
-        ttk.Label(report_type_frame, text="Report Type:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
+        main_container.pack(fill="both", expand=True, padx=8, pady=6)
+
+        # Compact controls: primary row + optional tab for shortcuts/filters
+        options_notebook = ttk.Notebook(main_container)
+        options_notebook.pack(fill=tk.X, pady=(0, 4))
+
+        run_tab = ttk.Frame(options_notebook)
+        filters_tab = ttk.Frame(options_notebook)
+        options_notebook.add(run_tab, text="Report")
+        options_notebook.add(filters_tab, text="Shortcuts & filters")
+
+        run_row = ttk.Frame(run_tab)
+        run_row.pack(fill=tk.X, padx=6, pady=4)
+
+        ttk.Label(run_row, text="Type:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(0, 4))
         self.report_type_var = tk.StringVar()
         report_types = ["Daily Summary", "Weekly Summary", "Monthly Summary", "Current Payroll Period", "Custom Range"]
-        report_type_combo = ttk.Combobox(report_type_frame, textvariable=self.report_type_var, values=report_types, state="readonly", width=20)
-        report_type_combo.pack(side=tk.LEFT, padx=5)
-        report_type_combo.current(0)  # Set default selection
-        
-        # Date range for custom reports with calendar popups
-        date_frame = ttk.Frame(options_frame)
-        date_frame.pack(fill="x", padx=15, pady=5)
-        
-        # Create a better-looking date selection section
-        date_section = ttk.Frame(date_frame)
-        date_section.pack(fill="x", pady=5)
-        
-        # From date with icon button
-        from_frame = ttk.Frame(date_section)
-        from_frame.pack(side=tk.LEFT, padx=(0, 20))
-        
-        ttk.Label(from_frame, text="From:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
+        report_type_combo = ttk.Combobox(
+            run_row, textvariable=self.report_type_var, values=report_types, state="readonly", width=18
+        )
+        report_type_combo.pack(side=tk.LEFT, padx=(0, 10))
+        report_type_combo.current(0)
+
+        ttk.Label(run_row, text="From:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(0, 2))
         self.report_from_var = tk.StringVar()
-        from_date_entry = ttk.Entry(from_frame, textvariable=self.report_from_var, width=12)
-        from_date_entry.pack(side=tk.LEFT, padx=5)
-        
-        calendar_button_from = ttk.Button(from_frame, text="📅", width=3, 
-                                       command=lambda: self.show_calendar_popup("report_from"))
-        calendar_button_from.pack(side=tk.LEFT, padx=2)
-        
-        # To date with icon button
-        to_frame = ttk.Frame(date_section)
-        to_frame.pack(side=tk.LEFT)
-        
-        ttk.Label(to_frame, text="To:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
+        ttk.Entry(run_row, textvariable=self.report_from_var, width=11).pack(side=tk.LEFT, padx=2)
+        ttk.Button(run_row, text="📅", width=3, command=lambda: self.show_calendar_popup("report_from")).pack(side=tk.LEFT, padx=1)
+
+        ttk.Label(run_row, text="To:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(8, 2))
         self.report_to_var = tk.StringVar()
-        to_date_entry = ttk.Entry(to_frame, textvariable=self.report_to_var, width=12)
-        to_date_entry.pack(side=tk.LEFT, padx=5)
-        
-        calendar_button_to = ttk.Button(to_frame, text="📅", width=3, 
-                                     command=lambda: self.show_calendar_popup("report_to"))
-        calendar_button_to.pack(side=tk.LEFT, padx=2)
-        
-        # Quick Date Range Selection
-        date_range_frame = ttk.LabelFrame(options_frame, text="Quick Select")
-        date_range_frame.pack(fill="x", padx=15, pady=10)
-        
-        # Create a more attractive button layout
-        quick_select_container = ttk.Frame(date_range_frame)
-        quick_select_container.pack(fill="x", padx=10, pady=5)
-        
-        # First row of quick select buttons - make them more attractive
-        quick_select_row1 = ttk.Frame(quick_select_container)
-        quick_select_row1.pack(fill="x", pady=5)
-        
-        # Define a list of button specs: (text, command, style)
-        quick_buttons_row1 = [
-            ("Today", lambda: self.set_quick_date_range("today"), "TButton"),
-            ("Yesterday", lambda: self.set_quick_date_range("yesterday"), "TButton"),
-            ("This Week", lambda: self.set_quick_date_range("this_week"), "TButton"),
-            ("Last Week", lambda: self.set_quick_date_range("last_week"), "TButton")
-        ]
-        
-        # Create buttons with even spacing
-        for text, cmd, style in quick_buttons_row1:
-            ttk.Button(quick_select_row1, text=text, command=cmd, style=style, width=12).pack(side=tk.LEFT, padx=5, pady=5)
-        
-        # Second row of quick select buttons
-        quick_select_row2 = ttk.Frame(quick_select_container)
-        quick_select_row2.pack(fill="x", pady=5)
-        
-        # Define a list of button specs for second row
-        quick_buttons_row2 = [
-            ("This Month", lambda: self.set_quick_date_range("this_month"), "TButton"),
-            ("Last Month", lambda: self.set_quick_date_range("last_month"), "TButton"),
-            ("This Year", lambda: self.set_quick_date_range("this_year"), "TButton"),
-            ("Last Year", lambda: self.set_quick_date_range("last_year"), "TButton"),
-            ("All Data", lambda: self.set_all_data_range(), "Accent.TButton")
-        ]
-        
-        # Create buttons with even spacing
-        for text, cmd, style in quick_buttons_row2:
-            ttk.Button(quick_select_row2, text=text, command=cmd, style=style, width=12).pack(side=tk.LEFT, padx=5, pady=5)
-        
-        # Add rate filter section with improved layout
-        rate_filter_frame = ttk.LabelFrame(options_frame, text="Filters")
-        rate_filter_frame.pack(fill="x", padx=15, pady=10)
-        
-        # Create a container for rate filters
-        rate_container = ttk.Frame(rate_filter_frame)
-        rate_container.pack(fill="x", padx=10, pady=5)
-        
-        # Rate filter section
-        rate_section = ttk.Frame(rate_container)
-        rate_section.pack(side=tk.LEFT, padx=10)
-        
-        ttk.Label(rate_section, text="Rate Range:").pack(side=tk.LEFT, padx=5)
-        ttk.Label(rate_section, text="Min:").pack(side=tk.LEFT, padx=(15, 2))
-        self.min_rate_var = tk.StringVar()
-        ttk.Entry(rate_section, textvariable=self.min_rate_var, width=6).pack(side=tk.LEFT)
-        
-        ttk.Label(rate_section, text="Max:").pack(side=tk.LEFT, padx=(15, 2))
-        self.max_rate_var = tk.StringVar()
-        ttk.Entry(rate_section, textvariable=self.max_rate_var, width=6).pack(side=tk.LEFT)
-        
-        # Keyword filter section
-        keyword_section = ttk.Frame(rate_container)
-        keyword_section.pack(side=tk.LEFT, padx=20)
-        
-        ttk.Label(keyword_section, text="Keyword:").pack(side=tk.LEFT, padx=5)
-        self.keyword_filter_var = tk.StringVar()
-        ttk.Entry(keyword_section, textvariable=self.keyword_filter_var, width=15).pack(side=tk.LEFT, padx=5)
-        
-        # Comparison section with improved layout
-        comparison_frame = ttk.Frame(options_frame)
-        comparison_frame.pack(fill="x", padx=15, pady=10)
-        self.comparison_frame = comparison_frame  # Store reference to comparison_frame
-        
-        # Add variable for comparison checkbox
+        ttk.Entry(run_row, textvariable=self.report_to_var, width=11).pack(side=tk.LEFT, padx=2)
+        ttk.Button(run_row, text="📅", width=3, command=lambda: self.show_calendar_popup("report_to")).pack(side=tk.LEFT, padx=1)
+
+        self.comparison_frame = ttk.Frame(run_row)
+        self.comparison_frame.pack(side=tk.LEFT, padx=(12, 6))
         self.compare_enabled_var = tk.BooleanVar(value=False)
-        
-        ttk.Checkbutton(comparison_frame, text="Compare with previous period", 
-                      variable=self.compare_enabled_var, command=self.toggle_comparison).pack(side=tk.LEFT, padx=5)
-        
-        # Generate report button - make it stand out
-        generate_button = ttk.Button(options_frame, text="Generate Report", command=self.generate_report, style="Accent.TButton")
-        generate_button.pack(pady=15, ipadx=10, ipady=5)
-        
-        # Create a horizontal container for statistics and charts
-        content_frame = ttk.Frame(main_container)
-        content_frame.pack(fill="both", expand=True, padx=0, pady=10)
-        
-        # Statistics summary - left side
-        stats_frame = ttk.LabelFrame(content_frame, text="Statistics")
-        stats_frame.pack(side=tk.LEFT, fill="y", padx=(0, 10), pady=0, expand=False)
-        
-        # Rest of the method remains the same...
+        ttk.Checkbutton(
+            self.comparison_frame,
+            text="Compare previous period",
+            variable=self.compare_enabled_var,
+            command=self.toggle_comparison,
+        ).pack(side=tk.LEFT)
+
+        ttk.Button(run_row, text="Generate Report", command=self.generate_report, style="Accent.TButton").pack(
+            side=tk.RIGHT, padx=4, ipadx=6, ipady=2
+        )
+
+        fq = ttk.Frame(filters_tab)
+        fq.pack(fill=tk.X, padx=6, pady=4)
+        quick_specs = [
+            ("Today", "today"),
+            ("Yesterday", "yesterday"),
+            ("This Week", "this_week"),
+            ("Last Week", "last_week"),
+            ("This Month", "this_month"),
+            ("Last Month", "last_month"),
+            ("This Year", "this_year"),
+            ("Last Year", "last_year"),
+        ]
+        for i, (label, key) in enumerate(quick_specs):
+            ttk.Button(fq, text=label, command=lambda k=key: self.set_quick_date_range(k), width=11).grid(
+                row=i // 5, column=i % 5, padx=3, pady=2, sticky="w"
+            )
+        ttk.Button(fq, text="All Data", command=self.set_all_data_range, style="Accent.TButton", width=11).grid(
+            row=1, column=4, padx=3, pady=2, sticky="w"
+        )
+
+        filter_row = ttk.Frame(filters_tab)
+        filter_row.pack(fill=tk.X, padx=6, pady=(0, 6))
+        ttk.Label(filter_row, text="Rate min").pack(side=tk.LEFT, padx=(0, 2))
+        self.min_rate_var = tk.StringVar()
+        ttk.Entry(filter_row, textvariable=self.min_rate_var, width=7).pack(side=tk.LEFT, padx=2)
+        ttk.Label(filter_row, text="max").pack(side=tk.LEFT, padx=(10, 2))
+        self.max_rate_var = tk.StringVar()
+        ttk.Entry(filter_row, textvariable=self.max_rate_var, width=7).pack(side=tk.LEFT, padx=2)
+        ttk.Label(filter_row, text="Keyword").pack(side=tk.LEFT, padx=(14, 2))
+        self.keyword_filter_var = tk.StringVar()
+        ttk.Entry(filter_row, textvariable=self.keyword_filter_var, width=24).pack(side=tk.LEFT, padx=4)
+
+        self.report_paned = ttk.Panedwindow(main_container, orient=tk.HORIZONTAL)
+        self.report_paned.pack(fill=tk.BOTH, expand=True, pady=(2, 4))
+
+        self.report_stats_nb = ttk.Notebook(self.report_paned)
+        self.report_paned.add(self.report_stats_nb, weight=1)
+
+        summary_tab = ttk.Frame(self.report_stats_nb)
+        proj_tab = ttk.Frame(self.report_stats_nb)
+        ai_tab = ttk.Frame(self.report_stats_nb)
+        self.report_stats_nb.add(summary_tab, text="Summary")
+        self.report_stats_nb.add(proj_tab, text="Projection")
+        self.report_stats_nb.add(ai_tab, text="AI coach")
+
+        summary_tab.columnconfigure(0, weight=1)
+        proj_tab.columnconfigure(0, weight=1)
+        proj_tab.rowconfigure(0, weight=1)
+        ai_tab.columnconfigure(0, weight=1)
+        ai_tab.rowconfigure(1, weight=1)
+
+        self._last_ai_ctx = None
+        self._report_ai_busy = False
+
         # Current Period Statistics
-        current_stats = ttk.LabelFrame(stats_frame, text="Current Period")
-        current_stats.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        current_stats = ttk.LabelFrame(summary_tab, text="Current period")
+        current_stats.grid(row=0, column=0, padx=6, pady=4, sticky="ew")
         
         ttk.Label(current_stats, text="Total Hours:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.stats_hours_var = tk.StringVar()
@@ -1192,149 +1447,158 @@ class TimeLoggerApp:
         ttk.Label(current_stats, text="Work Days:").grid(row=2, column=2, padx=5, pady=5, sticky="w")
         self.stats_work_days_var = tk.StringVar()
         ttk.Label(current_stats, textvariable=self.stats_work_days_var).grid(row=2, column=3, padx=5, pady=5, sticky="w")
-        
-        # Advanced Statistics
-        advanced_stats = ttk.LabelFrame(stats_frame, text="Advanced Statistics")
-        advanced_stats.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-        
-        ttk.Label(advanced_stats, text="Projected Monthly Earnings:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.stats_projected_var = tk.StringVar()
-        ttk.Label(advanced_stats, textvariable=self.stats_projected_var).grid(row=0, column=1, padx=5, pady=5, sticky="w")
-        
-        ttk.Label(advanced_stats, text="Most Productive Day:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
-        self.stats_productive_var = tk.StringVar()
-        ttk.Label(advanced_stats, textvariable=self.stats_productive_var).grid(row=0, column=3, padx=5, pady=5, sticky="w")
-        
-        # Add average earnings per day
-        ttk.Label(advanced_stats, text="Avg. Daily Earnings:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+
+        # Earnings projection — dedicated tab for space
+        projection_box = ttk.LabelFrame(proj_tab, text="Earnings projection (forward model)")
+        projection_box.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
+        projection_box.columnconfigure(0, weight=1)
+
+        self.stats_projection_headline_var = tk.StringVar(value="—")
+        tk.Label(
+            projection_box,
+            textvariable=self.stats_projection_headline_var,
+            font=("Arial", 18, "bold"),
+            fg="#1565C0",
+        ).grid(row=0, column=0, sticky="w", padx=8, pady=(6, 0))
+        ttk.Label(
+            projection_box,
+            text="30 days after report end · weekday work rate × recent $/day (see below)",
+            foreground="gray",
+        ).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 4))
+
+        self.stats_projection_text = scrolledtext.ScrolledText(
+            projection_box,
+            height=22,
+            width=72,
+            wrap=tk.WORD,
+            font=("Courier New", 9),
+            state="disabled",
+        )
+        self.stats_projection_text.grid(row=2, column=0, sticky="nsew", padx=6, pady=(0, 6))
+        projection_box.rowconfigure(2, weight=1)
+
+        advanced_stats = ttk.LabelFrame(summary_tab, text="Productivity & pay")
+        advanced_stats.grid(row=1, column=0, padx=6, pady=4, sticky="ew")
+
+        ttk.Label(advanced_stats, text="Avg. daily earnings:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.stats_daily_earnings_var = tk.StringVar()
-        ttk.Label(advanced_stats, textvariable=self.stats_daily_earnings_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-        
-        # Add hourly rate range
-        ttk.Label(advanced_stats, text="Hourly Rate Range:").grid(row=1, column=2, padx=5, pady=5, sticky="w")
+        ttk.Label(advanced_stats, textvariable=self.stats_daily_earnings_var).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+        ttk.Label(advanced_stats, text="Hourly rate range:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
         self.stats_rate_range_var = tk.StringVar()
-        ttk.Label(advanced_stats, textvariable=self.stats_rate_range_var).grid(row=1, column=3, padx=5, pady=5, sticky="w")
-        
-        # Add productive time of day analysis
-        ttk.Label(advanced_stats, text="Peak Hours:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        ttk.Label(advanced_stats, textvariable=self.stats_rate_range_var).grid(row=0, column=3, padx=5, pady=5, sticky="w")
+
+        ttk.Label(advanced_stats, text="Most productive day:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        self.stats_productive_var = tk.StringVar()
+        ttk.Label(advanced_stats, textvariable=self.stats_productive_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+
+        ttk.Label(advanced_stats, text="Least productive day:").grid(row=1, column=2, padx=5, pady=5, sticky="w")
+        self.stats_least_productive_var = tk.StringVar()
+        ttk.Label(advanced_stats, textvariable=self.stats_least_productive_var).grid(row=1, column=3, padx=5, pady=5, sticky="w")
+
+        ttk.Label(advanced_stats, text="Peak hours (avg):").grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.stats_peak_hours_var = tk.StringVar()
         ttk.Label(advanced_stats, textvariable=self.stats_peak_hours_var).grid(row=2, column=1, padx=5, pady=5, sticky="w")
-        
-        # Add least productive day
-        ttk.Label(advanced_stats, text="Least Productive Day:").grid(row=2, column=2, padx=5, pady=5, sticky="w")
-        self.stats_least_productive_var = tk.StringVar()
-        ttk.Label(advanced_stats, textvariable=self.stats_least_productive_var).grid(row=2, column=3, padx=5, pady=5, sticky="w")
-        
-        # Comparison Statistics
-        comparison_stats = ttk.LabelFrame(stats_frame, text="Comparison to Previous Period")
-        comparison_stats.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
-        
-        # Add variable for comparison checkbox
-        self.compare_enabled_var = tk.BooleanVar(value=False)
-        
-        ttk.Label(comparison_stats, text="Hours Change:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+
+        comparison_stats = ttk.LabelFrame(summary_tab, text="Comparison to previous period")
+        comparison_stats.grid(row=2, column=0, padx=6, pady=4, sticky="ew")
+
+        ttk.Label(comparison_stats, text="Hours change:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.compare_hours_var = tk.StringVar()
         self.compare_hours_label = ttk.Label(comparison_stats, textvariable=self.compare_hours_var)
         self.compare_hours_label.grid(row=0, column=1, padx=5, pady=5, sticky="w")
-        
-        ttk.Label(comparison_stats, text="Earnings Change:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
+
+        ttk.Label(comparison_stats, text="Earnings change:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
         self.compare_earnings_var = tk.StringVar()
         self.compare_earnings_label = ttk.Label(comparison_stats, textvariable=self.compare_earnings_var)
         self.compare_earnings_label.grid(row=0, column=3, padx=5, pady=5, sticky="w")
-        
-        # Add absolute value comparisons
-        ttk.Label(comparison_stats, text="Previous Hours:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+
+        ttk.Label(comparison_stats, text="Previous hours:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         self.prev_hours_var = tk.StringVar()
         ttk.Label(comparison_stats, textvariable=self.prev_hours_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-        
-        ttk.Label(comparison_stats, text="Previous Earnings:").grid(row=1, column=2, padx=5, pady=5, sticky="w")
+
+        ttk.Label(comparison_stats, text="Previous earnings:").grid(row=1, column=2, padx=5, pady=5, sticky="w")
         self.prev_earnings_var = tk.StringVar()
         ttk.Label(comparison_stats, textvariable=self.prev_earnings_var).grid(row=1, column=3, padx=5, pady=5, sticky="w")
-        
-        # Trend visualization frame
-        trend_frame = ttk.LabelFrame(stats_frame, text="Performance Trends")
-        trend_frame.grid(row=3, column=0, padx=5, pady=5, sticky="nsew")
-        
-        # Hours trend indicators
-        ttk.Label(trend_frame, text="Hours Trend:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+
+        trend_frame = ttk.LabelFrame(summary_tab, text="Performance trends")
+        trend_frame.grid(row=3, column=0, padx=6, pady=4, sticky="ew")
+
+        ttk.Label(trend_frame, text="Hours trend:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.hours_trend_var = tk.StringVar()
         ttk.Label(trend_frame, textvariable=self.hours_trend_var).grid(row=0, column=1, padx=5, pady=5, sticky="w")
-        
-        # Earnings trend indicators
-        ttk.Label(trend_frame, text="Earnings Trend:").grid(row=0, column=2, padx=5, pady=5, sticky="w") 
+
+        ttk.Label(trend_frame, text="Earnings trend:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
         self.earnings_trend_var = tk.StringVar()
         ttk.Label(trend_frame, textvariable=self.earnings_trend_var).grid(row=0, column=3, padx=5, pady=5, sticky="w")
-        
-        # Hourly rate trend
-        ttk.Label(trend_frame, text="Rate Trend:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+
+        ttk.Label(trend_frame, text="Rate trend:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         self.rate_trend_var = tk.StringVar()
         ttk.Label(trend_frame, textvariable=self.rate_trend_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-        
-        # Productivity trend
+
         ttk.Label(trend_frame, text="Productivity:").grid(row=1, column=2, padx=5, pady=5, sticky="w")
         self.productivity_var = tk.StringVar()
         ttk.Label(trend_frame, textvariable=self.productivity_var).grid(row=1, column=3, padx=5, pady=5, sticky="w")
-        
-        # Make sure grid cells expand properly
-        for i in range(4):
-            stats_frame.columnconfigure(i, weight=1)
-        
-        # Frame for charts - set a minimum height to ensure charts are visible
-        # Move charts to the right side with flexible width
-        self.chart_frame = ttk.LabelFrame(content_frame, text="Charts")
-        self.chart_frame.pack(side=tk.RIGHT, fill="both", expand=True, padx=(5, 0), pady=0)
-        
-        # Set a minimum width and height for the chart frame
-        self.chart_frame.update()
-        min_height = 350  # Minimum height in pixels
-        min_width = 600   # Minimum width in pixels
-        self.chart_frame.configure(height=min_height, width=min_width)
-        self.chart_frame.pack_propagate(False)  # Prevent frame from shrinking
-        
-        # Add chart type selector with improved design
+
+        ai_hdr = ttk.Frame(ai_tab)
+        ai_hdr.grid(row=0, column=0, sticky="ew", padx=6, pady=4)
+        ttk.Label(
+            ai_hdr,
+            text="Habit notes & 2-week planning. Optional: run Ollama locally; set TIMELOGGER_OLLAMA_URL / TIMELOGGER_OLLAMA_MODEL.",
+            wraplength=520,
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(ai_hdr, text="Refresh insights", command=self.refresh_report_ai_insights).pack(side=tk.RIGHT, padx=4)
+
+        self.report_ai_text = scrolledtext.ScrolledText(
+            ai_tab, height=16, wrap=tk.WORD, font=("Segoe UI", 10), state="disabled"
+        )
+        self.report_ai_text.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
+
+        # Charts (right pane — no fixed min size so the paned window can grow charts)
+        self.chart_frame = ttk.LabelFrame(self.report_paned, text="Charts")
+        self.report_paned.add(self.chart_frame, weight=5)
+
         chart_controls = ttk.Frame(self.chart_frame)
-        chart_controls.pack(fill="x", padx=10, pady=10)
-        
+        chart_controls.pack(fill="x", padx=8, pady=6)
+
         ttk.Label(chart_controls, text="Chart Type:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
         self.chart_type_var = tk.StringVar(value="Bar Chart")
         chart_types = ["Bar Chart", "Line Chart", "Pie Chart", "Weekly Distribution"]
-        chart_type_combo = ttk.Combobox(chart_controls, textvariable=self.chart_type_var, values=chart_types, 
-                                      state="readonly", width=20)
+        chart_type_combo = ttk.Combobox(
+            chart_controls, textvariable=self.chart_type_var, values=chart_types, state="readonly", width=20
+        )
         chart_type_combo.pack(side=tk.LEFT, padx=5)
-        ttk.Button(chart_controls, text="Apply", 
-                  command=lambda: self.update_chart_type(), style="TButton").pack(side=tk.LEFT, padx=5)
-        
-        # Create a notebook for the charts
+        ttk.Button(chart_controls, text="Apply", command=lambda: self.update_chart_type(), style="TButton").pack(
+            side=tk.LEFT, padx=5
+        )
+
         self.chart_notebook = ttk.Notebook(self.chart_frame)
-        self.chart_notebook.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        # Create frames for each chart type
+        self.chart_notebook.pack(fill="both", expand=True, padx=5, pady=4)
+
         self.bar_chart_frame = ttk.Frame(self.chart_notebook)
         self.line_chart_frame = ttk.Frame(self.chart_notebook)
         self.pie_chart_frame = ttk.Frame(self.chart_notebook)
         self.weekly_chart_frame = ttk.Frame(self.chart_notebook)
-        
-        # Add the frames to the notebook
+
         self.chart_notebook.add(self.bar_chart_frame, text="Bar")
         self.chart_notebook.add(self.line_chart_frame, text="Line")
         self.chart_notebook.add(self.pie_chart_frame, text="Pie")
         self.chart_notebook.add(self.weekly_chart_frame, text="Weekly")
-        
-        # Export options with improved design
+
         export_frame = ttk.Frame(main_container)
-        export_frame.pack(fill="x", pady=15)
-        
+        export_frame.pack(fill="x", pady=(6, 4))
+
         export_label = ttk.Label(export_frame, text="Export & Reports:", font=("Arial", 10, "bold"))
         export_label.pack(side=tk.LEFT, padx=(0, 10))
-        
+
         export_buttons = [
             ("Open CSV File", self.open_csv_file, "TButton"),
             ("Export to CSV", self.export_to_csv, "TButton"),
             ("Export to Excel", self.export_to_excel, "TButton"),
             ("Save PDF Report", self.export_to_pdf, "TButton"),
-            ("Overview Report", self.show_overview_report, "Accent.TButton")
+            ("Overview Report", self.show_overview_report, "Accent.TButton"),
         ]
-        
+
         for text, cmd, style in export_buttons:
             ttk.Button(export_frame, text=text, command=cmd, style=style).pack(side=tk.LEFT, padx=5)
     
@@ -1345,20 +1609,14 @@ class TimeLoggerApp:
         tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Create the treeview
-        columns = ("id", "date", "start_time", "end_time", "break_duration", 
-                    "hourly_rate", "total_hours", "total_earnings", "notes")
-        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings")
+        self.tree_columns = ("id", "date", "start_time", "end_time", "break_duration",
+                             "hourly_rate", "total_hours", "total_earnings", "notes")
+        self.tree_sort_column = "date"
+        self.tree_sort_desc = True
+        self.tree = ttk.Treeview(tree_frame, columns=self.tree_columns, show="headings")
         
         # Configure column headings
-        self.tree.heading("id", text="ID")
-        self.tree.heading("date", text="Date")
-        self.tree.heading("start_time", text="Start Time")
-        self.tree.heading("end_time", text="End Time")
-        self.tree.heading("break_duration", text="Break (min)")
-        self.tree.heading("hourly_rate", text="Rate ($/hr)")
-        self.tree.heading("total_hours", text="Hours")
-        self.tree.heading("total_earnings", text="Earnings ($)")
-        self.tree.heading("notes", text="Notes")
+        self.update_treeview_sort_headers()
         
         # Configure column widths
         self.tree.column("id", width=40)
@@ -1391,8 +1649,10 @@ class TimeLoggerApp:
         """Calculate total hours and earnings based on user input"""
         try:
             # Get start and end times
-            start_time = self.start_time_var.get()
-            end_time = self.end_time_var.get()
+            start_time = self.normalize_time_text(self.start_time_var.get())
+            end_time = self.normalize_time_text(self.end_time_var.get())
+            self.start_time_var.set(start_time)
+            self.end_time_var.set(end_time)
             
             # Parse times
             start_dt = datetime.strptime(start_time, "%H:%M")
@@ -1429,8 +1689,10 @@ class TimeLoggerApp:
             
         # Get all values
         date = self.cal.get_date()
-        start_time = self.start_time_var.get()
-        end_time = self.end_time_var.get()
+        start_time = self.normalize_time_text(self.start_time_var.get())
+        end_time = self.normalize_time_text(self.end_time_var.get())
+        self.start_time_var.set(start_time)
+        self.end_time_var.set(end_time)
         break_duration = self.break_var.get()
         hourly_rate = self.rate_var.get()
         total_hours = float(self.total_hours_var.get())
@@ -1487,36 +1749,15 @@ class TimeLoggerApp:
         # Get filter dates
         from_date = self.from_date_var.get()
         to_date = self.to_date_var.get()
-        
-        # Convert dates for database query
-        if from_date:
-            db_from_date = self.convert_to_db_date_format(from_date)
-        else:
-            db_from_date = None
-            
-        if to_date:
-            db_to_date = self.convert_to_db_date_format(to_date)
-        else:
-            db_to_date = None
-        
-        # Build query with support for both date formats
+
+        # Build query: compare chronologically (TEXT dd-mm-yyyy is not lexically ordered by time)
         query = "SELECT * FROM time_logs WHERE 1=1"
         params = []
-        
-        if from_date and to_date:
-            # Handle both date formats with an OR condition
-            query += " AND ((date BETWEEN ? AND ?) OR (date BETWEEN ? AND ?))"
-            params.extend([from_date, to_date, db_from_date, db_to_date])
-        elif from_date:
-            # Just from_date - handle both formats
-            query += " AND (date >= ? OR date >= ?)"
-            params.extend([from_date, db_from_date])
-        elif to_date:
-            # Just to_date - handle both formats
-            query += " AND (date <= ? OR date <= ?)"
-            params.extend([to_date, db_to_date])
-            
-        query += " ORDER BY date DESC"
+        clause, extra = DateUtils.time_logs_where_chrono(from_date, to_date)
+        query += clause
+        params.extend(extra)
+
+        query += " " + CHRONO_ORDER_BY_DATE_DESC
         
         # Execute query
         self.cursor.execute(query, params)
@@ -1526,6 +1767,9 @@ class TimeLoggerApp:
         for record in records:
             formatted_record = self.format_record_for_treeview(record)
             self.tree.insert("", "end", values=formatted_record)
+
+        # Keep current/default sort for filtered results too
+        self.apply_current_tree_sort()
             
         # Update summary statistics
         self.update_record_summary(records)
@@ -1565,34 +1809,45 @@ class TimeLoggerApp:
         self.cursor.execute("SELECT * FROM time_logs WHERE id = ?", (record_id,))
         record = self.cursor.fetchone()
         
-        # Convert date format for display if needed
+        # Convert date for display
         try:
-            if record[1] and '-' in record[1]:
-                date_obj = datetime.strptime(record[1], DB_DATE_FORMAT).date()
-                display_date = date_obj.strftime(DATE_FORMAT)
+            if record[1]:
+                parsed = DateUtils.parse_date_string(str(record[1]).strip())
+                display_date = parsed.strftime(DATE_FORMAT) if parsed else record[1]
             else:
                 display_date = record[1]
-        except ValueError:
+        except (ValueError, TypeError):
             display_date = record[1]
         
         # Create edit form
         edit_frame = ttk.Frame(edit_window, padding=10)
         edit_frame.pack(fill="both", expand=True)
+        edit_frame.columnconfigure(1, weight=1)
         
         # Date
-        ttk.Label(edit_frame, text="Date (dd/mm/yyyy):").grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Label(edit_frame, text="Date (dd-mm-yyyy):").grid(row=0, column=0, sticky="w", pady=5)
         date_var = tk.StringVar(value=display_date)
-        ttk.Entry(edit_frame, textvariable=date_var).grid(row=0, column=1, sticky="ew", pady=5)
+        date_row = ttk.Frame(edit_frame)
+        date_row.grid(row=0, column=1, sticky="ew", pady=5)
+        date_row.columnconfigure(0, weight=1)
+        ttk.Entry(date_row, textvariable=date_var).grid(row=0, column=0, sticky="ew")
+        add_date_picker_button(
+            date_row, date_var, edit_window, title="Edit — work date"
+        ).grid(row=0, column=1, padx=(6, 0))
         
         # Start time
         ttk.Label(edit_frame, text="Start Time (HH:MM):").grid(row=1, column=0, sticky="w", pady=5)
         start_var = tk.StringVar(value=record[2])
-        ttk.Entry(edit_frame, textvariable=start_var).grid(row=1, column=1, sticky="ew", pady=5)
+        start_entry = ttk.Entry(edit_frame, textvariable=start_var)
+        start_entry.grid(row=1, column=1, sticky="ew", pady=5)
+        self._bind_time_entry(start_entry, start_var)
         
         # End time
         ttk.Label(edit_frame, text="End Time (HH:MM):").grid(row=2, column=0, sticky="w", pady=5)
         end_var = tk.StringVar(value=record[3])
-        ttk.Entry(edit_frame, textvariable=end_var).grid(row=2, column=1, sticky="ew", pady=5)
+        end_entry = ttk.Entry(edit_frame, textvariable=end_var)
+        end_entry.grid(row=2, column=1, sticky="ew", pady=5)
+        self._bind_time_entry(end_entry, end_var)
         
         # Break duration
         ttk.Label(edit_frame, text="Break Duration (min):").grid(row=3, column=0, sticky="w", pady=5)
@@ -1622,13 +1877,19 @@ class TimeLoggerApp:
         # Save button
         def save_changes():
             try:
+                normalized_start = self.normalize_time_text(start_var.get())
+                normalized_end = self.normalize_time_text(end_var.get())
+                start_var.set(normalized_start)
+                end_var.set(normalized_end)
+
                 self.cursor.execute('''
                     UPDATE time_logs
                     SET date=?, start_time=?, end_time=?, break_duration=?,
                         hourly_rate=?, total_hours=?, total_earnings=?, notes=?
                     WHERE id=?
                 ''', (
-                    date_var.get(), start_var.get(), end_var.get(), break_var.get(),
+                    DateUtils.format_date_for_db(date_var.get()),
+                    normalized_start, normalized_end, break_var.get(),
                     rate_var.get(), hours_var.get(), earnings_var.get(), notes_var.get(),
                     record_id
                 ))
@@ -1647,8 +1908,12 @@ class TimeLoggerApp:
         def recalculate():
             try:
                 # Parse times
-                start_dt = datetime.strptime(start_var.get(), "%H:%M")
-                end_dt = datetime.strptime(end_var.get(), "%H:%M")
+                normalized_start = self.normalize_time_text(start_var.get())
+                normalized_end = self.normalize_time_text(end_var.get())
+                start_var.set(normalized_start)
+                end_var.set(normalized_end)
+                start_dt = datetime.strptime(normalized_start, "%H:%M")
+                end_dt = datetime.strptime(normalized_end, "%H:%M")
                 
                 # Handle overnight shifts
                 if end_dt < start_dt:
@@ -1750,55 +2015,43 @@ class TimeLoggerApp:
                 return
         
         try:
-            # For debugging - print dates before conversion
             print(f"Original dates - From: {from_date}, To: {to_date}")
-            
-            # Ensure date format is correct before conversion to DB format
-            # This is important especially for "Last Year" filter
-            if '/' in from_date:
-                try:
-                    # First validate that the date string can be parsed
-                    from_date_obj = datetime.strptime(from_date, DATE_FORMAT).date()
-                    to_date_obj = datetime.strptime(to_date, DATE_FORMAT).date()
-                    
-                    # Force re-formatting to ensure consistent format
-                    from_date = from_date_obj.strftime(DATE_FORMAT)
-                    to_date = to_date_obj.strftime(DATE_FORMAT)
-                except ValueError:
-                    print(f"Date parsing error with {from_date} or {to_date}")
-                    # Keep as is if parsing fails
-            
-            # Convert dates to database format for querying
-            db_from_date = self.convert_to_db_date_format(from_date)
-            db_to_date = self.convert_to_db_date_format(to_date)
-                
-            # For debugging - print converted dates
-            print(f"Database dates - From: {db_from_date}, To: {db_to_date}")
-            
-            # Build a more flexible query that can handle both date formats
-            query = """
-                SELECT date, start_time, end_time, break_duration, hourly_rate, total_hours, total_earnings, notes
-                FROM time_logs 
-                WHERE (
-                    (date BETWEEN ? AND ?) OR
-                    (date BETWEEN ? AND ?)
+
+            from_parsed = DateUtils.parse_date_string(str(from_date).strip())
+            to_parsed = DateUtils.parse_date_string(str(to_date).strip())
+            if not from_parsed or not to_parsed:
+                messagebox.showwarning(
+                    "Invalid Dates",
+                    "Could not read the From/To dates. Use dd-mm-yyyy (e.g. 26-04-2026).",
                 )
+                return
+
+            from_date = from_parsed.strftime(DATE_FORMAT)
+            to_date = to_parsed.strftime(DATE_FORMAT)
+            self.report_from_var.set(from_date)
+            self.report_to_var.set(to_date)
+
+            db_from_date = from_parsed.strftime(DB_DATE_FORMAT)
+            db_to_date = to_parsed.strftime(DB_DATE_FORMAT)
+            print(f"Database dates - From: {db_from_date}, To: {db_to_date}")
+
+            lo, hi = DateUtils.chrono_sort_bounds(from_date, to_date)
+            if not lo or not hi:
+                messagebox.showwarning("Invalid Dates", "Could not build date range for query.")
+                return
+
+            chrono = DateUtils.sql_chrono_key("date")
+            query = f"""
+                SELECT date, start_time, end_time, break_duration, hourly_rate, total_hours, total_earnings, notes
+                FROM time_logs
+                WHERE ({chrono} >= ? AND {chrono} <= ?)
             """
-            
-            # For the first condition, use DD/MM/YYYY format
-            display_from = from_date
-            display_to = to_date
-            
-            # For the second condition, use YYYY-MM-DD format
-            db_format_from = db_from_date
-            db_format_to = db_to_date
-            
+            params = [lo, hi]
+
             # Add rate filter if specified
             min_rate = self.min_rate_var.get().strip()
             max_rate = self.max_rate_var.get().strip()
             keyword_filter = self.keyword_filter_var.get().strip()
-            
-            params = [display_from, display_to, db_format_from, db_format_to]
             
             if min_rate:
                 try:
@@ -1821,7 +2074,7 @@ class TimeLoggerApp:
                 query += " AND notes LIKE ?"
                 params.append(f"%{keyword_filter}%")
                 
-            query += " ORDER BY date"
+            query += " " + CHRONO_ORDER_BY_DATE_ASC
             print(f"Query: {query}")
             print(f"Parameters: {params}")
             
@@ -1835,7 +2088,9 @@ class TimeLoggerApp:
                 if count > 0:
                     print(f"No records found for date range, but database has {count} total records")
                     # Check all date entries to see their format
-                    self.cursor.execute("SELECT DISTINCT date FROM time_logs ORDER BY date")
+                    self.cursor.execute(
+                        "SELECT DISTINCT date FROM time_logs " + CHRONO_ORDER_BY_DATE_ASC
+                    )
                     all_dates = self.cursor.fetchall()
                     print(f"Available dates in database: {all_dates}")
                     
@@ -1844,7 +2099,7 @@ class TimeLoggerApp:
                     messagebox.showinfo("No Data For Selected Period", 
                                        f"No records found for the period {from_date} to {to_date}.\n\n"
                                        f"The database contains {count} records with dates: {date_list}\n\n"
-                                       f"Try selecting 'All Data' from the Quick Select menu to view all records.")
+                                       f"Try the 'Shortcuts & filters' tab, then All Data, to view all records.")
                     return
                 else:
                     print("No records found in database")
@@ -1871,16 +2126,13 @@ class TimeLoggerApp:
                 print(f"Found {len(all_records)} records for the date range")
             
             # Prepare summary query with the same flexible date handling
-            summary_query = """
+            summary_query = f"""
                 SELECT date, SUM(total_hours) as hours, SUM(total_earnings) as earnings, AVG(hourly_rate) as avg_rate
-                FROM time_logs 
-                WHERE (
-                    (date BETWEEN ? AND ?) OR
-                    (date BETWEEN ? AND ?)
-                )
+                FROM time_logs
+                WHERE ({chrono} >= ? AND {chrono} <= ?)
             """
-            
-            summary_params = [display_from, display_to, db_format_from, db_format_to]
+
+            summary_params = [lo, hi]
             
             # Apply the same filters
             if min_rate:
@@ -1904,7 +2156,10 @@ class TimeLoggerApp:
                 summary_query += " AND notes LIKE ?"
                 summary_params.append(f"%{keyword_filter}%")
                 
-            summary_query += " GROUP BY date ORDER BY date"
+            summary_query += (
+                " GROUP BY date ORDER BY "
+                "(substr(date, 7, 4) || substr(date, 4, 2) || substr(date, 1, 2))"
+            )
             
             self.cursor.execute(summary_query, summary_params)
             data = self.cursor.fetchall()
@@ -1916,8 +2171,8 @@ class TimeLoggerApp:
                     SELECT date, SUM(total_hours) as hours, SUM(total_earnings) as earnings, AVG(hourly_rate) as avg_rate
                     FROM time_logs 
                     GROUP BY date
-                    ORDER BY date
-                """)
+                    """ + " ORDER BY (substr(date, 7, 4) || substr(date, 4, 2) || substr(date, 1, 2))"
+                )
                 data = self.cursor.fetchall()
                 
                 if not data:
@@ -1980,37 +2235,40 @@ class TimeLoggerApp:
                 peak_hours = "N/A"
             
             # Convert productive date to display format if needed
-            if most_productive_date and most_productive_date != "N/A" and '-' in most_productive_date:
-                try:
-                    date_obj = datetime.strptime(most_productive_date, DB_DATE_FORMAT).date()
-                    most_productive_date = date_obj.strftime(DATE_FORMAT)
-                except ValueError:
-                    pass
-                    
+            if most_productive_date and most_productive_date != "N/A":
+                most_productive_date = DateUtils.format_date_for_display(str(most_productive_date))
+
             # Convert least productive date to display format if needed
-            if least_productive_date and least_productive_date != "N/A" and '-' in least_productive_date:
-                try:
-                    date_obj = datetime.strptime(least_productive_date, DB_DATE_FORMAT).date()
-                    least_productive_date = date_obj.strftime(DATE_FORMAT)
-                except ValueError:
-                    pass
+            if least_productive_date and least_productive_date != "N/A":
+                least_productive_date = DateUtils.format_date_for_display(str(least_productive_date))
             
-            # Calculate projected monthly earnings based on current rate and hours
-            try:
-                # Calculate daily average earnings
-                daily_avg_earnings = total_earnings / period_days if period_days > 0 else 0
-                
-                # Project for a 30-day month
-                projected_monthly = daily_avg_earnings * 30
-            except (ValueError, ZeroDivisionError):
-                projected_monthly = 0
-            
-            # Update statistics display
+            # Calculate projected monthly earnings using recent trend + expected workdays.
+            daily_earnings_data = []
+            for row in data:
+                parsed_date = DateUtils.parse_date_string(row[0])
+                if parsed_date:
+                    daily_earnings_data.append((parsed_date, float(row[2] or 0)))
+
+            proj = self.compute_earnings_projection(
+                daily_earnings_data=daily_earnings_data,
+                period_start=from_date_obj,
+                period_end=to_date_obj,
+                recent_window_days=28,
+                projection_days=30,
+            )
+            projected_monthly = proj["total"]
+
+            self.stats_projection_headline_var.set(f"${projected_monthly:,.2f}")
+            detail = "\n".join(proj["summary_lines"] + [""] + proj["weekday_lines"])
+            self.stats_projection_text.configure(state="normal")
+            self.stats_projection_text.delete("1.0", tk.END)
+            self.stats_projection_text.insert(tk.END, detail)
+            self.stats_projection_text.configure(state="disabled")
+
             self.stats_hours_var.set(f"{total_hours:.2f}")
             self.stats_earnings_var.set(f"${total_earnings:.2f}")
             self.stats_avg_hours_var.set(f"{avg_daily_hours:.2f}")
             self.stats_avg_rate_var.set(f"${avg_rate:.2f}")
-            self.stats_projected_var.set(f"${projected_monthly:.2f}")
             self.stats_productive_var.set(f"{most_productive_date} ({most_productive_hours:.2f} hrs)")
             
             # Update new statistics fields
@@ -2056,7 +2314,36 @@ class TimeLoggerApp:
             
             # Generate comparison with previous period if enabled
             self.generate_period_comparison(db_from_date, db_to_date)
-            
+
+            self._last_ai_ctx = {
+                "from_date": from_date,
+                "to_date": to_date,
+                "daily_rows": list(data),
+                "total_hours": float(total_hours),
+                "total_earnings_value": float(total_earnings),
+                "work_days": int(work_days),
+                "period_days": int(period_days),
+                "avg_daily_hours": float(avg_daily_hours),
+                "avg_daily_earnings_value": float(avg_daily_earnings),
+                "avg_rate_value": float(avg_rate),
+                "most_productive": self.stats_productive_var.get(),
+                "least_productive": self.stats_least_productive_var.get(),
+                "peak_hours": peak_hours,
+                "hours_trend": self.hours_trend_var.get(),
+                "earnings_trend": self.earnings_trend_var.get(),
+                "rate_trend": self.rate_trend_var.get(),
+                "productivity_trend": self.productivity_var.get(),
+                "projected_total": float(projected_monthly),
+                "projection_detail": detail,
+                "compare_enabled": bool(self.compare_enabled_var.get()),
+                "compare_hours": self.compare_hours_var.get(),
+                "compare_earnings": self.compare_earnings_var.get(),
+                "prev_hours": self.prev_hours_var.get(),
+                "prev_earnings": self.prev_earnings_var.get(),
+            }
+            report_ai_insights.normalize_context(self._last_ai_ctx)
+            self._start_report_ai_thread()
+
             # Generate charts
             self.generate_charts(data)
             
@@ -2099,6 +2386,190 @@ class TimeLoggerApp:
             return "↓↓ Strong Decrease"
         else:  # Mild negative
             return "↓ Decreasing"
+
+    def refresh_report_ai_insights(self):
+        """Regenerate AI / heuristic coaching from the last successful report."""
+        if not getattr(self, "_last_ai_ctx", None):
+            messagebox.showinfo("AI coach", "Generate a report first.")
+            return
+        if getattr(self, "_report_ai_busy", False):
+            return
+        self._start_report_ai_thread()
+
+    def _start_report_ai_thread(self):
+        ctx = getattr(self, "_last_ai_ctx", None)
+        if not ctx:
+            return
+        if getattr(self, "_report_ai_busy", False):
+            return
+        self._report_ai_busy = True
+        if hasattr(self, "report_ai_text"):
+            self.report_ai_text.configure(state="normal")
+            self.report_ai_text.delete("1.0", tk.END)
+            self.report_ai_text.insert(tk.END, "Generating insights…")
+            self.report_ai_text.configure(state="disabled")
+
+        def worker():
+            try:
+                body, foot = report_ai_insights.generate_insights(ctx)
+                text = f"{body}\n\n{foot}"
+            except Exception as e:
+                text = report_ai_insights.heuristic_insights(ctx)
+                text = f"{text}\n\n— Source: built-in rules (error: {e}) —"
+            self.root.after(0, functools.partial(self._finish_report_ai, text))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_report_ai(self, text: str):
+        self._report_ai_busy = False
+        if hasattr(self, "report_ai_text"):
+            self.report_ai_text.configure(state="normal")
+            self.report_ai_text.delete("1.0", tk.END)
+            self.report_ai_text.insert(tk.END, text)
+            self.report_ai_text.configure(state="disabled")
+
+    def _expected_weekday_work_probability(self, weekday, period_start, period_end, worked_weekday_counts):
+        """Estimate work probability for a weekday from observed period behavior."""
+        weekday_occurrences = 0
+        current_day = period_start
+        while current_day <= period_end:
+            if current_day.weekday() == weekday:
+                weekday_occurrences += 1
+            current_day += timedelta(days=1)
+
+        if weekday_occurrences <= 0:
+            return 0.0
+        return worked_weekday_counts.get(weekday, 0) / weekday_occurrences
+
+    @staticmethod
+    def _weekday_slots_in_range(weekday, period_start, period_end):
+        n = 0
+        cur = period_start
+        while cur <= period_end:
+            if cur.weekday() == weekday:
+                n += 1
+            cur += timedelta(days=1)
+        return n
+
+    def compute_earnings_projection(
+        self,
+        daily_earnings_data,
+        period_start,
+        period_end,
+        recent_window_days=28,
+        projection_days=30,
+    ):
+        """
+        Project earnings for projection_days immediately after period_end, and return
+        a breakdown for the UI (recent window, weekday work rates, dollar averages).
+        """
+        empty = {
+            "total": 0.0,
+            "summary_lines": [
+                "Not enough data: need at least one day with earnings in the report range.",
+            ],
+            "weekday_lines": [],
+        }
+        if not daily_earnings_data or period_end < period_start:
+            return empty
+
+        sorted_data = sorted(daily_earnings_data, key=lambda item: item[0])
+        overall_avg = sum(earnings for _, earnings in sorted_data) / len(sorted_data)
+
+        latest_date = sorted_data[-1][0]
+        recent_cutoff = latest_date - timedelta(days=max(1, recent_window_days) - 1)
+
+        recent_earnings = []
+        worked_weekday_counts = {i: 0 for i in range(7)}
+        recent_weekday_earnings = {i: [] for i in range(7)}
+
+        for work_date, earnings in sorted_data:
+            weekday = work_date.weekday()
+            worked_weekday_counts[weekday] += 1
+
+            if work_date >= recent_cutoff:
+                recent_earnings.append(earnings)
+                recent_weekday_earnings[weekday].append(earnings)
+
+        baseline_recent_avg = (
+            sum(recent_earnings) / len(recent_earnings) if recent_earnings else overall_avg
+        )
+
+        projected_total = 0.0
+        for offset in range(1, max(1, projection_days) + 1):
+            target_day = period_end + timedelta(days=offset)
+            weekday = target_day.weekday()
+
+            work_probability = self._expected_weekday_work_probability(
+                weekday, period_start, period_end, worked_weekday_counts
+            )
+            weekday_recent_values = recent_weekday_earnings.get(weekday, [])
+            weekday_trend_earnings = (
+                sum(weekday_recent_values) / len(weekday_recent_values)
+                if weekday_recent_values
+                else baseline_recent_avg
+            )
+
+            projected_total += work_probability * weekday_trend_earnings
+
+        horizon_start = period_end + timedelta(days=1)
+        horizon_end = period_end + timedelta(days=projection_days)
+        recent_start = recent_cutoff
+        recent_end = latest_date
+
+        day_names = list(calendar.day_name)
+        weekday_lines = []
+        for wd in range(7):
+            p = self._expected_weekday_work_probability(
+                wd, period_start, period_end, worked_weekday_counts
+            )
+            slots = self._weekday_slots_in_range(wd, period_start, period_end)
+            wcount = worked_weekday_counts.get(wd, 0)
+            rv = recent_weekday_earnings.get(wd, [])
+            ravg = sum(rv) / len(rv) if rv else baseline_recent_avg
+            if rv:
+                src = f"{len(rv)} sample(s) in last {recent_window_days}d window"
+            else:
+                src = "no samples; uses recent overall avg"
+            weekday_lines.append(
+                f"{day_names[wd]:9}  P(work) {p:.0%}  ({wcount}/{slots} logged days in report)  "
+                f"${ravg:.2f}/day when working  ({src})"
+            )
+
+        summary_lines = [
+            "What this is",
+            f"• Adds expected earnings for the {projection_days} days right after your report end "
+            f"({period_end.strftime(DATE_FORMAT)}), not a full calendar month.",
+            "• Each future day = P(you work that weekday in the report) × (avg earnings on that weekday in the recent window, or recent overall avg).",
+            "",
+            "Inputs",
+            f"• Report range: {period_start.strftime(DATE_FORMAT)} → {period_end.strftime(DATE_FORMAT)}",
+            f"• Recent window: {recent_start.strftime(DATE_FORMAT)} → {recent_end.strftime(DATE_FORMAT)} "
+            f"({recent_window_days} days ending on the latest day in this report)",
+            f"• Avg earnings per reported day (full range): ${overall_avg:.2f}",
+            f"• Avg earnings per day in recent window: ${baseline_recent_avg:.2f}",
+            f"• Horizon summed: {horizon_start.strftime(DATE_FORMAT)} → {horizon_end.strftime(DATE_FORMAT)}",
+            "",
+            "By weekday",
+        ]
+
+        return {
+            "total": projected_total,
+            "summary_lines": summary_lines,
+            "weekday_lines": weekday_lines,
+        }
+
+    def calculate_projected_monthly_earnings(
+        self, daily_earnings_data, period_start, period_end, recent_window_days=28, projection_days=30
+    ):
+        """Backward-compatible: return only the projected total (same model as compute_earnings_projection)."""
+        return self.compute_earnings_projection(
+            daily_earnings_data,
+            period_start,
+            period_end,
+            recent_window_days=recent_window_days,
+            projection_days=projection_days,
+        )["total"]
     
     def generate_period_comparison(self, from_date, to_date):
         """Generate comparison statistics with previous period"""
@@ -2122,13 +2593,16 @@ class TimeLoggerApp:
             prev_to_date = prev_to_date_obj.strftime(DB_DATE_FORMAT)
             prev_from_date = prev_from_date_obj.strftime(DB_DATE_FORMAT)
             
-            # Get data for previous period
-            query = '''
+            prev_lo, prev_hi = DateUtils.chrono_sort_bounds(prev_from_date, prev_to_date)
+            chrono = DateUtils.sql_chrono_key("date")
+            query = f'''
                 SELECT SUM(total_hours) as hours, SUM(total_earnings) as earnings
                 FROM time_logs 
-                WHERE date BETWEEN ? AND ?
+                WHERE ({chrono} >= ? AND {chrono} <= ?)
             '''
-            self.cursor.execute(query, (prev_from_date, prev_to_date))
+            if not prev_lo or not prev_hi:
+                return
+            self.cursor.execute(query, (prev_lo, prev_hi))
             prev_data = self.cursor.fetchone()
             
             if prev_data and prev_data[0] is not None:
@@ -2142,7 +2616,10 @@ class TimeLoggerApp:
                 # Get current period totals
                 current_from_date = from_date_obj.strftime(DB_DATE_FORMAT)
                 current_to_date = to_date_obj.strftime(DB_DATE_FORMAT)
-                self.cursor.execute(query, (current_from_date, current_to_date))
+                cur_lo, cur_hi = DateUtils.chrono_sort_bounds(current_from_date, current_to_date)
+                if not cur_lo or not cur_hi:
+                    return
+                self.cursor.execute(query, (cur_lo, cur_hi))
                 curr_data = self.cursor.fetchone()
                 curr_hours = curr_data[0] if curr_data and curr_data[0] else 0
                 curr_earnings = curr_data[1] if curr_data and curr_data[1] else 0
@@ -2222,7 +2699,7 @@ class TimeLoggerApp:
     def _generate_bar_charts(self, df):
         """Generate bar charts for hours and earnings"""
         # Create figure with subplots - adjust size for right-side panel layout
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 10), dpi=100)
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), dpi=100)
         
         # Set larger font sizes for better readability
         plt.rcParams.update({'font.size': 10})  # Reduced font size for better fit
@@ -2327,7 +2804,8 @@ class TimeLoggerApp:
                 # Convert date strings to datetime objects for proper sorting
                 date_objects = []
                 for date_str in df['date']:
-                    date_objects.append(DateUtils.string_to_date(date_str))
+                    d = DateUtils.parse_date_string(str(date_str).strip())
+                    date_objects.append(d if d else date.min)
                 
                 df['date_obj'] = date_objects
                 df = df.sort_values(by='date_obj')
@@ -2341,7 +2819,7 @@ class TimeLoggerApp:
         """Generate line charts for hours and earnings over time"""
         try:
             # Create figure with subplots
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 10), dpi=100)
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), dpi=100)
             
             # Set style for line charts
             plt.rcParams.update({'font.size': 10})  # Reduced font size for better fit
@@ -2353,15 +2831,11 @@ class TimeLoggerApp:
                     # Handle both date formats (DB and display)
                     date_objects = []
                     for date_str in df['date']:
-                        try:
-                            if '-' in date_str:  # YYYY-MM-DD format
-                                date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-                            else:  # DD/MM/YYYY format
-                                date_obj = datetime.strptime(date_str, DATE_FORMAT).date()
-                            date_objects.append(date_obj)
-                        except ValueError:
-                            # If conversion fails, use the original string
-                            date_objects.append(date_str)
+                        d = DateUtils.parse_date_string(str(date_str).strip())
+                        if d:
+                            date_objects.append(d)
+                        else:
+                            date_objects.append(str(date_str))
                     
                     df['date_obj'] = date_objects
                     df = df.sort_values(by='date_obj')
@@ -2441,7 +2915,7 @@ class TimeLoggerApp:
         """Generate pie charts for hours and earnings distribution"""
         try:
             # Create figure with subplots
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 6), dpi=100)
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 7), dpi=100)
             
             # Calculate total hours and earnings
             total_hours = df['hours'].sum()
@@ -2556,7 +3030,7 @@ class TimeLoggerApp:
         """Generate charts showing distribution of work by days of week"""
         try:
             # Create figure with subplots
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 10), dpi=100)
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), dpi=100)
             
             # Set smaller font size for better fit
             plt.rcParams.update({'font.size': 10})
@@ -2579,11 +3053,10 @@ class TimeLoggerApp:
                     for _, row in df.iterrows():
                         date_str = row['date']
                         try:
-                            if '-' in date_str:  # YYYY-MM-DD format
-                                date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-                            else:  # DD/MM/YYYY format
-                                date_obj = datetime.strptime(date_str, DATE_FORMAT).date()
-                            
+                            date_obj = DateUtils.parse_date_string(str(date_str).strip())
+                            if not date_obj:
+                                raise ValueError("unparseable")
+
                             day_of_week = date_obj.weekday()  # 0 is Monday, 6 is Sunday
                             days_of_week[day_of_week]["hours"] += row['hours']
                             days_of_week[day_of_week]["earnings"] += row['earnings']
@@ -2761,16 +3234,11 @@ class TimeLoggerApp:
             
             query = "SELECT * FROM time_logs WHERE 1=1"
             params = []
-            
-            if from_date:
-                query += " AND date >= ?"
-                params.append(from_date)
-                
-            if to_date:
-                query += " AND date <= ?"
-                params.append(to_date)
-                
-            query += " ORDER BY date DESC"
+            clause, extra = DateUtils.time_logs_where_chrono(from_date, to_date)
+            query += clause
+            params.extend(extra)
+
+            query += " " + CHRONO_ORDER_BY_DATE_DESC
             
             self.cursor.execute(query, params)
             data = self.cursor.fetchall()
@@ -2809,16 +3277,11 @@ class TimeLoggerApp:
             
             query = "SELECT * FROM time_logs WHERE 1=1"
             params = []
-            
-            if from_date:
-                query += " AND date >= ?"
-                params.append(from_date)
-                
-            if to_date:
-                query += " AND date <= ?"
-                params.append(to_date)
-                
-            query += " ORDER BY date DESC"
+            clause, extra = DateUtils.time_logs_where_chrono(from_date, to_date)
+            query += clause
+            params.extend(extra)
+
+            query += " " + CHRONO_ORDER_BY_DATE_DESC
             
             self.cursor.execute(query, params)
             data = self.cursor.fetchall()
@@ -2879,10 +3342,10 @@ class TimeLoggerApp:
                 
             # Validate dates format
             try:
-                datetime.strptime(start_date, "%d/%m/%Y")
-                datetime.strptime(end_date, "%d/%m/%Y")
+                datetime.strptime(start_date, DATE_FORMAT)
+                datetime.strptime(end_date, DATE_FORMAT)
             except ValueError:
-                messagebox.showwarning("Invalid Date Format", "Please use dd/mm/yyyy format for dates.")
+                messagebox.showwarning("Invalid Date Format", "Please use dd-mm-yyyy format for dates.")
                 return
                 
             # If setting as default, clear other defaults
@@ -2924,10 +3387,10 @@ class TimeLoggerApp:
                 
             # Parse dates
             try:
-                start_date = datetime.strptime(start_date_str, "%d/%m/%Y")
-                end_date = datetime.strptime(end_date_str, "%d/%m/%Y")
+                start_date = datetime.strptime(start_date_str, DATE_FORMAT)
+                end_date = datetime.strptime(end_date_str, DATE_FORMAT)
             except ValueError:
-                messagebox.showwarning("Invalid Date Format", "Please use dd/mm/yyyy format for dates.")
+                messagebox.showwarning("Invalid Date Format", "Please use dd-mm-yyyy format for dates.")
                 return
                 
             # Calculate period duration
@@ -2949,20 +3412,15 @@ class TimeLoggerApp:
                 current_start = start_date + timedelta(days=i * period_duration)
                 current_end = end_date + timedelta(days=i * period_duration)
                 
-                # Generate period name
-                if base_name.startswith("Payroll") or base_name.startswith("Weekly") or base_name.startswith("Biweekly"):
-                    # For auto-generated names, recreate the name with proper dates
-                    current_name = f"{base_name.split(' ')[0]} {current_start.strftime('%b %d')} - {current_end.strftime('%b %d, %Y')}"
-                else:
-                    # For custom names, append a number
-                    current_name = f"{base_name} ({i+1})"
+                # Generate readable, date-based period names for all recurring periods.
+                current_name = self.build_recurring_period_name(base_name, current_start, current_end)
                 
                 # Insert period
                 self.cursor.execute('''
                     INSERT INTO payroll_periods (period_name, start_date, end_date, is_default)
                     VALUES (?, ?, ?, ?)
-                ''', (current_name, current_start.strftime("%d/%m/%Y"), 
-                      current_end.strftime("%d/%m/%Y"), 1 if i == 0 and is_default else 0))
+                ''', (current_name, current_start.strftime(DATE_FORMAT), 
+                      current_end.strftime(DATE_FORMAT), 1 if i == 0 and is_default else 0))
             
             # Commit transaction
             self.conn.commit()
@@ -2973,6 +3431,28 @@ class TimeLoggerApp:
         except Exception as e:
             self.conn.rollback()
             messagebox.showerror("Error", f"Failed to generate payroll periods: {str(e)}")
+
+    def build_recurring_period_name(self, base_name, start_date, end_date):
+        """Build a clean recurring period name with an explicit date range."""
+        cleaned_base = (base_name or "").strip()
+
+        # Remove existing generated suffixes like "(3)".
+        cleaned_base = re.sub(r"\s*\(\d+\)\s*$", "", cleaned_base)
+
+        # Remove any existing date range text so we don't duplicate it.
+        cleaned_base = re.sub(
+            r"\s+[A-Za-z]{3}\s+\d{1,2}\s*-\s*[A-Za-z]{3}\s+\d{1,2},\s*\d{4}\s*$",
+            "",
+            cleaned_base
+        ).strip()
+
+        # Use selected period type as sensible default if base name is empty.
+        if not cleaned_base:
+            period_type = (self.period_type_var.get() or "Payroll").strip()
+            cleaned_base = f"{period_type} Payroll" if period_type != "Custom" else "Payroll Period"
+
+        range_text = f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d, %Y')}"
+        return f"{cleaned_base} {range_text}"
     
     def load_payroll_periods(self):
         """Load payroll periods from database into the treeview"""
@@ -3136,162 +3616,44 @@ class TimeLoggerApp:
             messagebox.showerror("Error", f"Failed to open CSV file: {str(e)}")
     
     def show_calendar_popup(self, date_var_name):
-        """
-        Display an improved calendar popup for date selection
-        
-        Args:
-            date_var_name: String identifier for which date variable to update ('report_from' or 'report_to')
-        """
-        # Get the actual StringVar based on the passed identifier
+        """Open the shared date picker for a StringVar (reports regenerate on confirm)."""
         if date_var_name == "report_from":
             date_var = self.report_from_var
+            title = "Report range — From"
         elif date_var_name == "report_to":
             date_var = self.report_to_var
+            title = "Report range — To"
         elif hasattr(self, date_var_name):
-            # If the name directly matches an attribute that is a StringVar
             date_var = getattr(self, date_var_name)
+            title = date_var_name.replace("_", " ").title()
         else:
             print(f"Error: Unknown date variable identifier: {date_var_name}")
             return
-        
-        def set_date():
-            # Get selected date from calendar
-            selected_date = cal.get_date()
-            print(f"Selected date from calendar: {selected_date}")
-            
-            # Format the date consistently
-            try:
-                # Ensure date is in dd/mm/yyyy format regardless of how it was returned
-                if isinstance(selected_date, str):
-                    if '-' in selected_date:  # YYYY-MM-DD format
-                        date_obj = datetime.strptime(selected_date, "%Y-%m-%d").date()
-                    elif '/' in selected_date:  # DD/MM/YYYY format
-                        date_obj = datetime.strptime(selected_date, DATE_FORMAT).date()
-                    else:
-                        # Unknown format - try common formats
-                        try:
-                            date_obj = datetime.strptime(selected_date, "%m/%d/%Y").date()
-                        except ValueError:
-                            # Last resort - current date
-                            date_obj = datetime.now().date()
-                else:
-                    # It's already a date object
-                    date_obj = selected_date
-                    
-                # Set the formatted date
-                formatted_date = date_obj.strftime(DATE_FORMAT)
-                date_var.set(formatted_date)
-                print(f"Setting {date_var_name} to: {formatted_date}")
-            except Exception as e:
-                print(f"Error formatting date: {e}")
-                # If all else fails, just set whatever we received
-                date_var.set(str(selected_date))
-                
-            # Destroy the popup
-            top.destroy()
-            
-            # Regenerate report with the new date
-            self.generate_report()
-            
-        # Create the popup window
-        top = tk.Toplevel(self.root)
-        top.title("Select Date")
-        top.geometry("320x380")  # Increased height for additional elements
-        top.resizable(False, False)
-        
-        # Add a header with instructions
-        header_frame = ttk.Frame(top)
-        header_frame.pack(fill="x", padx=10, pady=5)
-        
-        ttk.Label(header_frame, text=f"Select date for {date_var_name.replace('_', ' ').title()}", 
-                 font=("Arial", 10, "bold")).pack(side=tk.LEFT)
-        
-        # Add date format reminder
-        format_frame = ttk.Frame(top)
-        format_frame.pack(fill="x", padx=10, pady=2)
-        ttk.Label(format_frame, text="Date format: dd/mm/yyyy", foreground="blue").pack(side=tk.LEFT)
-        
-        # Create the calendar with explicit date pattern
-        cal = Calendar(top, selectmode='day', date_pattern='dd/mm/yyyy')
-        cal.pack(padx=10, pady=10, fill="both", expand=True)
-        
-        # Try to set the calendar to the currently selected date
-        current_date = date_var.get()
-        if current_date:
-            try:
-                if '/' in current_date:  # DD/MM/YYYY format
-                    date_obj = datetime.strptime(current_date, DATE_FORMAT).date()
-                else:  # Assume YYYY-MM-DD format
-                    date_obj = datetime.strptime(current_date, DB_DATE_FORMAT).date()
-                    
-                cal.selection_set(date_obj)
-            except (ValueError, TypeError) as e:
-                print(f"Error setting calendar date: {e}")
-                # If invalid, don't set a selection
-        
-        # Add buttons for quick selection of today, this week, this month
-        quick_frame = ttk.Frame(top)
-        quick_frame.pack(fill="x", padx=10, pady=5)
-        
-        today = datetime.now().date()
-        
-        ttk.Button(quick_frame, text="Today", 
-                  command=lambda: cal.selection_set(today)).pack(side=tk.LEFT, padx=5)
-        
-        # First day of month
-        first_of_month = today.replace(day=1)
-        ttk.Button(quick_frame, text="Month Start", 
-                  command=lambda: cal.selection_set(first_of_month)).pack(side=tk.LEFT, padx=5)
-        
-        # Last day of month
-        if today.month == 12:
-            last_of_month = today.replace(day=31)
-        else:
-            next_month = today.replace(month=today.month+1, day=1)
-            last_of_month = next_month - timedelta(days=1)
-            
-        ttk.Button(quick_frame, text="Month End", 
-                  command=lambda: cal.selection_set(last_of_month)).pack(side=tk.LEFT, padx=5)
-        
-        # Add confirm button
-        button_frame = ttk.Frame(top)
-        button_frame.pack(fill="x", padx=10, pady=10)
-        
-        ttk.Button(button_frame, text="Confirm", command=set_date, style="Accent.TButton").pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="Cancel", command=top.destroy).pack(side=tk.RIGHT, padx=5)
-        
-        # Make the dialog modal
-        top.transient(self.root)
-        top.grab_set()
-        self.root.wait_window(top)
-    
+        open_date_picker(self.root, date_var, title=title, on_confirm=self.generate_report)
+
     def show_overview_report(self):
         """Show a comprehensive overview report in a popup window"""
         try:
+            # Get current date range
+            from_date = self.report_from_var.get() if self.report_from_var.get() else DEFAULT_DATE_RANGE[0]
+            to_date = self.report_to_var.get() if self.report_to_var.get() else DEFAULT_DATE_RANGE[1]
+
+            lo, hi = DateUtils.chrono_sort_bounds(from_date, to_date)
+            if not lo or not hi:
+                messagebox.showwarning(
+                    "Invalid Dates",
+                    "Could not read the date range for the overview. Use dd-mm-yyyy.",
+                )
+                return
+
+            chrono = DateUtils.sql_chrono_key("date")
+
             # Create popup window
             overview_window = tk.Toplevel(self.root)
             overview_window.title("Comprehensive Work Overview")
             overview_window.geometry("800x600")
             overview_window.transient(self.root)
-            
-            # Get current date range
-            from_date = self.report_from_var.get() if self.report_from_var.get() else "01/04/2025" 
-            to_date = self.report_to_var.get() if self.report_to_var.get() else "30/04/2025"
-            
-            # Convert dates if needed
-            if '/' in from_date:
-                db_from_date = from_date.split('/')
-                db_from_date = f"{db_from_date[2]}-{db_from_date[1]}-{db_from_date[0]}"
-            else:
-                db_from_date = from_date
-                
-            if '/' in to_date:
-                db_to_date = to_date.split('/')
-                db_to_date = f"{db_to_date[2]}-{db_to_date[1]}-{db_to_date[0]}"
-            else:
-                db_to_date = to_date
-            
-            # Create a notebook for different overview sections
+
             notebook = ttk.Notebook(overview_window)
             notebook.pack(fill="both", expand=True, padx=10, pady=10)
             
@@ -3316,9 +3678,9 @@ class TimeLoggerApp:
                     MIN(hourly_rate) as min_rate,
                     MAX(hourly_rate) as max_rate
                 FROM time_logs 
-                WHERE date BETWEEN '{db_from_date}' AND '{db_to_date}'
+                WHERE ({chrono} >= ? AND {chrono} <= ?)
             """
-            self.cursor.execute(query)
+            self.cursor.execute(query, (lo, hi))
             stats = self.cursor.fetchone()
             
             if not stats or stats[0] == 0:
@@ -3366,8 +3728,11 @@ class TimeLoggerApp:
             ttk.Label(row3, text=f"${(total_earnings/work_days):.2f}" if work_days else "$0.00").grid(row=0, column=1, padx=10, sticky="w")
             
             # Get dates for period duration calculation
-            from_date_obj = datetime.strptime(from_date, DATE_FORMAT).date() if '/' in from_date else datetime.strptime(from_date, DB_DATE_FORMAT).date()
-            to_date_obj = datetime.strptime(to_date, DATE_FORMAT).date() if '/' in to_date else datetime.strptime(to_date, DB_DATE_FORMAT).date()
+            from_date_obj = DateUtils.parse_date_string(str(from_date).strip())
+            to_date_obj = DateUtils.parse_date_string(str(to_date).strip())
+            if not from_date_obj or not to_date_obj:
+                from_date_obj = DateUtils.string_to_date(from_date)
+                to_date_obj = DateUtils.string_to_date(to_date)
             period_days = (to_date_obj - from_date_obj).days + 1
             
             ttk.Label(row3, text="Period Duration:", font=("Arial", 10, "bold")).grid(row=0, column=2, padx=10, sticky="w")
@@ -3381,11 +3746,11 @@ class TimeLoggerApp:
             query = f"""
                 SELECT date, SUM(total_hours) as hours
                 FROM time_logs 
-                WHERE date BETWEEN '{db_from_date}' AND '{db_to_date}'
+                WHERE ({chrono} >= ? AND {chrono} <= ?)
                 GROUP BY date
-                ORDER BY date
+                ORDER BY (substr(date, 7, 4) || substr(date, 4, 2) || substr(date, 1, 2))
             """
-            self.cursor.execute(query)
+            self.cursor.execute(query, (lo, hi))
             daily_data = self.cursor.fetchall()
             
             # Create a mini chart
@@ -3417,10 +3782,10 @@ class TimeLoggerApp:
             query = f"""
                 SELECT date, total_hours, total_earnings
                 FROM time_logs 
-                WHERE date BETWEEN '{db_from_date}' AND '{db_to_date}'
-                ORDER BY date
+                WHERE ({chrono} >= ? AND {chrono} <= ?)
+                ORDER BY (substr(date, 7, 4) || substr(date, 4, 2) || substr(date, 1, 2))
             """
-            self.cursor.execute(query)
+            self.cursor.execute(query, (lo, hi))
             records = self.cursor.fetchall()
             
             if records:
@@ -3434,10 +3799,9 @@ class TimeLoggerApp:
                     earnings = record[2]
                     
                     try:
-                        if '-' in date_str:  # YYYY-MM-DD format
-                            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-                        else:  # DD/MM/YYYY format
-                            date_obj = datetime.strptime(date_str, DATE_FORMAT).date()
+                        date_obj = DateUtils.parse_date_string(str(date_str))
+                        if not date_obj:
+                            raise ValueError("unparseable")
                         
                         day_idx = date_obj.weekday()  # 0 is Monday, 6 is Sunday
                         days_of_week[day_idx]["hours"] += hours
@@ -3548,10 +3912,30 @@ class TimeLoggerApp:
                 if 'most_earnings_day' in locals() and most_earnings_day != most_hours_day:
                     recommendations.append("💰 **%s is your most profitable day**, which differs from your most productive day. Consider focusing more on high-value work on %s.\n" % (most_earnings_day, most_earnings_day))
                     
-                # Add projected earnings
-                monthly_projection = (total_earnings / period_days) * 30
+                # Add projected earnings from recent trend + expected workdays.
+                daily_earnings_map = {}
+                for record in records:
+                    work_date = DateUtils.parse_date_string(record[0])
+                    if not work_date:
+                        continue
+                    daily_earnings_map[work_date] = daily_earnings_map.get(work_date, 0.0) + float(record[2] or 0)
+
+                proj_detail = self.compute_earnings_projection(
+                    daily_earnings_data=list(daily_earnings_map.items()),
+                    period_start=from_date_obj,
+                    period_end=to_date_obj,
+                    recent_window_days=28,
+                    projection_days=30,
+                )
+                monthly_projection = proj_detail["total"]
                 recommendations.append("\n## Projections\n\n")
-                recommendations.append("💼 **Monthly projection**: At your current rate, you would earn approximately $%.2f per month.\n" % monthly_projection)
+                recommendations.append(
+                    "💼 **Forward earnings estimate**: About **$%.2f** over the **30 days after** your report end, "
+                    "using weekday work rates from this period and your **last 28 days** of daily earnings.\n"
+                    % monthly_projection
+                )
+                clip = "\n".join(proj_detail["summary_lines"][:6])
+                recommendations.append("\n<details>\n%s\n</details>\n" % clip)
                 yearly_projection = monthly_projection * 12
                 recommendations.append("🗓️ **Yearly projection**: This translates to roughly $%.2f per year.\n" % yearly_projection)
                 
@@ -3589,33 +3973,34 @@ class TimeLoggerApp:
             
             if not from_date or not to_date:
                 # Use default date range if none specified
-                from_date = "01/04/2025"
-                to_date = "30/04/2025"
+                from_date = DEFAULT_DATE_RANGE[0]
+                to_date = DEFAULT_DATE_RANGE[1]
             
             # Get data for the report - convert dates to database format
             db_from_date = self.convert_to_db_date_format(from_date)
             db_to_date = self.convert_to_db_date_format(to_date)
-            
-            query = """
+            lo, hi = DateUtils.chrono_sort_bounds(from_date, to_date)
+            if not lo or not hi:
+                messagebox.showinfo("No Data", "Invalid date range for export")
+                return
+
+            chrono = DateUtils.sql_chrono_key("date")
+            query = f"""
                 SELECT date, start_time, end_time, break_duration, hourly_rate, total_hours, total_earnings, notes
                 FROM time_logs 
-                WHERE date BETWEEN ? AND ?
-                ORDER BY date
+                WHERE ({chrono} >= ? AND {chrono} <= ?)
+                {CHRONO_ORDER_BY_DATE_ASC}
             """
-            
-            self.cursor.execute(query, (db_from_date, db_to_date))
+
+            self.cursor.execute(query, (lo, hi))
             records = self.cursor.fetchall()
             
-            # Process dates for display in PDF - convert DB format to dd/mm/yyyy
+            # Process dates for display in PDF - convert DB format to dd-mm-yyyy
             display_records = []
             for record in records:
                 record_list = list(record)
-                if record[0] and '-' in record[0]:  # If date is in YYYY-MM-DD format
-                    try:
-                        date_obj = datetime.strptime(record[0], DB_DATE_FORMAT).date()
-                        record_list[0] = date_obj.strftime(DATE_FORMAT)
-                    except ValueError:
-                        pass  # Keep original if conversion fails
+                if record[0]:
+                    record_list[0] = DateUtils.format_date_for_display(str(record[0]))
                 display_records.append(record_list)
             
             if not display_records:
@@ -3694,7 +4079,7 @@ class TimeLoggerApp:
             for record in display_records:
                 # Format values for better display
                 row_data = [
-                    record[0],  # Date (already in dd/mm/yyyy format)
+                    record[0],  # Date (already in dd-mm-yyyy format)
                     record[1],  # Start time
                     record[2],  # End time
                     f"{record[3]} min",  # Break
@@ -3740,19 +4125,17 @@ class TimeLoggerApp:
                 # Gather data by date
                 dates = {}
                 for record in display_records:
-                    date = record[0]  # Date in dd/mm/yyyy format
+                    date = record[0]  # Date in dd-mm-yyyy format
                     hours = record[5]
                     if date in dates:
                         dates[date] += hours
                     else:
                         dates[date] = hours
                 
-                # Sort dates - need special handling for dd/mm/yyyy format
+                # Sort dates - need special handling for dd-mm-yyyy format
                 def date_key(date_str):
-                    try:
-                        return datetime.strptime(date_str, DATE_FORMAT).date()
-                    except ValueError:
-                        return datetime.now().date()  # Fallback
+                    d = DateUtils.parse_date_string(str(date_str))
+                    return d or datetime.now().date()
                         
                 sorted_dates = sorted(dates.keys(), key=date_key)
                 hours_data = [[dates[date] for date in sorted_dates]]
@@ -3801,21 +4184,15 @@ class TimeLoggerApp:
         Get min and max dates from database and update date fields.
         Renamed from update_date_slider.
         """
-        # Get min and max dates from database
-        self.cursor.execute("SELECT MIN(date), MAX(date) FROM time_logs")
-        result = self.cursor.fetchone()
-        
-        if result[0] is not None and result[1] is not None:
+        # Get min and max dates from database (chronological, not SQLite MIN/MAX on TEXT)
+        min_date, max_date = DateUtils.min_max_dates_in_time_logs(self.cursor)
+
+        if min_date is not None and max_date is not None:
             try:
-                print(f"Database date range: {result[0]} to {result[1]}")
-                # Parse dates with the utility class
-                min_date = DateUtils.string_to_date(result[0])
-                max_date = DateUtils.string_to_date(result[1])
-                
-                # Convert to display format for labels
-                min_date_display = DateUtils.date_to_string(min_date)
-                max_date_display = DateUtils.date_to_string(max_date)
-                
+                print(f"Database date range: {min_date.strftime(DATE_FORMAT)} to {max_date.strftime(DATE_FORMAT)}")
+                min_date_display = min_date.strftime(DATE_FORMAT)
+                max_date_display = max_date.strftime(DATE_FORMAT)
+
                 print(f"Parsed min_date: {min_date}, max_date: {max_date}")
                 
                 # Store the date range for later use
@@ -3863,56 +4240,22 @@ class TimeLoggerApp:
     def set_all_data_range(self):
         """Set date range to cover all available data"""
         try:
-            # Query all records to find actual min and max dates
-            self.cursor.execute("SELECT MIN(date), MAX(date) FROM time_logs")
-            min_max_dates = self.cursor.fetchone()
-            
-            if min_max_dates and min_max_dates[0] and min_max_dates[1]:
-                min_date_str = min_max_dates[0]
-                max_date_str = min_max_dates[1]
-                
+            min_date, max_date = DateUtils.min_max_dates_in_time_logs(self.cursor)
+
+            if min_date is not None and max_date is not None:
+                min_date_str = min_date.strftime(DATE_FORMAT)
+                max_date_str = max_date.strftime(DATE_FORMAT)
+
                 print(f"Min date from DB: {min_date_str}, Max date: {max_date_str}")
-                
-                # Convert both dates to display format consistently
-                # Handle both potential formats
-                try:
-                    if '-' in min_date_str:  # YYYY-MM-DD format
-                        min_date = datetime.strptime(min_date_str, DB_DATE_FORMAT).date()
-                    else:  # Assume DD/MM/YYYY format
-                        min_date = datetime.strptime(min_date_str, DATE_FORMAT).date()
-                        
-                    if '-' in max_date_str:  # YYYY-MM-DD format
-                        max_date = datetime.strptime(max_date_str, DB_DATE_FORMAT).date()
-                    else:  # Assume DD/MM/YYYY format
-                        max_date = datetime.strptime(max_date_str, DATE_FORMAT).date()
-                    
-                    # Set the date range using the consistent date format
-                    self.report_from_var.set(min_date.strftime(DATE_FORMAT))
-                    self.report_to_var.set(max_date.strftime(DATE_FORMAT))
-                    
-                    # Generate the report
-                    self.generate_report()
-                    
-                except ValueError as e:
-                    print(f"Error parsing date: {e}")
-                    # Fall back to showing all records using a direct query
-                    self.cursor.execute("SELECT COUNT(*) FROM time_logs")
-                    count = self.cursor.fetchone()[0]
-                    
-                    if count > 0:
-                        messagebox.showinfo("Date Format Issue", 
-                                          f"Found {count} records, but couldn't parse date formats. Showing all records.")
-                        
-                        # Clear date filters to show all
-                        self.report_from_var.set("")
-                        self.report_to_var.set("")
-                        self.generate_report()
-                    else:
-                        messagebox.showinfo("No Data", "No records found in the database")
+
+                self.report_from_var.set(min_date_str)
+                self.report_to_var.set(max_date_str)
+
+                # Generate the report
+                self.generate_report()
             else:
-                # No records found
                 messagebox.showinfo("No Data", "No records found in the database")
-                
+
         except Exception as e:
             print(f"Error in set_all_data_range: {str(e)}")
             # Leave the current date range as is
@@ -3926,6 +4269,11 @@ class TimeLoggerApp:
     def convert_date_string_to_date(self, date_str):
         """Convert a date string to a datetime.date object.
         Maintained for backward compatibility."""
+        if date_str is None:
+            return DateUtils.get_today()
+        parsed = DateUtils.parse_date_string(str(date_str).strip())
+        if parsed:
+            return parsed
         return DateUtils.string_to_date(date_str)
 
     def set_date_range(self, from_date, to_date, regenerate_report=True):
@@ -3939,12 +4287,12 @@ class TimeLoggerApp:
         """
         try:
             # Convert dates to strings in the correct format if needed
-            if isinstance(from_date, datetime.date):
+            if isinstance(from_date, date):
                 from_date_str = from_date.strftime(DATE_FORMAT)
             else:
                 from_date_str = from_date
                 
-            if isinstance(to_date, datetime.date):
+            if isinstance(to_date, date):
                 to_date_str = to_date.strftime(DATE_FORMAT)
             else:
                 to_date_str = to_date
@@ -3973,9 +4321,9 @@ class TimeLoggerApp:
         # Create a mutable copy of the record
         formatted = list(record)
         
-        # Convert date from DB format to display format if needed
-        if formatted[1] and '-' in formatted[1]:  # If in YYYY-MM-DD format
-            formatted[1] = DateUtils.format_date_for_display(formatted[1])
+        # Normalize date to dd-mm-yyyy for the treeview
+        if formatted[1]:
+            formatted[1] = DateUtils.format_date_for_display(str(formatted[1]))
         
         # Format earnings with dollar sign
         formatted[7] = f"${formatted[7]:.2f}"
