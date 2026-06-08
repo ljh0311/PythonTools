@@ -115,14 +115,30 @@ class BrightnessController:
         if self.cap is not None:
             self.cap.release()
 
-        self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
-        if not self.cap.isOpened():
-            self.cap = cv2.VideoCapture(self.camera_index)
+        # Suppress OpenCV warnings during camera setup
+        original_log_level = None
+        try:
+            original_log_level = cv2.getLogLevel()
+            cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)  # Only show errors, suppress warnings
+        except (AttributeError, cv2.error):
+            # OpenCV version doesn't support log level control, continue without suppression
+            pass
+            
+            self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
             if not self.cap.isOpened():
-                raise RuntimeError(f"Could not open camera {self.camera_index}")
+                self.cap = cv2.VideoCapture(self.camera_index)
+                if not self.cap.isOpened():
+                    raise RuntimeError(f"Could not open camera {self.camera_index}")
 
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        finally:
+            # Restore original log level
+            if original_log_level is not None:
+                try:
+                    cv2.setLogLevel(original_log_level)
+                except (AttributeError, cv2.error):
+                    pass
 
     def get_brightness_from_camera(self) -> float:
         """
