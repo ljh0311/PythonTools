@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Minecraft Mod Handler{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+            <div>
+                <h1 class="mb-1">
+                    <i class="fas fa-cube me-2 text-primary"></i>Dashboard
+                </h1>
+                <p class="text-muted mb-0">Minecraft mod management and crash analysis</p>
+            </div>
+            <button class="btn btn-outline-primary" id="refresh-btn" onclick="refreshDashboard()">
+                <i class="fas fa-sync-alt me-1"></i>Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Quick action cards -->
+<div class="row mb-4">
+    <div class="col-md-4 mb-3">
+        <div class="card action-card h-100" data-action="loadMods" style="cursor: pointer;">
+            <div class="card-body text-center">
+                <i class="fas fa-puzzle-piece fa-3x text-primary mb-2"></i>
+                <h5 class="card-title">Mods</h5>
+                <p class="stat-card-value mb-0" id="mod-count" data-current="0">0</p>
+                <small class="stat-card-trend" id="mod-trend"></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card action-card h-100" data-action="loadShaderpacks" style="cursor: pointer;">
+            <div class="card-body text-center">
+                <i class="fas fa-palette fa-3x text-info mb-2"></i>
+                <h5 class="card-title">Shaderpacks</h5>
+                <p class="stat-card-value mb-0" id="shaderpack-count" data-current="0">0</p>
+                <small class="stat-card-trend" id="shaderpack-trend"></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card action-card h-100" data-action="checkCompatibility" style="cursor: pointer;">
+            <div class="card-body text-center">
+                <i class="fas fa-check-double fa-3x text-success mb-2"></i>
+                <h5 class="card-title">Compatibility</h5>
+                <p class="stat-card-value mb-0" id="ai-status">—</p>
+                <small id="ai-models" class="text-muted">AI status</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System health & AI -->
+<div class="row mb-4">
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-heartbeat me-2"></i>System health</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2" id="health-api"><i class="fas fa-circle text-success me-2"></i> API</li>
+                    <li class="mb-2" id="health-ollama"><i class="fas fa-circle text-secondary me-2"></i> Ollama</li>
+                    <li id="health-last-update">Last check: —</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-body d-flex align-items-center justify-content-between">
+                <span class="text-muted" id="last-updated">Last updated: —</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Player profile (AI) -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-user me-2"></i>Player profile (AI)</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshPlayerProfile()">
+                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="player-profile-placeholder" class="text-center text-muted py-4">
+                    Set your Minecraft directory in Mods or Settings to see an AI-generated player profile.
+                </div>
+                <div id="player-profile" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Crash analysis -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-bug me-2"></i>Latest crash analysis</h5>
+            </div>
+            <div class="card-body">
+                <div id="crash-analysis-placeholder" class="text-center text-muted py-4">
+                    Set your Minecraft directory and use Crash Analysis to see the latest summary here.
+                </div>
+                <div id="crash-analysis" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Activity & recent mods -->
+<div class="row">
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-stream me-2"></i>Activity</h5>
+            </div>
+            <div class="card-body">
+                <div id="activity-feed">
+                    <div class="text-center text-muted py-3">
+                        <i class="fas fa-stream fa-2x mb-2"></i>
+                        <p class="mb-0">No recent activity</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Recent mods</h5>
+                <span class="badge bg-primary" id="recent-mods-count">0</span>
+            </div>
+            <div class="card-body">
+                <div id="recent-mods-list">
+                    <div class="text-center text-muted py-3">Load mods to see recent files.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-container"></div>
+{% endblock %}

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Help - CDID Car Tuning Assistant{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-question-circle me-2 text-primary"></i>Help & Documentation
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>About CDID Car Tuning Assistant</h5>
+            </div>
+            <div class="card-body">
+                <p>The CDID Car Tuning Assistant is an AI-powered tool that helps you tune cars in CDID (a Roblox car tuning experience). It uses Ollama AI to provide intelligent tuning suggestions and problem diagnosis.</p>
+                
+                <h6 class="mt-4">Features:</h6>
+                <ul>
+                    <li><strong>Tuning Suggestions:</strong> Get AI-powered recommendations for engine and suspension tuning based on your goals</li>
+                    <li><strong>Problem Diagnosis:</strong> Describe issues with your car's performance and get specific solutions</li>
+                    <li><strong>Ollama Integration:</strong> Uses local AI models for privacy and offline capability</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Tuning Suggestions Mode</h5>
+            </div>
+            <div class="card-body">
+                <p>Use this mode when you want to improve your car's performance or achieve specific goals.</p>
+                
+                <h6>How to use:</h6>
+                <ol>
+                    <li>Select "Tuning Suggestions" mode</li>
+                    <li>Describe your car and its current characteristics</li>
+                    <li>Specify your tuning goals (e.g., better handling, more speed, drift setup)</li>
+                    <li>Select focus areas (Engine, Suspension, or both)</li>
+                    <li>Click "Get Tuning Suggestions"</li>
+                </ol>
+                
+                <h6 class="mt-3">Example:</h6>
+                <div class="bg-light p-3 rounded">
+                    <strong>Car Description:</strong> "I have a high-powered sports car that accelerates quickly but struggles in corners"<br>
+                    <strong>Tuning Goals:</strong> "I want better cornering stability and more predictable handling"
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-stethoscope me-2"></i>Problem Diagnosis Mode</h5>
+            </div>
+            <div class="card-body">
+                <p>Use this mode when your car is experiencing specific problems or issues.</p>
+                
+                <h6>How to use:</h6>
+                <ol>
+                    <li>Select "Problem Diagnosis" mode</li>
+                    <li>Describe the problem you're experiencing</li>
+                    <li>(Optional) Include your current tuning settings</li>
+                    <li>Click "Diagnose Problem"</li>
+                </ol>
+                
+                <h6 class="mt-3">Example:</h6>
+                <div class="bg-light p-3 rounded">
+                    <strong>Problem Description:</strong> "My car oversteers too much in corners and feels unstable at high speeds"<br>
+                    <strong>Current Settings:</strong> "Suspension stiffness: 0.9, Engine power: 600hp"
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-cog me-2"></i>Ollama Setup</h5>
+            </div>
+            <div class="card-body">
+                <p>This application requires Ollama to be installed and running on your computer.</p>
+                
+                <h6>Installation:</h6>
+                <ol>
+                    <li>Download and install Ollama from <a href="https://ollama.ai" target="_blank">https://ollama.ai</a></li>
+                    <li>Start Ollama service: <code>ollama serve</code></li>
+                    <li>Download a model: <code>ollama pull llama3.2</code></li>
+                </ol>
+                
+                <h6 class="mt-3">Recommended Models:</h6>
+                <ul>
+                    <li><code>llama3.2</code> - Good balance of speed and quality (recommended)</li>
+                    <li><code>llama3.2:3b</code> - Faster, smaller model</li>
+                    <li><code>mistral</code> - Good for reasoning tasks</li>
+                </ul>
+                
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    The application will check Ollama connection status automatically. Make sure Ollama is running before using AI features.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Tips</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li class="mb-2">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        Be specific in your descriptions for better results
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        Include current settings when diagnosing problems
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        Test changes incrementally in CDID
+                    </li>
+                    <li class="mb-2">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        Different models may provide different perspectives
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-wrench me-2"></i>Common Tuning Parameters</h5>
+            </div>
+            <div class="card-body">
+                <h6>Engine:</h6>
+                <ul class="small">
+                    <li>Power/Torque</li>
+                    <li>Gear ratios</li>
+                    <li>RPM limits</li>
+                </ul>
+                
+                <h6 class="mt-3">Suspension:</h6>
+                <ul class="small">
+                    <li>Stiffness</li>
+                    <li>Damping</li>
+                    <li>Ride height</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

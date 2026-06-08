@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Minecraft Mod Handler{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-cog me-2"></i>Settings
+        </h1>
+    </div>
+</div>
+
+<!-- Ollama Configuration -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-robot me-2"></i>Ollama Configuration
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Ollama Connection</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <span id="ollama-status" class="badge bg-secondary">
+                                    <i class="fas fa-circle me-1"></i>
+                                    <span id="ollama-status-text">Checking...</span>
+                                </span>
+                                <button class="btn btn-sm btn-outline-primary" onclick="checkOllamaStatus()" title="Refresh Ollama status">
+                                    <i class="fas fa-sync me-1"></i>Refresh
+                                </button>
+                                <button class="btn btn-sm btn-outline-info" onclick="openDocumentation()" title="Ollama Documentation">
+                                    <i class="fas fa-book me-1"></i>Docs
+                                </button>
+                            </div>
+                            <small id="ollama-status-detail" class="form-text text-muted"></small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Available Models</label>
+                            <div id="models-list" class="text-readable">
+                                <span class="text-muted">Loading models...</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="ollama-url" class="form-label">Ollama URL</label>
+                            <input type="text" class="form-control" id="ollama-url" 
+                                   value="http://localhost:11434" placeholder="http://localhost:11434">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="selected-model" class="form-label">Selected Model</label>
+                            <select class="form-select" id="selected-model">
+                                <option value="">Select a model...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <button class="btn btn-primary" onclick="testConnection()">
+                        <i class="fas fa-plug me-1"></i>Test Connection
+                    </button>
+                    <button class="btn btn-outline-secondary ms-2" onclick="saveSettings()">
+                        <i class="fas fa-save me-1"></i>Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Application Settings -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-sliders-h me-2"></i>Application Settings
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="default-minecraft-dir" class="form-label">Default Minecraft Directory</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="default-minecraft-dir" 
+                                       placeholder="C:\Users\YourName\AppData\Roaming\ATLauncher\instances\YourInstance">
+                                <button class="btn btn-outline-secondary" type="button" onclick="showDirectoryPicker('default-minecraft-dir')">
+                                    <i class="fas fa-folder-open"></i>
+                                </button>
+                            </div>
+                            <div class="form-text">This will be pre-filled when you open the application</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="auto-backup" checked>
+                                <label class="form-check-label" for="auto-backup">
+                                    Auto-backup before making changes
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="dark-mode">
+                                <label class="form-check-label" for="dark-mode">
+                                    Enable dark mode
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- About -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>About
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Minecraft Mod Handler v1.0</h6>
+                        <p class="text-readable">
+                            A comprehensive tool for managing Minecraft mods and analyzing crash logs 
+                            with AI-powered assistance using Ollama.
+                        </p>
+                        
+                        <h6>Features:</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>Mod management and organization</li>
+                            <li><i class="fas fa-check text-success me-2"></i>AI-powered crash log analysis</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Mod compatibility checking</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Backup and restore functionality</li>
+                            <li><i class="fas fa-check text-success me-2"></i>Intelligent troubleshooting</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>Requirements:</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-python text-primary me-2"></i>Python 3.7+</li>
+                            <li><i class="fas fa-robot text-info me-2"></i>Ollama installed and running</li>
+                            <li><i class="fas fa-cube text-warning me-2"></i>Minecraft with mods</li>
+                        </ul>
+                        
+                        <h6>Getting Help:</h6>
+                        <p class="text-readable small">
+                            If you encounter issues, make sure Ollama is running and you have 
+                            at least one model installed (e.g., llama3.2).
+                        </p>
+                        
+                        <div class="mt-3">
+                            <button class="btn btn-outline-primary btn-sm" onclick="openDocumentation()">
+                                <i class="fas fa-book me-1"></i>Documentation
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm ms-2" onclick="checkSystemInfo()">
+                                <i class="fas fa-info me-1"></i>System Info
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Load saved settings
+    loadSettings();
+    
+    // Check Ollama status
+    checkOllamaStatus();
+});
+
+function loadSettings() {
+    // Load from localStorage
+    const defaultDir = localStorage.getItem('defaultMinecraftDirectory');
+    const autoBackup = localStorage.getItem('autoBackup') !== 'false';
+    const darkMode = localStorage.getItem('darkMode') === 'true';
+    const ollamaUrl = localStorage.getItem('ollamaUrl') || 'http://localhost:11434';
+    
+    if (defaultDir) document.getElementById('default-minecraft-dir').value = defaultDir;
+    document.getElementById('auto-backup').checked = autoBackup;
+    document.getElementById('dark-mode').checked = darkMode;
+    document.getElementById('ollama-url').value = ollamaUrl;
+}
+
+function saveSettings() {
+    // Save to localStorage
+    localStorage.setItem('defaultMinecraftDirectory', document.getElementById('default-minecraft-dir').value);
+    localStorage.setItem('autoBackup', document.getElementById('auto-backup').checked);
+    localStorage.setItem('darkMode', document.getElementById('dark-mode').checked);
+    localStorage.setItem('ollamaUrl', document.getElementById('ollama-url').value);
+    
+    showAlert('Settings saved successfully!', 'success');
+}
+
+function checkOllamaStatus() {
+    const statusElement = document.getElementById('ollama-status');
+    const modelsList = document.getElementById('models-list');
+    const modelSelect = document.getElementById('selected-model');
+    
+    // Set checking status
+    statusElement.innerHTML = '<i class="fas fa-circle me-1"></i>Checking...';
+    statusElement.className = 'badge bg-secondary me-2';
+    modelsList.innerHTML = 'Checking connection...';
+    
+    // Create a timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), 10000); // 10 second timeout
+    });
+    
+    // Race between fetch and timeout
+    Promise.race([
+        fetch('/api/ollama/status'),
+        timeoutPromise
+    ])
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        if (data.connected) {
+            statusElement.innerHTML = '<i class="fas fa-circle me-1"></i>Connected';
+            statusElement.className = 'badge bg-success me-2';
+            
+            if (data.models && data.models.length > 0) {
+                modelsList.innerHTML = `<span class="text-success">${data.models.length} models available</span>`;
+                
+                // Update model select
+                modelSelect.innerHTML = '<option value="">Select a model...</option>';
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    modelSelect.appendChild(option);
+                });
+                
+                // Select saved model if available
+                const savedModel = localStorage.getItem('selectedModel');
+                if (savedModel && data.models.includes(savedModel)) {
+                    modelSelect.value = savedModel;
+                }
+            } else {
+                modelsList.innerHTML = '<span class="text-warning">No models available</span>';
+                modelSelect.innerHTML = '<option value="">No models available</option>';
+            }
+        } else {
+            statusElement.innerHTML = '<i class="fas fa-circle me-1"></i>Disconnected';
+            statusElement.className = 'badge bg-danger me-2';
+            modelsList.innerHTML = '<span class="text-danger">Cannot connect to Ollama</span>';
+            modelSelect.innerHTML = '<option value="">No models available</option>';
+        }
+    })
+    .catch(error => {
+        console.error('Error checking Ollama status:', error);
+        statusElement.innerHTML = '<i class="fas fa-circle me-1"></i>Error';
+        statusElement.className = 'badge bg-danger me-2';
+        
+        if (error.message === 'Request timeout') {
+            modelsList.innerHTML = '<span class="text-danger">Connection timeout - Ollama may not be running</span>';
+        } else {
+            modelsList.innerHTML = `<span class="text-danger">Error: ${error.message}</span>`;
+        }
+        modelSelect.innerHTML = '<option value="">No models available</option>';
+    });
+}
+
+function testConnection() {
+    const ollamaUrl = document.getElementById('ollama-url').value;
+    
+    if (!ollamaUrl) {
+        showAlert('Please enter an Ollama URL', 'warning');
+        return;
+    }
+    
+    showLoading('Testing connection...');
+    
+    // This would typically make a request to the specified URL
+    // For now, we'll use the existing endpoint
+    fetch('/api/ollama/status')
+        .then(response => response.json())
+        .then(data => {
+            hideLoading();
+            
+            if (data.connected) {
+                showAlert('Connection successful!', 'success');
+            } else {
+                showAlert('Connection failed. Make sure Ollama is running.', 'danger');
+            }
+        })
+        .catch(error => {
+            hideLoading();
+            showAlert('Connection test failed: ' + error.message, 'danger');
+        });
+}
+
+function openDocumentation() {
+    // This would open documentation in a new window
+    showAlert('Documentation feature coming soon!', 'info');
+}
+
+function checkSystemInfo() {
+    const systemInfo = {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language,
+        cookieEnabled: navigator.cookieEnabled,
+        onLine: navigator.onLine
+    };
+    
+    const infoText = `System Information:
+User Agent: ${systemInfo.userAgent}
+Platform: ${systemInfo.platform}
+Language: ${systemInfo.language}
+Cookies Enabled: ${systemInfo.cookieEnabled}
+Online: ${systemInfo.onLine}`;
+    
+    // Show in a modal or alert
+    showAlert(infoText, 'info');
+}
+</script>
+{% endblock %}

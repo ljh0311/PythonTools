@@ -1,0 +1,16 @@
+# D&D Tools Collection Requirements
+# Python version requirement: Python 3.8 or higher
+
+# GUI Framework
+flet>=0.21.0
+
+# Legacy support (for backup main.py)
+customtkinter>=5.2.0
+
+# Standard library modules used:
+# - json (data storage)
+# - os (file operations)
+# - random (dice rolling)
+# - re (regular expressions for dice parsing)
+# - sys (system operations)
+# - datetime (for campaign notes timestamps)

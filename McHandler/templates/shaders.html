@@ -1,0 +1,1248 @@
+{% extends "base.html" %} {% block title %}Shaderpack Management - Minecraft Mod
+Handler{% endblock %} {% block content %}
+<div class="row">
+  <div class="col-12">
+    <h1 class="mb-4"><i class="fas fa-puzzle-piece me-2"></i>Shaderpack Management</h1>
+  </div>
+</div>
+
+<!-- Directory Selection -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-folder me-2"></i>Minecraft Directory
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row align-items-center g-2">
+          <div class="col-md-6">
+            <div class="input-group">
+              <input
+                type="text"
+                class="form-control"
+                id="minecraft-dir"
+                placeholder="Minecraft directory (e.g., C:\Users\YourName\AppData\Roaming\ATLauncher\instances\YourInstance)"
+              />
+              <button
+                class="btn btn-outline-secondary"
+                type="button"
+                onclick="showDirectoryPicker('minecraft-dir')"
+                title="Browse for directory"
+              >
+                <i class="fas fa-folder-open"></i>
+              </button>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <button
+              class="btn btn-outline-info w-100"
+              onclick="loadATLauncherInstances()"
+            >
+              <i class="fas fa-list me-1"></i>ATLauncher Instances
+            </button>
+          </div>
+          <div class="col-md-3 d-flex">
+            <button
+              class="btn btn-primary me-2 flex-fill"
+              onclick="loadShaderpacks()"
+            >
+              <i class="fas fa-sync me-1"></i>Load Shaderpacks
+            </button>
+            <button
+              class="btn btn-success flex-fill"
+              onclick="backupShaderpacks()"
+            >
+              <i class="fas fa-archive me-1"></i>Backup
+            </button>
+          </div>
+        </div>
+
+        <!-- ATLauncher Instances List -->
+        <div id="atlauncher-instances" class="mt-3" style="display: none">
+          <div class="alert alert-info">
+            <h6>
+              <i class="fas fa-info-circle me-2"></i>ATLauncher Instances Found:
+            </h6>
+            <div id="instances-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Shaderpack Management -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0">
+          <i class="fas fa-plus-circle me-2"></i>Add/Remove Shaderpacks
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label for="shaderpack-upload" class="form-label"
+                >Add New Shaderpacks</label
+              >
+              <input
+                type="file"
+                class="form-control"
+                id="shaderpack-upload"
+                accept=".jar"
+                multiple
+                onchange="handleShaderpackUpload(event)"
+              />
+              <div class="form-text">
+                Select one or more .jar files to add to your shaderpacks folder
+              </div>
+            </div>
+            <div id="upload-progress" class="mb-3" style="display: none">
+              <div class="progress">
+                <div
+                  class="progress-bar"
+                  role="progressbar"
+                  style="width: 0%"
+                ></div>
+              </div>
+              <small class="text-readable">Uploading shaderpacks...</small>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label class="form-label">Quick Actions</label>
+              <div class="d-grid gap-2">
+                <button
+                  class="btn btn-outline-primary"
+                  onclick="openShaderpackFolder()"
+                >
+                  <i class="fas fa-folder-open me-1"></i>Open Shaderpacks Folder
+                </button>
+                <button
+                  class="btn btn-outline-danger"
+                  onclick="removeSelectedShaderpacks()"
+                >
+                  <i class="fas fa-trash me-1"></i>Remove Selected Shaderpacks
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Uploaded Files Preview -->
+        <div id="upload-preview" class="mt-3" style="display: none">
+          <h6>Files to Upload:</h6>
+          <div id="upload-list" class="list-group"></div>
+          <div class="mt-2">
+            <button class="btn btn-success" onclick="confirmUpload()">
+              <i class="fas fa-upload me-1"></i>Upload Shaderpacks
+            </button>
+            <button class="btn btn-secondary ms-2" onclick="cancelUpload()">
+              <i class="fas fa-times me-1"></i>Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Shaderpack List -->
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div
+        class="card-header d-flex flex-wrap justify-content-between align-items-center"
+      class="card-header d-flex flex-column flex-md-row flex-wrap justify-content-between align-items-center gap-2"
+      >
+        <h5 class="mb-0">
+          <i class="fas fa-list me-2"></i>Installed Shaderpacks
+        </h5>
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-2 mt-md-0">
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            id="shaderpack-search"
+            placeholder="Search shaderpacks..."
+            style="min-width: 150px; max-width: 250px"
+            oninput="filterShaderpacksTable()"
+          />
+
+          <button
+            class="btn btn-sm btn-warning"
+            onclick="disableSelectedShaderpacks()"
+            title="Disable selected shaderpacks"
+          >
+            <i class="fas fa-ban me-1"></i>Disable
+          </button>
+          <button
+            class="btn btn-sm btn-success"
+            onclick="enableSelectedShaderpacks()"
+            title="Enable selected shaderpacks"
+          >
+            <i class="fas fa-check me-1"></i>Enable
+          </button>
+          <button
+            class="btn btn-sm btn-outline-danger"
+            id="disable-problematic-btn"
+            style="display: none"
+            onclick="disableProblematicShaderpacks()"
+            title="Disable shaderpacks with issues"
+          >
+            <i class="fas fa-bug me-1"></i>Disable Problematic
+          </button>
+          <button
+            class="btn btn-sm btn-danger"
+            onclick="removeSelectedShaderpacks()"
+            title="Delete selected shaderpacks"
+          >
+            <i class="fas fa-trash me-1"></i>Delete
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-hover" id="shaderpacks-table">
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    id="select-all"
+                    onchange="toggleSelectAll()"
+                  />
+                </th>
+                <th style="cursor: pointer" onclick="sortShaderpacks('name')">
+                  Name
+                  <span id="sort-icon-name"></span>
+                </th>
+                <th
+                  style="cursor: pointer"
+                  onclick="sortShaderpacks('version')"
+                >
+                  Version
+                  <span id="sort-icon-version"></span>
+                </th>
+                <th style="cursor: pointer" onclick="sortShaderpacks('author')">
+                  Author
+                  <span id="sort-icon-author"></span>
+                </th>
+                <th style="cursor: pointer" onclick="sortShaderpacks('size')">
+                  Size
+                  <span id="sort-icon-size"></span>
+                </th>
+                <th style="cursor: pointer" onclick="sortShaderpacks('status')">
+                  Status
+                  <span id="sort-icon-status"></span>
+                </th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="shaderpacks-tbody">
+              <tr>
+                <td colspan="7" class="text-center text-readable">
+                  <i class="fas fa-info-circle me-2"></i>
+                  Select a Minecraft directory and click "Load Shaderpacks" to
+                  get started
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div
+          id="problematic-shaderpacks-alert"
+          class="alert alert-danger mt-3"
+          style="display: none"
+        >
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          <strong>Warning:</strong> The following shaderpacks were flagged as
+          problematic by crash analysis:
+          <span id="problematic-shaderpacks-list" class="fw-bold"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Sorting state
+    let sortField = null;
+    let sortDirection = 1; // 1 = ascending, -1 = descending
+
+    // For search/filter
+    let filteredShaderpacks = [];
+    let lastSearch = "";
+
+    // For crash analysis integration
+    let problematicShaderpacks = []; // Array of shaderpack names flagged by crash analysis
+
+    function sortShaderpacks(field) {
+      if (sortField === field) {
+        sortDirection *= -1; // Toggle direction
+      } else {
+        sortField = field;
+        sortDirection = 1;
+      }
+      updateSortIcons();
+      if (
+        typeof filteredShaderpacks !== "undefined" &&
+        Array.isArray(filteredShaderpacks)
+      ) {
+        filteredShaderpacks.sort((a, b) => {
+          let aValue, bValue;
+          switch (field) {
+            case "name":
+              aValue = (a.display_name || a.name || "").toLowerCase();
+              bValue = (b.display_name || b.name || "").toLowerCase();
+              break;
+            case "version":
+              aValue = (a.version || "").toLowerCase();
+              bValue = (b.version || "").toLowerCase();
+              break;
+            case "author":
+              aValue = (a.author || "").toLowerCase();
+              bValue = (b.author || "").toLowerCase();
+              break;
+            case "size":
+              aValue = a.size || 0;
+              bValue = b.size || 0;
+              break;
+            case "status":
+              aValue = a.enabled ? "enabled" : "disabled";
+              bValue = b.enabled ? "enabled" : "disabled";
+              break;
+            default:
+              aValue = "";
+              bValue = "";
+          }
+          if (aValue < bValue) return -1 * sortDirection;
+          if (aValue > bValue) return 1 * sortDirection;
+          return 0;
+        });
+        renderShaderpacksTable();
+      }
+    }
+
+    function updateSortIcons() {
+      const fields = ["name", "version", "author", "size", "status"];
+      fields.forEach((f) => {
+        const icon = document.getElementById("sort-icon-" + f);
+        if (icon) {
+          if (sortField === f) {
+            icon.innerHTML =
+              sortDirection === 1
+                ? '<i class="fas fa-sort-up"></i>'
+                : '<i class="fas fa-sort-down"></i>';
+          } else {
+            icon.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+          }
+        }
+      });
+    }
+
+    // Search/filter shaderpacks by name, version, author, etc.
+    function filterShaderpacksTable() {
+      const search = document
+        .getElementById("shaderpack-search")
+        .value.trim()
+        .toLowerCase();
+      lastSearch = search;
+
+      if (!Array.isArray(currentShaderpacks)) {
+        filteredShaderpacks = [];
+        return;
+      }
+
+      let filtered = [...currentShaderpacks];
+
+      // Apply text search filter
+      if (search) {
+        filtered = filtered.filter((shaderpack) => {
+          return (
+            (shaderpack.display_name || shaderpack.name || "")
+              .toLowerCase()
+              .includes(search) ||
+            (shaderpack.version || "").toLowerCase().includes(search) ||
+            (shaderpack.author || "").toLowerCase().includes(search)
+          );
+        });
+      }
+
+      filteredShaderpacks = filtered;
+      renderShaderpacksTable();
+    }
+
+    // Render shaderpacks table using filteredShaderpacks
+    function renderShaderpacksTable() {
+      const tbody = document.getElementById("shaderpacks-tbody");
+      tbody.innerHTML = "";
+      if (!filteredShaderpacks.length) {
+        tbody.innerHTML = `<tr>
+                    <td colspan="7" class="text-center text-readable">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No shaderpacks found${
+                          lastSearch ? ' for search "' + lastSearch + '"' : ""
+                        }
+                    </td>
+                </tr>`;
+        return;
+      }
+      filteredShaderpacks.forEach((shaderpack) => {
+        const isProblematic = problematicShaderpacks.includes(
+          (shaderpack.display_name || shaderpack.name || "").toLowerCase()
+        );
+        const status = shaderpack.enabled ? "Enabled" : "Disabled";
+        const statusClass = shaderpack.enabled ? "success" : "secondary";
+        const sizeMB = shaderpack.size
+          ? (shaderpack.size / (1024 * 1024)).toFixed(1) + " MB"
+          : "Unknown";
+
+        tbody.innerHTML += `
+                    <tr class="${isProblematic ? "table-danger" : ""}">
+                        <td>
+                            <input type="checkbox" class="shaderpack-checkbox" value="${currentShaderpacks.indexOf(
+                              shaderpack
+                            )}">
+                        </td>
+                        <td class="text-dark">
+                            <strong>${
+                              shaderpack.display_name || shaderpack.name || ""
+                            }</strong>${
+          isProblematic ? ' <span class="badge bg-danger">Flagged</span>' : ""
+        }
+                            ${
+                              shaderpack.description
+                                ? `<br><small class="text-readable">${shaderpack.description}</small>`
+                                : ""
+                            }
+                        </td>
+                        <td class="text-dark">${
+                          shaderpack.version || "Unknown"
+                        }</td>
+                        <td class="text-dark">${
+                          shaderpack.author || "Unknown"
+                        }</td>
+                        <td class="text-dark">${sizeMB}</td>
+                        <td>
+                            <span class="badge bg-${statusClass}">${status}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="toggleShaderpack(${currentShaderpacks.indexOf(
+                              shaderpack
+                            )}, '${
+          shaderpack.enabled ? "disable" : "enable"
+        }')">
+                                <i class="fas fa-${
+                                  shaderpack.enabled ? "ban" : "check"
+                                } me-1"></i>
+                                ${shaderpack.enabled ? "Disable" : "Enable"}
+                            </button>
+                        </td>
+                    </tr>
+                `;
+      });
+    }
+
+    // Helper for file size formatting
+    function formatFileSize(bytes) {
+      if (bytes === 0) return "0 Bytes";
+      const k = 1024;
+      const sizes = ["Bytes", "KB", "MB", "GB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+    }
+
+
+    // Integration: receive problematic mods from crash_analysis.html
+    // This function can be called from crash_analysis.html via window.postMessage or direct call
+    function setProblematicShaderpacks(shaderpackNames) {
+      problematicShaderpacks = (shaderpackNames || []).map((n) =>
+        n.toLowerCase()
+      );
+      // Show alert if any
+      const alertDiv = document.getElementById("problematic-shaderpacks-alert");
+      const listSpan = document.getElementById("problematic-shaderpacks-list");
+      const disableBtn = document.getElementById("disable-problematic-btn");
+      if (problematicShaderpacks.length) {
+        alertDiv.style.display = "";
+        listSpan.textContent = shaderpackNames.join(", ");
+        disableBtn.style.display = "";
+      } else {
+        alertDiv.style.display = "none";
+        listSpan.textContent = "";
+        disableBtn.style.display = "none";
+      }
+      renderShaderpacksTable();
+    }
+
+    // Called by "Disable Problematic Mods" button
+    function disableProblematicShaderpacks() {
+      if (!problematicShaderpacks.length) return;
+      filteredShaderpacks.forEach((shaderpack, idx) => {
+        if (
+          problematicShaderpacks.includes(
+            (shaderpack.display_name || shaderpack.name || "").toLowerCase()
+          ) &&
+          shaderpack.enabled
+        ) {
+          disableModByIndex(idx);
+        }
+      });
+    }
+
+    // Example: crash_analysis.html can call window.parent.setProblematicMods([...])
+    window.setProblematicShaderpacks = setProblematicShaderpacks;
+
+    // Individual mod enable/disable
+    function disableShaderpackByIndex(idx) {
+      if (filteredShaderpacks[idx] && filteredShaderpacks[idx].enabled) {
+        const shaderpack = filteredShaderpacks[idx];
+        const origIdx = currentShaderpacks.findIndex(
+          (s) =>
+            (s.display_name || s.name) ===
+            (shaderpack.display_name || shaderpack.name)
+        );
+        if (origIdx !== -1) {
+          toggleShaderpack(origIdx, "disable");
+        }
+      }
+    }
+    function enableShaderpackByIndex(idx) {
+      if (filteredShaderpacks[idx] && !filteredShaderpacks[idx].enabled) {
+        const shaderpack = filteredShaderpacks[idx];
+        const origIdx = currentShaderpacks.findIndex(
+          (s) =>
+            (s.display_name || s.name) ===
+            (shaderpack.display_name || shaderpack.name)
+        );
+        if (origIdx !== -1) {
+          toggleShaderpack(origIdx, "enable");
+        }
+      }
+    }
+
+    // Search on input
+    document
+      .getElementById("shaderpack-search")
+      .addEventListener("input", filterShaderpacksTable);
+
+    // Call updateSortIcons on page load to show default icons
+    document.addEventListener("DOMContentLoaded", function () {
+      updateSortIcons();
+      // Initialize filteredMods
+      if (Array.isArray(currentShaderpacks)) {
+        filteredShaderpacks = [...currentShaderpacks];
+      } else {
+        filteredShaderpacks = [];
+      }
+      renderShaderpacksTable();
+    });
+
+    // When mods are loaded/refreshed, update filteredMods and re-filter
+    function onShaderpacksLoaded() {
+      if (Array.isArray(currentShaderpacks)) {
+        filteredShaderpacks = [...currentShaderpacks];
+      } else {
+        filteredShaderpacks = [];
+      }
+      filterShaderpacksTable();
+    }
+
+    // For compatibility: call onShaderpacksLoaded() after loading shaderpacks in your main JS
+  </script>
+</div>
+
+<!-- AI Suggestions Modal -->
+<div class="modal fade" id="aiSuggestionsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-robot me-2"></i>AI Suggestions
+        </h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="shaderpack-name" class="form-label"
+            >Shaderpack Name</label
+          >
+          <input
+            type="text"
+            class="form-control"
+            id="shaderpack-name"
+            readonly
+          />
+        </div>
+        <div class="mb-3">
+          <label for="error-description" class="form-label"
+            >Describe the issue</label
+          >
+          <textarea
+            class="form-control"
+            id="error-description"
+            rows="3"
+            placeholder="Describe what problems you're experiencing with this shaderpack..."
+          ></textarea>
+        </div>
+        <div id="ai-suggestions-result" class="mt-3" style="display: none">
+          <h6>AI Suggestions:</h6>
+          <div
+            class="border rounded p-3 bg-light"
+            id="suggestions-content"
+          ></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Close
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary"
+          onclick="getShaderpackSuggestions()"
+        >
+          <i class="fas fa-magic me-1"></i>Get Suggestions
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block extra_scripts %}
+<style>
+  /* Ensure table text is always dark and visible */
+  #shaderpacks-table tbody td {
+    color: #212529 !important;
+  }
+
+  #shaderpacks-table tbody td strong {
+    color: #212529 !important;
+  }
+
+  #shaderpacks-table tbody td small {
+    color: #6c757d !important;
+  }
+
+  /* Ensure table headers are also dark */
+  #shaderpacks-table thead th {
+    color: #212529 !important;
+  }
+
+  /* Make sure badges have proper contrast */
+  #shaderpacks-table .badge {
+    color: white !important;
+  }
+
+  #shaderpacks-table .badge.bg-light {
+    color: #212529 !important;
+  }
+</style>
+<script>
+  let currentShaderpacks = [];
+
+  document.addEventListener("DOMContentLoaded", function () {
+    // Load saved directory if available
+    const savedDir = localStorage.getItem("minecraftDirectory");
+    if (savedDir) {
+      document.getElementById("minecraft-dir").value = savedDir;
+    }
+  });
+
+  function loadShaderpacks() {
+    const minecraftDir = document.getElementById("minecraft-dir").value.trim();
+
+    if (!minecraftDir) {
+      showAlert("Please enter a Minecraft directory path", "warning");
+      return;
+    }
+
+    // Save directory for future use
+    localStorage.setItem("minecraftDirectory", minecraftDir);
+
+    showLoading("Loading shaderpacks...");
+
+    fetch("/api/shaderpacks/load", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ minecraft_dir: minecraftDir }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        hideLoading();
+
+        if (data.error) {
+          showAlert(data.error, "danger");
+          return;
+        }
+
+        currentShaderpacks = data.shaderpacks;
+        displayShaderpacks(data.shaderpacks);
+        onShaderpacksLoaded(); // Ensure filtering system is updated
+        showAlert(
+          `Loaded ${data.shaderpacks.length} shaderpacks successfully`,
+          "success"
+        );
+
+        // Shaderpacks loaded successfully
+      })
+      .catch((error) => {
+        hideLoading();
+        showAlert("Error loading shaderpacks: " + error.message, "danger");
+      });
+  }
+
+  function displayShaderpacks(shaderpacks) {
+    // Update currentMods and filteredMods
+    currentShaderpacks = shaderpacks;
+    filteredShaderpacks = [...shaderpacks];
+
+    // Clear search
+    document.getElementById("shaderpack-search").value = "";
+    lastSearch = "";
+
+    // Render using the unified system
+    renderShaderpacksTable();
+  }
+
+  function toggleShaderpack(index, action) {
+    const shaderpack = currentShaderpacks[index];
+    const minecraftDir = document.getElementById("minecraft-dir").value.trim();
+
+    if (!minecraftDir) {
+      showAlert("Please set a Minecraft directory first", "warning");
+      return;
+    }
+
+    fetch("/api/shaderpacks/toggle", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        shaderpack_name: shaderpack.name,
+        action: action,
+        minecraft_dir: minecraftDir,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.error) {
+          showAlert(data.error, "danger");
+          return;
+        }
+
+        showAlert(`Shaderpack ${action}d successfully`, "success");
+        // Update the mod status in currentMods and refresh display
+        currentShaderpacks[index].enabled = action === "enable";
+        displayShaderpacks(currentShaderpacks); // Refresh display
+      })
+      .catch((error) => {
+        showAlert("Error toggling shaderpack: " + error.message, "danger");
+      });
+  }
+
+  function backupShaderpacks() {
+    const minecraftDir = document.getElementById("minecraft-dir").value.trim();
+
+    if (!minecraftDir) {
+      showAlert("Please enter a Minecraft directory path first", "warning");
+      return;
+    }
+
+    showLoading("Creating backup...");
+
+    fetch("/api/shaderpacks/backup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ minecraft_dir: minecraftDir }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        hideLoading();
+
+        if (data.error) {
+          showAlert(data.error, "danger");
+          return;
+        }
+
+        showAlert(
+          `Backup created successfully at: ${data.backup_path}`,
+          "success"
+        );
+      })
+      .catch((error) => {
+        hideLoading();
+        showAlert("Error creating backup: " + error.message, "danger");
+      });
+  }
+
+  function toggleSelectAll() {
+    const selectAll = document.getElementById("select-all");
+    const checkboxes = document.querySelectorAll(".shaderpack-checkbox");
+
+    checkboxes.forEach((checkbox) => {
+      checkbox.checked = selectAll.checked;
+    });
+  }
+
+  function getSelectedShaderpacks() {
+    const checkboxes = document.querySelectorAll(".shaderpack-checkbox:checked");
+    return Array.from(checkboxes).map(
+      (cb) => currentShaderpacks[parseInt(cb.value)]
+    );
+  }
+
+  function disableSelectedShaderpacks() {
+    const selectedShaderpacks = getSelectedShaderpacks();
+
+    if (selectedShaderpacks.length === 0) {
+      showAlert("Please select shaderpacks to disable", "warning");
+      return;
+    }
+
+    // Disable each selected shaderpack
+    selectedShaderpacks.forEach((shaderpack) => {
+      toggleShaderpack(currentShaderpacks.indexOf(shaderpack), "disable");
+    });
+  }
+
+  function enableSelectedShaderpacks() {
+    const selectedShaderpacks = getSelectedShaderpacks();
+
+    if (selectedShaderpacks.length === 0) {
+      showAlert("Please select shaderpacks to enable", "warning");
+      return;
+    }
+
+    // Enable each selected shaderpack
+    selectedShaderpacks.forEach((shaderpack) => {
+      toggleShaderpack(currentShaderpacks.indexOf(shaderpack), "enable");
+    });
+  }
+
+  function getAISuggestions() {
+    const selectedShaderpacks = getSelectedShaderpacks();
+
+    if (selectedShaderpacks.length === 0) {
+      showAlert(
+        "Please select a shaderpack to get AI suggestions for",
+        "warning"
+      );
+      return;
+    }
+
+    if (selectedShaderpacks.length > 1) {
+      showAlert(
+        "Please select only one shaderpack for AI suggestions",
+        "warning"
+      );
+      return;
+    }
+
+    const shaderpack = selectedShaderpacks[0];
+    document.getElementById("shaderpack-name").value =
+      shaderpack.display_name || shaderpack.name;
+    document.getElementById("error-description").value = "";
+    document.getElementById("ai-suggestions-result").style.display = "none";
+
+    const modal = new bootstrap.Modal(
+      document.getElementById("aiSuggestionsModal")
+    );
+    modal.show();
+  }
+
+  function getShaderpackSuggestions() {
+    const shaderpackName = document.getElementById("shaderpack-name").value;
+    const errorDescription = document.getElementById("error-description").value;
+
+    if (!errorDescription.trim()) {
+      showAlert("Please describe the issue", "warning");
+      return;
+    }
+
+    showLoading("Getting AI suggestions...");
+
+    fetch("/api/ollama/suggest", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        shaderpack_name: shaderpackName,
+        error_description: errorDescription,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        hideLoading();
+
+        if (data.error) {
+          showAlert(data.error, "danger");
+          return;
+        }
+
+        document.getElementById("suggestions-content").innerHTML =
+          data.suggestions.replace(/\n/g, "<br>");
+        document.getElementById("ai-suggestions-result").style.display =
+          "block";
+      })
+      .catch((error) => {
+        hideLoading();
+        showAlert("Error getting suggestions: " + error.message, "danger");
+      });
+  }
+
+  function loadATLauncherInstances() {
+    // Get elements directly - they should exist in the DOM
+    const instancesDiv = document.getElementById("atlauncher-instances");
+    const instancesList = document.getElementById("instances-list");
+
+    // If elements don't exist, try to find them with retry logic
+    if (!instancesDiv || !instancesList) {
+      // Try to find elements with retry logic
+      function findElementsWithRetry(callback, maxRetries = 10, delay = 100) {
+        let retries = 0;
+
+        function tryFind() {
+          const instancesDiv = document.getElementById("atlauncher-instances");
+          const instancesList = document.getElementById("instances-list");
+
+          if (instancesDiv && instancesList) {
+            callback(instancesDiv, instancesList);
+          } else if (retries < maxRetries) {
+            retries++;
+            setTimeout(tryFind, delay);
+          } else {
+            console.error(
+              "ATLauncher elements not found after",
+              maxRetries,
+              "retries"
+            );
+            showAlert(
+              "Error: ATLauncher instances elements not found. The page may not be fully loaded. Please try again.",
+              "warning"
+            );
+          }
+        }
+
+        tryFind();
+      }
+
+      // Use retry logic
+      findElementsWithRetry((instancesDiv, instancesList) => {
+        loadAndDisplayInstances(instancesDiv, instancesList);
+      });
+    } else {
+      // Elements exist, proceed directly
+      loadAndDisplayInstances(instancesDiv, instancesList);
+    }
+
+    function loadAndDisplayInstances(instancesDiv, instancesList) {
+      // Show loading state
+      instancesDiv.style.display = "block";
+      instancesList.innerHTML =
+        '<div class="text-center py-2"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+
+      fetch("/api/atlauncher/instances")
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.error) {
+            instancesList.innerHTML = `<div class="alert alert-danger mb-0">${data.error}</div>`;
+            showAlert(data.error, "danger");
+            return;
+          }
+
+          if (data.instances.length === 0) {
+            instancesList.innerHTML =
+              '<p class="text-readable mb-0">No ATLauncher instances found with shaderpacks.</p>';
+          } else {
+            instancesList.innerHTML = "";
+            data.instances.forEach((instance) => {
+              const instanceButton = document.createElement("button");
+              instanceButton.className =
+                "btn btn-outline-primary btn-sm me-2 mb-2";
+              instanceButton.innerHTML = `
+                            <i class="fas fa-folder me-1"></i>
+                            ${instance.name} (${instance.shaderpack_count} shaderpacks)
+                        `;
+              instanceButton.onclick = () => {
+                const minecraftDirInput =
+                  document.getElementById("minecraft-dir");
+                if (minecraftDirInput) {
+                  minecraftDirInput.value = instance.path;
+                  // Save to localStorage
+                  localStorage.setItem("minecraftDirectory", instance.path);
+                }
+                instancesDiv.style.display = "none";
+                showAlert(`Selected instance: ${instance.name}`, "success");
+              };
+              instancesList.appendChild(instanceButton);
+            });
+          }
+        })
+        .catch((error) => {
+          instancesList.innerHTML = `<div class="alert alert-danger mb-0">Error loading ATLauncher instances: ${error.message}</div>`;
+          showAlert(
+            "Error loading ATLauncher instances: " + error.message,
+            "danger"
+          );
+        });
+    }
+  }
+
+  // Shaderpack upload and management functions
+  let selectedFiles = [];
+
+  function handleShaderpackUpload(event) {
+    const files = Array.from(event.target.files);
+
+    // Filter only .jar files
+    const zipFiles = files.filter((file) =>
+      file.name.toLowerCase().endsWith(".zip")
+    );
+
+    if (zipFiles.length !== files.length) {
+      showAlert(
+        `Only .zip files are allowed. ${
+          files.length - zipFiles.length
+        } non-jar files were ignored.`,
+        "warning"
+      );
+    }
+
+    if (zipFiles.length === 0) {
+      showAlert("Please select .zip files only", "warning");
+      return;
+    }
+
+    selectedFiles = zipFiles;
+    showUploadPreview();
+  }
+
+  function showUploadPreview() {
+    const previewDiv = document.getElementById("upload-preview");
+    const listDiv = document.getElementById("upload-list");
+
+    listDiv.innerHTML = "";
+
+    selectedFiles.forEach((file, index) => {
+      const listItem = document.createElement("div");
+      listItem.className =
+        "list-group-item d-flex justify-content-between align-items-center";
+      listItem.innerHTML = `
+            <div>
+                <i class="fas fa-file-archive me-2"></i>
+                <strong>${file.name}</strong>
+                <br>
+                <small class="text-readable">${formatFileSize(
+                  file.size
+                )}</small>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" onclick="removeFileFromPreview(${index})">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+      listDiv.appendChild(listItem);
+    });
+
+    previewDiv.style.display = "block";
+  }
+
+  function removeFileFromPreview(index) {
+    selectedFiles.splice(index, 1);
+
+    if (selectedFiles.length === 0) {
+      document.getElementById("upload-preview").style.display = "none";
+      document.getElementById("shaderpack-upload").value = "";
+    } else {
+      showUploadPreview();
+    }
+  }
+
+  function confirmUpload() {
+    const minecraftDir = document.getElementById("minecraft-dir").value.trim();
+
+    if (!minecraftDir) {
+      showAlert("Please set a Minecraft directory first", "warning");
+      return;
+    }
+
+    if (selectedFiles.length === 0) {
+      showAlert("No files selected for upload", "warning");
+      return;
+    }
+
+    uploadShaderpacks();
+  }
+
+  function uploadShaderpacks() {
+    const minecraftDir = document.getElementById("minecraft-dir").value.trim();
+    const progressDiv = document.getElementById("upload-progress");
+    const progressBar = progressDiv.querySelector(".progress-bar");
+
+    progressDiv.style.display = "block";
+    progressBar.style.width = "0%";
+
+    const formData = new FormData();
+    formData.append("minecraft_dir", minecraftDir);
+
+    selectedFiles.forEach((file, index) => {
+      formData.append("shaderpack_files", file);
+    });
+
+    fetch("/api/shaderpacks/upload", {
+      method: "POST",
+      body: formData,
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        progressDiv.style.display = "none";
+
+        if (data.error) {
+          showAlert(data.error, "danger");
+          return;
+        }
+
+        showAlert(
+          `Successfully uploaded ${data.uploaded_count} shaderpack(s)`,
+          "success"
+        );
+
+        // Clear upload preview
+        cancelUpload();
+
+        // Reload shaderpacks list
+        loadShaderpacks();
+      })
+      .catch((error) => {
+        progressDiv.style.display = "none";
+        showAlert("Error uploading shaderpacks: " + error.message, "danger");
+      });
+  }
+
+  function cancelUpload() {
+    selectedFiles = [];
+    document.getElementById("upload-preview").style.display = "none";
+    document.getElementById("shaderpack-upload").value = "";
+  }
+
+  function openShaderpackFolder() {
+    const minecraftDir = document.getElementById("minecraft-dir").value.trim();
+
+    if (!minecraftDir) {
+      showAlert("Please set a Minecraft directory first", "warning");
+      return;
+    }
+
+    // Attempt to open the shaderpacks folder in the user's file explorer via backend
+    fetch("/api/open_shaderpack_folder", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        minecraft_dir: minecraftDir,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) {
+          showAlert(
+            "Opened shaderpacks folder in your file explorer.",
+            "success"
+          );
+        } else if (data.error) {
+          showAlert(
+            "Failed to open shaderpacks folder: " + data.error,
+            "danger"
+          );
+        } else {
+          showAlert(
+            "Could not open shaderpacks folder. Please open it manually at: " +
+              minecraftDir +
+              "/shaderpacks",
+            "warning"
+          );
+        }
+      })
+      .catch((error) => {
+        showAlert(
+          "Error opening shaderpacks folder: " + error.message,
+          "danger"
+        );
+      });
+  }
+
+  function removeSelectedShaderpacks() {
+    const selectedShaderpacks = getSelectedShaderpacks();
+
+    if (selectedShaderpacks.length === 0) {
+      showAlert("Please select shaderpacks to remove", "warning");
+      return;
+    }
+
+    if (
+      !confirm(
+        `Are you sure you want to permanently remove ${selectedShaderpacks.length} shaderpack(s)? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    const minecraftDir = document.getElementById("minecraft-dir").value.trim();
+
+    if (!minecraftDir) {
+      showAlert("Please set a Minecraft directory first", "warning");
+      return;
+    }
+
+    showLoading("Removing shaderpacks...");
+
+    const shaderpackNames = selectedShaderpacks.map(
+      (shaderpack) => shaderpack.name
+    );
+
+    fetch("/api/shaderpacks/remove", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        minecraft_dir: minecraftDir,
+        shaderpack_names: shaderpackNames,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        hideLoading();
+
+        if (data.error) {
+          showAlert(data.error, "danger");
+          return;
+        }
+
+        showAlert(
+          `Successfully removed ${data.removed_count} shaderpack(s)`,
+          "success"
+        );
+
+        // Reload shaderpacks list
+        loadShaderpacks();
+      })
+      .catch((error) => {
+        hideLoading();
+        showAlert("Error removing shaderpacks: " + error.message, "danger");
+      });
+  }
+</script>
+{% endblock %}

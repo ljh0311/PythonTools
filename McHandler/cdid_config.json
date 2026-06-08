@@ -1,0 +1,11 @@
+{
+  "ollama": {
+    "url": "http://localhost:11434",
+    "model": "llama3:latest",
+    "timeout": 60
+  },
+  "application": {
+    "window_geometry": "1400x900",
+    "tunings_directory": "tunings"
+  }
+}

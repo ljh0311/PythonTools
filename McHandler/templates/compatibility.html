@@ -1,0 +1,1302 @@
+{% extends "base.html" %}
+
+{% block title %}Compatibility Check - Minecraft Mod Handler{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="mb-1">
+                    <i class="fas fa-check-circle me-2 text-primary"></i>Compatibility Check
+                </h1>
+                <p class="text-readable mb-0">Analyze your mod collection for conflicts and compatibility issues</p>
+            </div>
+            <div class="text-end">
+                <button class="btn btn-outline-info btn-sm" onclick="showHelpModal()" title="Help & Tips">
+                    <i class="fas fa-question-circle me-1"></i>Help
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Directory Selection -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-folder me-2"></i>Minecraft Directory
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-end">
+                    <div class="col-md-8">
+                        <label for="minecraft-dir" class="form-label text-readable">
+                            <i class="fas fa-map-marker-alt me-1"></i>Directory Path
+                        </label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="minecraft-dir" 
+                                   placeholder="Enter path to your Minecraft directory (e.g., C:\Users\YourName\AppData\Roaming\ATLauncher\instances\YourInstance)">
+                            <button class="btn btn-outline-secondary" type="button" onclick="showDirectoryPicker('minecraft-dir')" title="Browse Directory">
+                                <i class="fas fa-folder-open me-1"></i>Browse
+                            </button>
+                        </div>
+                        <div class="form-text text-readable">
+                            <i class="fas fa-info-circle me-1"></i>Select the folder containing your mods (usually the 'mods' folder)
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-primary btn-lg w-100" onclick="checkCompatibility()" id="check-btn">
+                            <i class="fas fa-search me-2"></i>Check Compatibility
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mod Summary -->
+<div class="row mb-4" id="mod-summary-section" style="display: none;">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>Mod Collection Summary
+                </h5>
+                <div class="btn-group" role="group">
+                    <button class="btn btn-sm btn-outline-light" onclick="exportModSummary()" id="export-summary-btn" style="display: none;">
+                        <i class="fas fa-download me-1"></i>Export Summary
+                    </button>
+                    <button class="btn btn-sm btn-outline-light" onclick="refreshModSummary()" id="refresh-summary-btn">
+                        <i class="fas fa-sync-alt me-1"></i>Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="card text-center border-primary h-100">
+                            <div class="card-body">
+                                <i class="fas fa-cubes fa-2x text-primary mb-2"></i>
+                                <h3 id="total-mods-count" class="text-primary mb-1">-</h3>
+                                <small class="text-readable">Total Mods</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center border-success h-100">
+                            <div class="card-body">
+                                <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                                <h3 id="enabled-mods-count" class="text-success mb-1">-</h3>
+                                <small class="text-readable">Enabled</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center border-secondary h-100">
+                            <div class="card-body">
+                                <i class="fas fa-pause-circle fa-2x text-secondary mb-2"></i>
+                                <h3 id="disabled-mods-count" class="text-secondary mb-1">-</h3>
+                                <small class="text-readable">Disabled</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center border-info h-100">
+                            <div class="card-body">
+                                <i class="fas fa-hdd fa-2x text-info mb-2"></i>
+                                <h3 id="total-size" class="text-info mb-1">-</h3>
+                                <small class="text-readable">Total Size</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Purpose Breakdown -->
+                <div class="row mb-4" id="purpose-breakdown" style="display: none;">
+                    <div class="col-12">
+                        <h6 class="mb-3">
+                            <i class="fas fa-tags me-2 text-primary"></i>Mods by Purpose
+                        </h6>
+                        <div id="purpose-chart" class="row g-2">
+                            <!-- Purpose breakdown will be populated here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- AI Mod Summary -->
+                <div class="mt-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">
+                            <i class="fas fa-robot me-2 text-primary"></i>AI Mod Analysis
+                        </h6>
+                        <button class="btn btn-sm btn-outline-primary" onclick="refreshAIAnalysis()" id="refresh-ai-btn" style="display: none;">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh
+                        </button>
+                    </div>
+                    <div id="ai-mod-summary" class="border rounded p-3" style="background-color: var(--bg-secondary); min-height: 120px;">
+                        <div class="text-center text-readable">
+                            <i class="fas fa-robot me-2"></i>
+                            AI will analyze and summarize your mods after compatibility check
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Compatibility Results -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-warning text-dark d-flex flex-wrap justify-content-between align-items-center">
+                <h5 class="mb-0 d-flex align-items-center">
+                    <i class="fas fa-chart-bar me-2"></i>
+                    Compatibility Report
+                    <span id="compatibility-status" class="badge bg-secondary ms-3" style="display:none;"></span>
+                </h5>
+                <div class="btn-group" role="group">
+                    <button class="btn btn-sm btn-outline-dark" onclick="exportResults()" id="export-btn" style="display: none;" title="Export results as file">
+                        <i class="fas fa-download me-1"></i>Export
+                    </button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="copyResults()" id="copy-btn" style="display: none;" title="Copy results to clipboard">
+                        <i class="fas fa-copy me-1"></i>Copy
+                    </button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="clearResults()" title="Clear results">
+                        <i class="fas fa-trash me-1"></i>Clear
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Results Filtering -->
+                <div id="results-filters" class="mb-3" style="display: none;">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-6 mb-2 mb-md-0">
+                            <div class="input-group">
+                                <span class="input-group-text" title="Filter by issue type">
+                                    <i class="fas fa-filter"></i>
+                                </span>
+                                <select class="form-select" id="issue-filter" onchange="filterResults()">
+                                    <option value="">All Issues</option>
+                                    <option value="conflicts">Conflicts Only</option>
+                                    <option value="version_mismatches">Version Issues Only</option>
+                                    <option value="missing_dependencies">Missing Dependencies Only</option>
+                                    <option value="warnings">Warnings Only</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="input-group">
+                                <span class="input-group-text" title="Search issues">
+                                    <i class="fas fa-search"></i>
+                                </span>
+                                <input type="text" class="form-control" id="results-search" placeholder="Search issues..." oninput="filterResults()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="compatibility-results">
+                    <div class="text-center text-muted py-5" id="compatibility-placeholder">
+                        <div class="mb-4">
+                            <i class="fas fa-search fa-4x text-primary mb-3"></i>
+                        </div>
+                        <h4 class="mb-3">Ready to Check Compatibility</h4>
+                        <p class="text-readable mb-4">
+                            Enter your Minecraft directory and click 
+                            <span class="fw-semibold text-primary">"Check Compatibility"</span> 
+                            to scan for potential issues in your mod setup.
+                        </p>
+                        <div class="row justify-content-center">
+                            <div class="col-md-10 col-lg-8">
+                                <div class="alert alert-info d-flex align-items-center">
+                                    <i class="fas fa-lightbulb me-2"></i>
+                                    <div>
+                                        <strong>Tip:</strong> The analysis will check for mod conflicts, version mismatches, missing dependencies, and provide <span class="fw-semibold">AI-powered insights</span> about your mod collection.<br>
+                                        <span class="text-muted small">For best results, ensure your mod list is up to date and all dependencies are present.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button class="btn btn-primary btn-lg" onclick="startCompatibilityCheck()">
+                                <i class="fas fa-check-circle me-2"></i>Check Compatibility
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Results will be dynamically inserted here after analysis -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Analysis -->
+<div class="row mt-4" id="detailed-analysis-section" style="display: none;">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-microscope me-2"></i>Detailed Analysis & Recommendations
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-chart-line me-2"></i>Performance Impact
+                        </h6>
+                        <div id="performance-analysis" class="mb-4">
+                            <!-- Performance analysis will be populated here -->
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-tools me-2"></i>Recommended Actions
+                        </h6>
+                        <div id="recommendations" class="mb-4">
+                            <!-- Recommendations will be populated here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <h6 class="text-primary mb-3">
+                            <i class="fas fa-list-check me-2"></i>Mod Priority List
+                        </h6>
+                        <div id="mod-priority-list">
+                            <!-- Mod priority list will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Tips -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-lightbulb me-2"></i>Compatibility Guide
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="text-center p-3">
+                            <div class="mb-3">
+                                <i class="fas fa-exclamation-triangle fa-3x text-danger"></i>
+                            </div>
+                            <h6 class="text-danger">Conflicts</h6>
+                            <p class="text-readable small">Mods that are known to conflict with each other and may cause crashes or unexpected behavior</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3">
+                            <div class="mb-3">
+                                <i class="fas fa-code-branch fa-3x text-warning"></i>
+                            </div>
+                            <h6 class="text-warning">Version Mismatches</h6>
+                            <p class="text-readable small">Mods designed for different Minecraft versions that may not work together properly</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-3">
+                            <div class="mb-3">
+                                <i class="fas fa-link fa-3x text-info"></i>
+                            </div>
+                            <h6 class="text-info">Dependencies</h6>
+                            <p class="text-readable small">Missing required mods or libraries that other mods depend on to function</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Help Modal -->
+<div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="helpModalLabel">
+                    <i class="fas fa-question-circle me-2"></i>Compatibility Check Help
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-primary">How to Use</h6>
+                        <ol class="text-readable">
+                            <li>Enter your Minecraft directory path</li>
+                            <li>Click "Check Compatibility" to start analysis</li>
+                            <li>Review the AI-generated mod summary</li>
+                            <li>Check the compatibility report for issues</li>
+                            <li>Export or copy results for reference</li>
+                        </ol>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-primary">What We Check</h6>
+                        <ul class="text-readable">
+                            <li><strong>Mod Conflicts:</strong> Incompatible mod combinations</li>
+                            <li><strong>Version Issues:</strong> Minecraft version mismatches</li>
+                            <li><strong>Dependencies:</strong> Missing required mods</li>
+                            <li><strong>AI Analysis:</strong> Smart mod categorization and insights</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <h6 class="text-primary">Tips for Best Results</h6>
+                    <div class="alert alert-info">
+                        <ul class="mb-0 text-readable">
+                            <li>Make sure Ollama is running for AI analysis features</li>
+                            <li>Use the directory picker for easier path selection</li>
+                            <li>Check the mod summary before running compatibility checks</li>
+                            <li>Export results to share with mod developers if needed</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+/* Ensure table text is always dark and visible - consistent with mods.html */
+table tbody td {
+    color: #212529 !important;
+}
+
+table tbody td strong {
+    color: #212529 !important;
+}
+
+table tbody td small {
+    color: #6c757d !important;
+}
+
+/* Ensure table headers are also dark */
+table thead th {
+    color: #212529 !important;
+}
+
+/* Make sure badges have proper contrast */
+table .badge {
+    color: white !important;
+}
+
+table .badge.bg-light {
+    color: #212529 !important;
+}
+
+/* Ensure all table text is visible */
+.table td, .table th {
+    color: #212529 !important;
+}
+
+.table td strong {
+    color: #212529 !important;
+}
+
+.table td small {
+    color: #6c757d !important;
+}
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Load saved directory if available
+    const savedDir = localStorage.getItem('minecraftDirectory');
+    if (savedDir) {
+        document.getElementById('minecraft-dir').value = savedDir;
+    }
+});
+
+function checkCompatibility() {
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    const checkBtn = document.getElementById('check-btn');
+    
+    if (!minecraftDir) {
+        showAlert('Please enter a Minecraft directory path', 'warning');
+        return;
+    }
+    
+    // Save directory for future use
+    localStorage.setItem('minecraftDirectory', minecraftDir);
+    
+    // Disable button and show loading state
+    checkBtn.disabled = true;
+    checkBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Checking...';
+    
+    // Show enhanced loading state
+    document.getElementById('compatibility-results').innerHTML = `
+        <div class="text-center py-5">
+            <div class="mb-4">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+            <h4 class="mb-3">Analyzing Your Mod Collection</h4>
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="progress mb-3" style="height: 8px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" id="progress-bar"></div>
+                    </div>
+                    <p class="text-readable mb-0">Loading mods and checking compatibility...</p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Hide mod summary during loading
+    document.getElementById('mod-summary-section').style.display = 'none';
+    
+    // Simulate progress
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+        progress += Math.random() * 15;
+        if (progress > 90) progress = 90;
+        document.getElementById('progress-bar').style.width = progress + '%';
+    }, 200);
+    
+    // First, load the mods to get the summary
+    fetch('/api/mods/load', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ minecraft_dir: minecraftDir })
+    })
+    .then(response => response.json())
+    .then(modData => {
+        if (modData.mods) {
+            // Check if mods need categorization
+            const needsCategorization = modData.mods.some(mod => !mod.purpose || mod.purpose === 'Unknown/Other');
+            
+            if (needsCategorization && modData.mods.length > 0) {
+                // Categorize mods first, then display summary
+                categorizeModsForCompatibility(minecraftDir, modData.mods);
+            } else {
+                displayModSummary(modData.mods);
+                // Get AI analysis of the mods
+                getAIModAnalysis(minecraftDir);
+            }
+        }
+        
+        // Update progress
+        document.getElementById('progress-bar').style.width = '100%';
+        clearInterval(progressInterval);
+        
+        // Then check compatibility
+        return fetch('/api/compatibility/check', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ minecraft_dir: minecraftDir })
+        });
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            document.getElementById('compatibility-results').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> ${data.error}
+                </div>
+            `;
+            return;
+        }
+        
+        // Show results
+        if (data.issues && data.report) {
+            displayCompatibilityResults(data.issues, data.report);
+            
+            // Generate detailed analysis
+            const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+            fetch('/api/mods/load', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ minecraft_dir: minecraftDir })
+            })
+            .then(response => response.json())
+            .then(modData => {
+                if (modData.mods) {
+                    generateDetailedAnalysis(data.issues, modData.mods);
+                }
+            })
+            .catch(error => {
+                console.log('Could not load mods for detailed analysis:', error);
+            });
+        }
+        
+        // Show action buttons and filters
+        document.getElementById('export-btn').style.display = 'inline-block';
+        document.getElementById('copy-btn').style.display = 'inline-block';
+        document.getElementById('results-filters').style.display = 'block';
+        
+        showAlert('Compatibility check completed successfully!', 'success');
+    })
+    .catch(error => {
+        clearInterval(progressInterval);
+        document.getElementById('compatibility-results').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    })
+    .finally(() => {
+        // Re-enable button
+        checkBtn.disabled = false;
+        checkBtn.innerHTML = '<i class="fas fa-search me-2"></i>Check Compatibility';
+    });
+}
+
+function displayCompatibilityResults(issues, report) {
+    const resultsDiv = document.getElementById('compatibility-results');
+    
+    // Create summary cards
+    let summaryHtml = `
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card text-center ${issues.conflicts.length > 0 ? 'border-danger' : 'border-success'}">
+                    <div class="card-body">
+                        <i class="fas fa-exclamation-triangle fa-2x ${issues.conflicts.length > 0 ? 'text-danger' : 'text-success'} mb-2"></i>
+                        <h4>${issues.conflicts.length}</h4>
+                        <p class="mb-0">Conflicts</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center ${issues.version_mismatches.length > 0 ? 'border-warning' : 'border-success'}">
+                    <div class="card-body">
+                        <i class="fas fa-code-branch fa-2x ${issues.version_mismatches.length > 0 ? 'text-warning' : 'text-success'} mb-2"></i>
+                        <h4>${issues.version_mismatches.length}</h4>
+                        <p class="mb-0">Version Issues</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center ${issues.missing_dependencies.length > 0 ? 'border-danger' : 'border-success'}">
+                    <div class="card-body">
+                        <i class="fas fa-link fa-2x ${issues.missing_dependencies.length > 0 ? 'text-danger' : 'text-success'} mb-2"></i>
+                        <h4>${issues.missing_dependencies.length}</h4>
+                        <p class="mb-0">Missing Deps</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center ${issues.warnings.length > 0 ? 'border-warning' : 'border-success'}">
+                    <div class="card-body">
+                        <i class="fas fa-info-circle fa-2x ${issues.warnings.length > 0 ? 'text-warning' : 'text-success'} mb-2"></i>
+                        <h4>${issues.warnings.length}</h4>
+                        <p class="mb-0">Warnings</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add detailed report
+    summaryHtml += `
+        <div class="border rounded p-3" style="background-color: #f8f9fa; border-color: #dee2e6;">
+            <h6 class="mb-3" style="color: #212529;">
+                <i class="fas fa-file-alt me-2"></i>Detailed Report
+            </h6>
+            <div style="white-space: pre-wrap; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 0.95em; color: #212529; line-height: 1.6;">
+                ${report}
+            </div>
+        </div>
+    `;
+    
+    // Add detailed issue breakdown if there are issues
+    if (issues.conflicts.length > 0 || issues.version_mismatches.length > 0 || 
+        issues.missing_dependencies.length > 0 || issues.warnings.length > 0) {
+        
+        summaryHtml += '<div class="mt-4"><h6>Issue Details</h6>';
+        
+        // Conflicts
+        if (issues.conflicts.length > 0) {
+            summaryHtml += `
+                <div class="alert alert-danger">
+                    <h6><i class="fas fa-exclamation-triangle me-2"></i>Conflicts Found</h6>
+                    <ul class="mb-0">
+            `;
+            issues.conflicts.forEach(conflict => {
+                summaryHtml += `<li><strong>${conflict.mod1}</strong> conflicts with <strong>${conflict.mod2}</strong><br><small>${conflict.solution}</small></li>`;
+            });
+            summaryHtml += '</ul></div>';
+        }
+        
+        // Version mismatches
+        if (issues.version_mismatches.length > 0) {
+            summaryHtml += `
+                <div class="alert alert-warning">
+                    <h6><i class="fas fa-code-branch me-2"></i>Version Mismatches</h6>
+                    <ul class="mb-0">
+            `;
+            issues.version_mismatches.forEach(mismatch => {
+                summaryHtml += `<li>Version ${mismatch.version1} vs ${mismatch.version2}<br><small>${mismatch.solution}</small></li>`;
+            });
+            summaryHtml += '</ul></div>';
+        }
+        
+        // Missing dependencies
+        if (issues.missing_dependencies.length > 0) {
+            summaryHtml += `
+                <div class="alert alert-danger">
+                    <h6><i class="fas fa-link me-2"></i>Missing Dependencies</h6>
+                    <ul class="mb-0">
+            `;
+            issues.missing_dependencies.forEach(dep => {
+                summaryHtml += `<li><strong>${dep.mod}</strong> requires: ${dep.missing.join(', ')}<br><small>${dep.solution}</small></li>`;
+            });
+            summaryHtml += '</ul></div>';
+        }
+        
+        // Warnings
+        if (issues.warnings.length > 0) {
+            summaryHtml += `
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle me-2"></i>Warnings</h6>
+                    <ul class="mb-0">
+            `;
+            issues.warnings.forEach(warning => {
+                summaryHtml += `<li>${warning.description}<br><small>${warning.solution}</small></li>`;
+            });
+            summaryHtml += '</ul></div>';
+        }
+        
+        summaryHtml += '</div>';
+    }
+    
+    resultsDiv.innerHTML = summaryHtml;
+}
+
+function displayModSummary(mods) {
+    // Show the mod summary section
+    document.getElementById('mod-summary-section').style.display = 'block';
+    
+    // Calculate summary statistics
+    const totalMods = mods.length;
+    const enabledMods = mods.filter(mod => mod.enabled).length;
+    const disabledMods = totalMods - enabledMods;
+    const totalSize = mods.reduce((sum, mod) => sum + (mod.size || 0), 0);
+    
+    // Update summary counts
+    document.getElementById('total-mods-count').textContent = totalMods;
+    document.getElementById('enabled-mods-count').textContent = enabledMods;
+    document.getElementById('disabled-mods-count').textContent = disabledMods;
+    document.getElementById('total-size').textContent = formatFileSize(totalSize);
+    
+    // Generate purpose breakdown
+    generatePurposeBreakdown(mods);
+    
+    // Show export button
+    document.getElementById('export-summary-btn').style.display = 'inline-block';
+    
+    // Show loading state for AI analysis
+    const aiSummaryDiv = document.getElementById('ai-mod-summary');
+    aiSummaryDiv.innerHTML = `
+        <div class="text-center py-3">
+            <div class="spinner-border text-primary mb-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <div class="text-readable">
+                <i class="fas fa-robot me-2"></i>
+                AI is analyzing your mods and creating a summary...
+            </div>
+        </div>
+    `;
+}
+
+function generatePurposeBreakdown(mods) {
+    const purposeCounts = {};
+    const purposeColors = {
+        'Quality of Life (QOL)': 'bg-primary',
+        'Building & Construction': 'bg-success',
+        'Graphics & Visual': 'bg-info',
+        'Performance & Optimization': 'bg-warning text-dark',
+        'Adventure & Exploration': 'bg-secondary',
+        'Combat & Weapons': 'bg-danger',
+        'Magic & Technology': 'bg-dark',
+        'Food & Agriculture': 'bg-success',
+        'Transportation': 'bg-info',
+        'Storage & Organization': 'bg-primary',
+        'Utility & Tools': 'bg-secondary',
+        'Unknown/Other': 'bg-light text-dark'
+    };
+    
+    // Count mods by purpose
+    mods.forEach(mod => {
+        const purpose = mod.purpose || 'Unknown/Other';
+        purposeCounts[purpose] = (purposeCounts[purpose] || 0) + 1;
+    });
+    
+    // Generate purpose breakdown HTML
+    const purposeChart = document.getElementById('purpose-chart');
+    purposeChart.innerHTML = '';
+    
+    Object.entries(purposeCounts).forEach(([purpose, count]) => {
+        const percentage = ((count / mods.length) * 100).toFixed(1);
+        const badgeClass = purposeColors[purpose] || 'bg-light text-dark';
+        
+        const purposeCard = document.createElement('div');
+        purposeCard.className = 'col-md-3 col-sm-6 mb-2';
+        purposeCard.innerHTML = `
+            <div class="card h-100">
+                <div class="card-body p-2 text-center">
+                    <span class="badge ${badgeClass} mb-1">${purpose}</span>
+                    <div class="h5 mb-0">${count}</div>
+                    <small class="text-readable">${percentage}%</small>
+                </div>
+            </div>
+        `;
+        purposeChart.appendChild(purposeCard);
+    });
+    
+    // Show purpose breakdown section
+    document.getElementById('purpose-breakdown').style.display = 'block';
+}
+
+function getAIModAnalysis(minecraftDir) {
+    fetch('/api/mods/analyze', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ minecraft_dir: minecraftDir })
+    })
+    .then(response => response.json())
+    .then(data => {
+        const aiSummaryDiv = document.getElementById('ai-mod-summary');
+        const refreshBtn = document.getElementById('refresh-ai-btn');
+        
+        if (data.error) {
+            aiSummaryDiv.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>AI Analysis Unavailable:</strong> ${data.error}
+                </div>
+            `;
+            return;
+        }
+        
+        if (data.success && data.analysis) {
+            // Format the AI analysis with proper styling
+            const formattedAnalysis = data.analysis
+                .replace(/### /g, '<h6 class="mt-3 mb-2 text-primary">')
+                .replace(/## /g, '<h5 class="mt-4 mb-3 text-primary">')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+            
+            aiSummaryDiv.innerHTML = `
+                <div class="ai-analysis-content">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">
+                            <i class="fas fa-robot me-2"></i>AI Mod Analysis
+                        </h6>
+                        <small class="text-readable">
+                            Model: ${data.model_used} | ${new Date(data.timestamp).toLocaleTimeString()}
+                        </small>
+                    </div>
+                    <div class="analysis-text">
+                        ${formattedAnalysis}
+                    </div>
+                </div>
+            `;
+            
+            // Show refresh button
+            refreshBtn.style.display = 'inline-block';
+        } else {
+            aiSummaryDiv.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Analysis Failed:</strong> Unable to generate AI analysis
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        const aiSummaryDiv = document.getElementById('ai-mod-summary');
+        aiSummaryDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+    });
+}
+
+function refreshAIAnalysis() {
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    const refreshBtn = document.getElementById('refresh-ai-btn');
+    const aiSummaryDiv = document.getElementById('ai-mod-summary');
+    
+    if (!minecraftDir) {
+        showAlert('Please enter a Minecraft directory path first', 'warning');
+        return;
+    }
+    
+    // Show loading state
+    refreshBtn.disabled = true;
+    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
+    
+    aiSummaryDiv.innerHTML = `
+        <div class="text-center py-3">
+            <div class="spinner-border text-primary mb-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <div class="text-readable">
+                <i class="fas fa-robot me-2"></i>
+                Refreshing AI analysis...
+            </div>
+        </div>
+    `;
+    
+    // Call the analysis function
+    getAIModAnalysis(minecraftDir);
+    
+    // Re-enable button after a delay
+    setTimeout(() => {
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = '<i class="fas fa-sync-alt me-1"></i>Refresh';
+    }, 2000);
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Helper function to get badge class for purpose - consistent with mods.html
+function getPurposeBadgeClass(purpose) {
+    const purposeClasses = {
+        'Quality of Life (QOL)': 'bg-primary',
+        'Building & Construction': 'bg-success',
+        'Graphics & Visual': 'bg-info',
+        'Performance & Optimization': 'bg-warning text-dark',
+        'Adventure & Exploration': 'bg-secondary',
+        'Combat & Weapons': 'bg-danger',
+        'Magic & Technology': 'bg-dark',
+        'Food & Agriculture': 'bg-success',
+        'Transportation': 'bg-info',
+        'Storage & Organization': 'bg-primary',
+        'Utility & Tools': 'bg-secondary',
+        'Unknown/Other': 'bg-light text-dark'
+    };
+    return purposeClasses[purpose] || 'bg-light text-dark';
+}
+
+function clearResults() {
+    document.getElementById('compatibility-results').innerHTML = `
+        <div class="text-center text-muted py-5">
+            <div class="mb-4">
+                <i class="fas fa-search fa-4x text-primary mb-3"></i>
+            </div>
+            <h4 class="mb-3">Ready to Check Compatibility</h4>
+            <p class="text-readable mb-4">Enter your Minecraft directory and click "Check Compatibility" to scan for potential issues.</p>
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="alert alert-info">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        <strong>Tip:</strong> The analysis will check for mod conflicts, version mismatches, missing dependencies, and provide AI-powered insights about your mod collection.
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Hide mod summary section
+    document.getElementById('mod-summary-section').style.display = 'none';
+    
+    // Reset AI analysis section
+    document.getElementById('ai-mod-summary').innerHTML = `
+        <div class="text-center text-readable">
+            <i class="fas fa-robot me-2"></i>
+            AI will analyze and summarize your mods after compatibility check
+        </div>
+    `;
+    
+    // Hide action buttons and sections
+    document.getElementById('export-btn').style.display = 'none';
+    document.getElementById('copy-btn').style.display = 'none';
+    document.getElementById('refresh-ai-btn').style.display = 'none';
+    document.getElementById('results-filters').style.display = 'none';
+    document.getElementById('detailed-analysis-section').style.display = 'none';
+    document.getElementById('export-summary-btn').style.display = 'none';
+}
+
+function copyResults() {
+    const resultsDiv = document.getElementById('compatibility-results');
+    const textContent = resultsDiv.textContent || resultsDiv.innerText;
+    
+    if (textContent.trim()) {
+        navigator.clipboard.writeText(textContent).then(() => {
+            showAlert('Results copied to clipboard!', 'success');
+        }).catch(() => {
+            showAlert('Failed to copy results', 'danger');
+        });
+    } else {
+        showAlert('No results to copy', 'warning');
+    }
+}
+
+function exportResults() {
+    const resultsDiv = document.getElementById('compatibility-results');
+    const textContent = resultsDiv.textContent || resultsDiv.innerText;
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    
+    if (!textContent.trim()) {
+        showAlert('No results to export', 'warning');
+        return;
+    }
+    
+    // Create export content with metadata
+    const exportContent = `Minecraft Mod Compatibility Report
+Generated: ${new Date().toLocaleString()}
+Directory: ${minecraftDir}
+
+${textContent}`;
+    
+    // Create and download file
+    const blob = new Blob([exportContent], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `compatibility-report-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    showAlert('Report exported successfully!', 'success');
+}
+
+function showHelpModal() {
+    const helpModal = new bootstrap.Modal(document.getElementById('helpModal'));
+    helpModal.show();
+}
+
+// New functions for enhanced functionality
+function filterResults() {
+    const issueFilter = document.getElementById('issue-filter').value;
+    const searchTerm = document.getElementById('results-search').value.toLowerCase();
+    
+    // This would filter the displayed results based on the selected criteria
+    // Implementation depends on how results are structured
+    console.log('Filtering results:', { issueFilter, searchTerm });
+}
+
+function exportModSummary() {
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    const modSummary = {
+        totalMods: document.getElementById('total-mods-count').textContent,
+        enabledMods: document.getElementById('enabled-mods-count').textContent,
+        disabledMods: document.getElementById('disabled-mods-count').textContent,
+        totalSize: document.getElementById('total-size').textContent,
+        timestamp: new Date().toLocaleString(),
+        directory: minecraftDir
+    };
+    
+    const exportContent = `Minecraft Mod Collection Summary
+Generated: ${modSummary.timestamp}
+Directory: ${modSummary.directory}
+
+Collection Statistics:
+- Total Mods: ${modSummary.totalMods}
+- Enabled Mods: ${modSummary.enabledMods}
+- Disabled Mods: ${modSummary.disabledMods}
+- Total Size: ${modSummary.totalSize}
+
+Purpose Breakdown:
+${document.getElementById('purpose-chart').textContent}
+
+AI Analysis:
+${document.getElementById('ai-mod-summary').textContent}`;
+    
+    const blob = new Blob([exportContent], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mod-summary-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    showAlert('Mod summary exported successfully!', 'success');
+}
+
+function refreshModSummary() {
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    if (!minecraftDir) {
+        showAlert('Please enter a Minecraft directory path first', 'warning');
+        return;
+    }
+    
+    // Reload mods and refresh summary
+    fetch('/api/mods/load', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ minecraft_dir: minecraftDir })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.mods) {
+            displayModSummary(data.mods);
+            showAlert('Mod summary refreshed!', 'success');
+        }
+    })
+    .catch(error => {
+        showAlert('Error refreshing mod summary: ' + error.message, 'danger');
+    });
+}
+
+function generateDetailedAnalysis(issues, mods) {
+    // Show detailed analysis section
+    document.getElementById('detailed-analysis-section').style.display = 'block';
+    
+    // Generate performance analysis
+    generatePerformanceAnalysis(mods);
+    
+    // Generate recommendations
+    generateRecommendations(issues, mods);
+    
+    // Generate mod priority list
+    generateModPriorityList(mods);
+}
+
+function generatePerformanceAnalysis(mods) {
+    const performanceDiv = document.getElementById('performance-analysis');
+    const totalSize = mods.reduce((sum, mod) => sum + (mod.size || 0), 0);
+    const avgSize = totalSize / mods.length;
+    const largeMods = mods.filter(mod => (mod.size || 0) > avgSize * 2);
+    
+    performanceDiv.innerHTML = `
+        <div class="alert alert-info">
+            <h6><i class="fas fa-chart-bar me-2"></i>Size Analysis</h6>
+            <ul class="mb-0">
+                <li>Total Collection Size: <strong>${formatFileSize(totalSize)}</strong></li>
+                <li>Average Mod Size: <strong>${formatFileSize(avgSize)}</strong></li>
+                <li>Large Mods (>2x avg): <strong>${largeMods.length}</strong></li>
+            </ul>
+        </div>
+        <div class="alert alert-warning">
+            <h6><i class="fas fa-exclamation-triangle me-2"></i>Performance Notes</h6>
+            <ul class="mb-0">
+                <li>Graphics mods may impact FPS</li>
+                <li>Large mod collections may increase load times</li>
+                <li>Consider disabling unused mods</li>
+            </ul>
+        </div>
+    `;
+}
+
+function generateRecommendations(issues, mods) {
+    const recommendationsDiv = document.getElementById('recommendations');
+    const recommendations = [];
+    
+    if (issues.conflicts.length > 0) {
+        recommendations.push({
+            type: 'danger',
+            icon: 'fas fa-exclamation-triangle',
+            title: 'Resolve Conflicts',
+            description: `Fix ${issues.conflicts.length} mod conflicts to prevent crashes`
+        });
+    }
+    
+    if (issues.missing_dependencies.length > 0) {
+        recommendations.push({
+            type: 'warning',
+            icon: 'fas fa-link',
+            title: 'Install Dependencies',
+            description: `Install ${issues.missing_dependencies.length} missing required mods`
+        });
+    }
+    
+    const disabledMods = mods.filter(mod => !mod.enabled);
+    if (disabledMods.length > 0) {
+        recommendations.push({
+            type: 'info',
+            icon: 'fas fa-pause-circle',
+            title: 'Review Disabled Mods',
+            description: `Consider removing ${disabledMods.length} disabled mods to reduce clutter`
+        });
+    }
+    
+    if (recommendations.length === 0) {
+        recommendations.push({
+            type: 'success',
+            icon: 'fas fa-check-circle',
+            title: 'No Issues Found',
+            description: 'Your mod collection looks good!'
+        });
+    }
+    
+    recommendationsDiv.innerHTML = recommendations.map(rec => `
+        <div class="alert alert-${rec.type}">
+            <h6><i class="${rec.icon} me-2"></i>${rec.title}</h6>
+            <p class="mb-0">${rec.description}</p>
+        </div>
+    `).join('');
+}
+
+function generateModPriorityList(mods) {
+    const priorityDiv = document.getElementById('mod-priority-list');
+    
+    // Sort mods by size (largest first) and create priority list
+    const sortedMods = [...mods].sort((a, b) => (b.size || 0) - (a.size || 0));
+    
+    priorityDiv.innerHTML = `
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Priority</th>
+                        <th>Mod Name</th>
+                        <th>Purpose</th>
+                        <th>Size</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sortedMods.slice(0, 10).map((mod, index) => `
+                        <tr>
+                            <td><span class="badge bg-${index < 3 ? 'danger' : index < 6 ? 'warning' : 'info'}">${index + 1}</span></td>
+                            <td>${mod.display_name || mod.name || 'Unknown'}</td>
+                            <td><span class="badge ${getPurposeBadgeClass(mod.purpose || 'Unknown/Other')}">${mod.purpose || 'Unknown/Other'}</span></td>
+                            <td>${formatFileSize(mod.size || 0)}</td>
+                            <td><span class="badge bg-${mod.enabled ? 'success' : 'secondary'}">${mod.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        <small class="text-readable">Showing top 10 mods by size. Consider removing large unused mods to improve performance.</small>
+    `;
+}
+
+function categorizeModsForCompatibility(minecraftDir, mods) {
+    // Show loading message for categorization
+    const aiSummaryDiv = document.getElementById('ai-mod-summary');
+    aiSummaryDiv.innerHTML = `
+        <div class="text-center py-3">
+            <div class="spinner-border text-primary mb-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <div class="text-readable">
+                <i class="fas fa-tags me-2"></i>
+                Categorizing mods by purpose...
+            </div>
+        </div>
+    `;
+    
+    fetch('/api/mods/categorize', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ minecraft_dir: minecraftDir })
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Categorization response:', data);
+        
+        if (data.success && data.categories) {
+            console.log('Categories received:', data.categories);
+            
+            // Update mods with their purposes
+            mods.forEach(mod => {
+                const modName = mod.display_name || mod.name;
+                let foundCategory = null;
+                
+                // Try exact match first
+                if (data.categories[modName]) {
+                    foundCategory = data.categories[modName];
+                } else {
+                    // Try to find a match by checking if any category key contains the mod name or vice versa
+                    for (const [categoryKey, categoryValue] of Object.entries(data.categories)) {
+                        // Check if mod name contains category key or category key contains mod name
+                        if (modName.toLowerCase().includes(categoryKey.toLowerCase()) || 
+                            categoryKey.toLowerCase().includes(modName.toLowerCase())) {
+                            foundCategory = categoryValue;
+                            console.log(`Found fuzzy match: "${modName}" matches "${categoryKey}"`);
+                            break;
+                        }
+                        
+                        // Also try matching against the display name without version numbers
+                        const cleanModName = modName.replace(/[-_]\d+\.\d+.*$/, '').replace(/[-_]/g, ' ').toLowerCase();
+                        const cleanCategoryKey = categoryKey.replace(/[-_]/g, ' ').toLowerCase();
+                        
+                        if (cleanModName.includes(cleanCategoryKey) || cleanCategoryKey.includes(cleanModName)) {
+                            foundCategory = categoryValue;
+                            console.log(`Found clean match: "${cleanModName}" matches "${cleanCategoryKey}"`);
+                            break;
+                        }
+                    }
+                }
+                
+                if (foundCategory) {
+                    mod.purpose = foundCategory;
+                    console.log(`Categorized "${modName}" as "${foundCategory}"`);
+                } else {
+                    mod.purpose = 'Unknown/Other';
+                    console.log(`No category found for "${modName}", using Unknown/Other`);
+                }
+            });
+            
+            // Now display the summary with categorized mods
+            displayModSummary(mods);
+            getAIModAnalysis(minecraftDir);
+        } else {
+            console.log('Categorization failed:', data.error);
+            showAlert(`Categorization failed: ${data.error || 'Unknown error'}`, 'warning');
+            
+            // Set default purpose for all mods if categorization fails
+            mods.forEach(mod => {
+                if (!mod.purpose) {
+                    mod.purpose = 'Unknown/Other';
+                }
+            });
+            displayModSummary(mods);
+            getAIModAnalysis(minecraftDir);
+        }
+    })
+    .catch(error => {
+        console.log('Categorization failed, using default purposes:', error);
+        // Set default purpose for all mods if categorization fails
+        mods.forEach(mod => {
+            if (!mod.purpose) {
+                mod.purpose = 'Unknown/Other';
+            }
+        });
+        displayModSummary(mods);
+        getAIModAnalysis(minecraftDir);
+    });
+}
+</script>
+{% endblock %}

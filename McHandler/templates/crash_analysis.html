@@ -1,0 +1,373 @@
+{% extends "base.html" %} {% block title %}Crash Analysis - Minecraft Mod
+Handler{% endblock %} {% block content %}
+<div class="row">
+  <div class="col-12">
+    <h1 class="mb-4"><i class="fas fa-bug me-2"></i>Crash Log Analysis</h1>
+  </div>
+</div>
+
+<!-- File Upload -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Upload Crash Log</h5>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-8">
+            <div class="mb-3">
+              <label for="crash-file" class="form-label"
+                >Select crash log file</label
+              >
+              <div class="input-group">
+                <input
+                  type="text"
+                  class="form-control"
+                  id="crash-file-display"
+                  placeholder="No file selected"
+                  readonly
+                />
+                <button
+                  class="btn btn-outline-secondary"
+                  type="button"
+                  onclick="showFilePicker('crash-file-display', ['.log', '.txt'])"
+                >
+                  <i class="fas fa-file-upload"></i>
+                </button>
+              </div>
+              <div class="form-text text-readable">
+                Supported formats: .log, .txt (Max size: 16MB)
+                <br />
+                <strong>Note:</strong> File will be uploaded and analyzed with
+                AI
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="d-grid">
+              <button
+                class="btn btn-primary btn-lg"
+                onclick="analyzeCrashLog()"
+                id="analyze-btn"
+                disabled
+              >
+                <i class="fas fa-search me-2"></i>Analyze with AI
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- File Info -->
+        <div id="file-info" class="mt-3" style="display: none">
+          <div class="alert alert-info">
+            <i class="fas fa-file-alt me-2"></i>
+            <strong>Selected file:</strong> <span id="file-name"></span>
+            <br />
+            <strong>Size:</strong> <span id="file-size"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Analysis Results -->
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div
+        class="card-header d-flex justify-content-between align-items-center"
+      >
+        <h5 class="mb-0">
+          <i class="fas fa-chart-line me-2"></i>Analysis Results
+        </h5>
+        <div>
+          <button
+            class="btn btn-sm btn-outline-secondary"
+            onclick="clearResults()"
+          >
+            <i class="fas fa-trash me-1"></i>Clear
+          </button>
+          <button
+            class="btn btn-sm btn-outline-primary"
+            onclick="copyResults()"
+          >
+            <i class="fas fa-copy me-1"></i>Copy
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="analysis-results">
+          <div class="text-center text-muted py-5">
+            <i class="fas fa-upload fa-3x mb-3"></i>
+            <h5>Upload a crash log to get started</h5>
+            <p>
+              Our AI will analyze your crash log and provide detailed insights
+              and solutions.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %} {% block extra_scripts %}
+<script>
+  let selectedFile = null;
+
+  document.addEventListener("DOMContentLoaded", function () {
+    checkOllamaStatus();
+  });
+
+  function handleFileSelect() {
+    const fileDisplay = document.getElementById("crash-file-display");
+    const fileName = fileDisplay.value;
+
+    if (fileName) {
+      // Show file info
+      document.getElementById("file-name").textContent = fileName;
+      const fileSize = fileDisplay.dataset.fileSize;
+      document.getElementById("file-size").textContent = fileSize
+        ? formatFileSize(parseInt(fileSize))
+        : "Unknown";
+      document.getElementById("file-info").style.display = "block";
+
+      // Enable analyze button
+      document.getElementById("analyze-btn").disabled = false;
+    } else {
+      selectedFile = null;
+      document.getElementById("file-info").style.display = "none";
+      document.getElementById("analyze-btn").disabled = true;
+    }
+  }
+
+  // Override the showFilePicker function for crash analysis
+  function showFilePicker(targetInputId, acceptedTypes = [".log", ".txt"]) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = acceptedTypes.join(",");
+    input.style.display = "none";
+
+    input.onchange = function (e) {
+      const file = e.target.files[0];
+      if (file) {
+        selectedFile = file; // Store the actual file object
+        const targetInput = document.getElementById(targetInputId);
+        if (targetInput) {
+          targetInput.value = file.name;
+          targetInput.dataset.file = file.name;
+          targetInput.dataset.fileSize = file.size;
+
+          // Show file info
+          document.getElementById("file-name").textContent = file.name;
+          document.getElementById("file-size").textContent = formatFileSize(
+            file.size
+          );
+          document.getElementById("file-info").style.display = "block";
+
+          // Enable analyze button
+          document.getElementById("analyze-btn").disabled = false;
+        }
+      }
+    };
+
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
+  }
+
+  function analyzeCrashLog() {
+    console.log("analyzeCrashLog called, selectedFile:", selectedFile);
+    
+    if (!selectedFile) {
+      showAlert("Please select a crash log file first", "warning");
+      return;
+    }
+
+    // Check Ollama status first
+    checkOllamaStatus().then((isConnected) => {
+      console.log("Ollama connection status:", isConnected);
+      
+      if (!isConnected) {
+        showAlert(
+          "Ollama is not connected. Please start Ollama first.",
+          "danger"
+        );
+        return;
+      }
+
+      performAnalysis();
+    }).catch((error) => {
+      console.error("Error checking Ollama status:", error);
+      showAlert("Error checking AI connection status", "danger");
+    });
+  }
+
+  function performAnalysis() {
+    console.log("performAnalysis called with file:", selectedFile);
+    
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    // Show loading state
+    document.getElementById("analyze-btn").disabled = true;
+    document.getElementById("analyze-btn").innerHTML =
+      '<i class="fas fa-spinner fa-spin me-2"></i>Analyzing...';
+
+    // Show analysis results area
+    document.getElementById("analysis-results").innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <h5>Analyzing crash log with AI...</h5>
+            <p class="text-readable">This may take a few moments depending on the log size.</p>
+        </div>
+    `;
+
+    console.log("Sending request to /api/crash/analyze");
+    fetch("/api/crash/analyze", {
+      method: "POST",
+      body: formData,
+    })
+      .then((response) => {
+        console.log("Response received:", response.status, response.statusText);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        console.log("Analysis data received:", data);
+        
+        // Reset button
+        document.getElementById("analyze-btn").disabled = false;
+        document.getElementById("analyze-btn").innerHTML =
+          '<i class="fas fa-search me-2"></i>Analyze with AI';
+
+        if (data.error) {
+          console.error("Analysis error:", data.error);
+          document.getElementById("analysis-results").innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Analysis Error:</strong> ${data.error}
+                </div>
+            `;
+          return;
+        }
+
+        // Display results
+        const timestamp = new Date(data.timestamp).toLocaleString();
+        document.getElementById("analysis-results").innerHTML = `
+            <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="fas fa-robot me-2"></i>AI Analysis Results
+                    </h6>
+                    <small class="text-readable">Model: ${data.model_used} | ${timestamp}</small>
+                </div>
+            </div>
+            <div class="analysis-text">
+                ${data.analysis}
+            </div>
+        `;
+
+        showAlert("Crash log analysis completed successfully!", "success");
+      })
+      .catch((error) => {
+        console.error("Fetch error:", error);
+        
+        // Reset button
+        document.getElementById("analyze-btn").disabled = false;
+        document.getElementById("analyze-btn").innerHTML =
+          '<i class="fas fa-search me-2"></i>Analyze with AI';
+
+        document.getElementById("analysis-results").innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> ${error.message}
+            </div>
+        `;
+      });
+  }
+
+  function clearResults() {
+    document.getElementById("analysis-results").innerHTML = `
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-upload fa-3x mb-3"></i>
+            <h5>Upload a crash log to get started</h5>
+            <p>Our AI will analyze your crash log and provide detailed insights and solutions.</p>
+        </div>
+    `;
+
+    // Clear file selection
+    document.getElementById("crash-file-display").value = "";
+    selectedFile = null;
+    document.getElementById("file-info").style.display = "none";
+    document.getElementById("analyze-btn").disabled = true;
+  }
+
+  function copyResults() {
+    const resultsDiv = document.getElementById("analysis-results");
+    const textContent = resultsDiv.textContent || resultsDiv.innerText;
+
+    if (textContent.trim()) {
+      navigator.clipboard
+        .writeText(textContent)
+        .then(() => {
+          showAlert("Results copied to clipboard!", "success");
+        })
+        .catch(() => {
+          showAlert("Failed to copy results", "danger");
+        });
+    } else {
+      showAlert("No results to copy", "warning");
+    }
+  }
+
+  function checkOllamaStatus() {
+    return fetch("/api/ollama/status")
+      .then((response) => response.json())
+      .then((data) => {
+        const statusElement = document.getElementById("ollama-status");
+        const statusIcon = document.getElementById("ollama-status-icon");
+        const statusText = document.getElementById("ollama-status-text");
+
+        if (data.connected) {
+          statusElement.className = "badge bg-success px-3 py-2";
+          statusIcon.className = "fas fa-circle me-1";
+          statusText.textContent = `AI Ready (${data.models.length} models)`;
+        } else {
+          statusElement.className = "badge bg-danger px-3 py-2";
+          statusIcon.className = "fas fa-circle me-1";
+          statusText.textContent = "AI Not Available";
+        }
+
+        return data.connected;
+      })
+      .catch((error) => {
+        console.error("Error checking Ollama status:", error);
+        const statusElement = document.getElementById("ollama-status");
+        const statusIcon = document.getElementById("ollama-status-icon");
+        const statusText = document.getElementById("ollama-status-text");
+        
+        statusElement.className = "badge bg-danger px-3 py-2";
+        statusIcon.className = "fas fa-circle me-1";
+        statusText.textContent = "AI Error";
+        return false;
+      });
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes === 0) return "0 Bytes";
+
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+</script>
+{% endblock %}

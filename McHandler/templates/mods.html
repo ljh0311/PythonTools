@@ -1,0 +1,1234 @@
+{% extends "base.html" %}
+
+{% block title %}Mod Management - Minecraft Mod Handler{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-puzzle-piece me-2"></i>Mod Management
+        </h1>
+    </div>
+</div>
+
+<!-- Directory Selection -->
+<div class="row mb-4">
+    <!-- Left: Minecraft Directory -->
+    <div class="col-lg-6 mb-4 mb-lg-0">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-folder me-2"></i>Minecraft Directory
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center g-2">
+                    <div class="col-12">
+                        <div class="input-group">
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="minecraft-dir"
+                                placeholder="Minecraft directory (e.g., C:\Users\YourName\AppData\Roaming\ATLauncher\instances\YourInstance)"
+                            >
+                            <button
+                                class="btn btn-outline-secondary"
+                                type="button"
+                                onclick="showDirectoryPicker('minecraft-dir')"
+                                title="Browse for directory"
+                            >
+                                <i class="fas fa-folder-open"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12 mt-2">
+                        <button
+                            class="btn btn-outline-info w-100 mb-2"
+                            onclick="loadATLauncherInstances()"
+                        >
+                            <i class="fas fa-list me-1"></i>ATLauncher Instances
+                        </button>
+                        <div class="d-flex">
+                            <button
+                                class="btn btn-primary me-2 flex-fill"
+                                onclick="loadMods()"
+                            >
+                                <i class="fas fa-sync me-1"></i>Load Mods
+                            </button>
+                            <button
+                                class="btn btn-success flex-fill"
+                                onclick="backupMods()"
+                            >
+                                <i class="fas fa-archive me-1"></i>Backup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ATLauncher Instances List -->
+                <div id="atlauncher-instances" class="mt-3" style="display: none;">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle me-2"></i>ATLauncher Instances Found:</h6>
+                        <div id="instances-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Right: Mod Management -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-plus-circle me-2"></i>Add/Remove Mods
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="mod-upload" class="form-label">Add New Mods</label>
+                            <input type="file" class="form-control" id="mod-upload" 
+                                   accept=".jar" multiple onchange="handleModUpload(event)">
+                            <div class="form-text">
+                                Select one or more .jar files to add to your mods folder
+                            </div>
+                        </div>
+                        <div id="upload-progress" class="mb-3" style="display: none;">
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-readable">Uploading mods...</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Quick Actions</label>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary" onclick="openModFolder()">
+                                    <i class="fas fa-folder-open me-1"></i>Open Mods Folder
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="removeSelectedMods()">
+                                    <i class="fas fa-trash me-1"></i>Remove Selected Mods
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Uploaded Files Preview -->
+                <div id="upload-preview" class="mt-3" style="display: none;">
+                    <h6>Files to Upload:</h6>
+                    <div id="upload-list" class="list-group"></div>
+                    <div class="mt-2">
+                        <button class="btn btn-success" onclick="confirmUpload()">
+                            <i class="fas fa-upload me-1"></i>Upload Mods
+                        </button>
+                        <button class="btn btn-secondary ms-2" onclick="cancelUpload()">
+                            <i class="fas fa-times me-1"></i>Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mod List -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>Installed Mods
+                </h5>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <input type="text" class="form-control form-control-sm me-2" id="mod-search" placeholder="Search mods..." style="min-width:200px;max-width:250px;" oninput="filterModsTable()">
+                    <select class="form-select form-select-sm me-2" id="purpose-filter" style="min-width:150px;max-width:200px;" onchange="filterModsTable()">
+                        <option value="">All Purposes</option>
+                        <option value="Quality of Life (QOL)">Quality of Life</option>
+                        <option value="Building & Construction">Building & Construction</option>
+                        <option value="Graphics & Visual">Graphics & Visual</option>
+                        <option value="Performance & Optimization">Performance & Optimization</option>
+                        <option value="Adventure & Exploration">Adventure & Exploration</option>
+                        <option value="Combat & Weapons">Combat & Weapons</option>
+                        <option value="Magic & Technology">Magic & Technology</option>
+                        <option value="Food & Agriculture">Food & Agriculture</option>
+                        <option value="Transportation">Transportation</option>
+                        <option value="Storage & Organization">Storage & Organization</option>
+                        <option value="Utility & Tools">Utility & Tools</option>
+                        <option value="Unknown/Other">Unknown/Other</option>
+                    </select>
+                    <button class="btn btn-sm btn-warning me-2" onclick="disableSelected()">
+                        <i class="fas fa-ban me-1"></i>Disable Selected
+                    </button>
+                    <button class="btn btn-sm btn-success me-2" onclick="enableSelected()">
+                        <i class="fas fa-check me-1"></i>Enable Selected
+                    </button>
+                    <button class="btn btn-sm btn-info me-2" onclick="getAISuggestions()">
+                        <i class="fas fa-robot me-1"></i>AI Suggestions
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary me-2" onclick="categorizeMods()" id="categorize-btn">
+                        <i class="fas fa-tags me-1"></i>Categorize Mods
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" id="disable-problematic-btn" style="display:none;" onclick="disableProblematicMods()">
+                        <i class="fas fa-bug me-1"></i>Disable Problematic Mods
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="mods-table">
+                        <thead>
+                            <tr>
+                                <th>
+                                    <input type="checkbox" id="select-all" onchange="toggleSelectAll()">
+                                </th>
+                                <th style="cursor:pointer" onclick="sortMods('name')">
+                                    Name
+                                    <span id="sort-icon-name"></span>
+                                </th>
+                                <th style="cursor:pointer" onclick="sortMods('version')">
+                                    Version
+                                    <span id="sort-icon-version"></span>
+                                </th>
+                                <th style="cursor:pointer" onclick="sortMods('author')">
+                                    Author
+                                    <span id="sort-icon-author"></span>
+                                </th>
+                                <th style="cursor:pointer" onclick="sortMods('purpose')">
+                                    Purpose
+                                    <span id="sort-icon-purpose"></span>
+                                </th>
+                                <th style="cursor:pointer" onclick="sortMods('size')">
+                                    Size
+                                    <span id="sort-icon-size"></span>
+                                </th>
+                                <th style="cursor:pointer" onclick="sortMods('status')">
+                                    Status
+                                    <span id="sort-icon-status"></span>
+                                </th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mods-tbody">
+                            <tr>
+                                <td colspan="8" class="text-center text-readable">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    Select a Minecraft directory and click "Load Mods" to get started
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="problematic-mods-alert" class="alert alert-danger mt-3" style="display:none;">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> The following mods were flagged as problematic by crash analysis:
+                    <span id="problematic-mods-list" class="fw-bold"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Sorting state
+        let sortField = null;
+        let sortDirection = 1; // 1 = ascending, -1 = descending
+
+        // For search/filter
+        let filteredMods = [];
+        let lastSearch = "";
+
+        // For crash analysis integration
+        let problematicMods = []; // Array of mod names flagged by crash analysis
+
+        function sortMods(field) {
+            if (sortField === field) {
+                sortDirection *= -1; // Toggle direction
+            } else {
+                sortField = field;
+                sortDirection = 1;
+            }
+            updateSortIcons();
+            if (typeof filteredMods !== "undefined" && Array.isArray(filteredMods)) {
+                filteredMods.sort((a, b) => {
+                    let aValue, bValue;
+                    switch (field) {
+                        case "name":
+                            aValue = (a.display_name || a.name || "").toLowerCase();
+                            bValue = (b.display_name || b.name || "").toLowerCase();
+                            break;
+                        case "version":
+                            aValue = (a.version || "").toLowerCase();
+                            bValue = (b.version || "").toLowerCase();
+                            break;
+                        case "author":
+                            aValue = (a.author || "").toLowerCase();
+                            bValue = (b.author || "").toLowerCase();
+                            break;
+                        case "purpose":
+                            aValue = (a.purpose || "Unknown/Other").toLowerCase();
+                            bValue = (b.purpose || "Unknown/Other").toLowerCase();
+                            break;
+                        case "size":
+                            aValue = a.size || 0;
+                            bValue = b.size || 0;
+                            break;
+                        case "status":
+                            aValue = a.enabled ? "enabled" : "disabled";
+                            bValue = b.enabled ? "enabled" : "disabled";
+                            break;
+                        default:
+                            aValue = "";
+                            bValue = "";
+                    }
+                    if (aValue < bValue) return -1 * sortDirection;
+                    if (aValue > bValue) return 1 * sortDirection;
+                    return 0;
+                });
+                renderModsTable();
+            }
+        }
+
+        function updateSortIcons() {
+            const fields = ["name", "version", "author", "purpose", "size", "status"];
+            fields.forEach(f => {
+                const icon = document.getElementById("sort-icon-" + f);
+                if (icon) {
+                    if (sortField === f) {
+                        icon.innerHTML = sortDirection === 1
+                            ? '<i class="fas fa-sort-up"></i>'
+                            : '<i class="fas fa-sort-down"></i>';
+                    } else {
+                        icon.innerHTML = '<i class="fas fa-sort text-muted"></i>';
+                    }
+                }
+            });
+        }
+
+        // Search/filter mods by name, version, author, purpose, etc.
+        function filterModsTable() {
+            const search = document.getElementById('mod-search').value.trim().toLowerCase();
+            const purposeFilter = document.getElementById('purpose-filter').value;
+            lastSearch = search;
+            
+            if (!Array.isArray(currentMods)) {
+                filteredMods = [];
+                return;
+            }
+            
+            let filtered = [...currentMods];
+            
+            // Apply text search filter
+            if (search) {
+                filtered = filtered.filter(mod => {
+                    return (
+                        (mod.display_name || mod.name || "").toLowerCase().includes(search) ||
+                        (mod.version || "").toLowerCase().includes(search) ||
+                        (mod.author || "").toLowerCase().includes(search) ||
+                        (mod.purpose || "").toLowerCase().includes(search)
+                    );
+                });
+            }
+            
+            // Apply purpose filter
+            if (purposeFilter) {
+                filtered = filtered.filter(mod => {
+                    return (mod.purpose || "Unknown/Other") === purposeFilter;
+                });
+            }
+            
+            filteredMods = filtered;
+            renderModsTable();
+        }
+
+        // Render mods table using filteredMods
+        function renderModsTable() {
+            const tbody = document.getElementById('mods-tbody');
+            tbody.innerHTML = "";
+            if (!filteredMods.length) {
+                tbody.innerHTML = `<tr>
+                    <td colspan="8" class="text-center text-readable">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No mods found${lastSearch ? ' for search "' + lastSearch + '"' : ''}
+                    </td>
+                </tr>`;
+                return;
+            }
+            filteredMods.forEach((mod, idx) => {
+                const isProblematic = problematicMods.includes((mod.display_name || mod.name || "").toLowerCase());
+                const status = mod.enabled ? 'Enabled' : 'Disabled';
+                const statusClass = mod.enabled ? 'success' : 'secondary';
+                const sizeMB = mod.size ? (mod.size / (1024 * 1024)).toFixed(1) + ' MB' : 'Unknown';
+                
+                // Get purpose badge styling
+                const purpose = mod.purpose || 'Unknown/Other';
+                const purposeBadgeClass = getPurposeBadgeClass(purpose);
+                
+                tbody.innerHTML += `
+                    <tr class="${isProblematic ? 'table-danger' : ''}">
+                        <td>
+                            <input type="checkbox" class="mod-checkbox" value="${currentMods.indexOf(mod)}">
+                        </td>
+                        <td class="text-dark">
+                            <strong>${mod.display_name || mod.name || ''}</strong>${isProblematic ? ' <span class="badge bg-danger">Flagged</span>' : ''}
+                            ${mod.description ? `<br><small class="text-readable">${mod.description}</small>` : ''}
+                        </td>
+                        <td class="text-dark">${mod.version || 'Unknown'}</td>
+                        <td class="text-dark">${mod.author || 'Unknown'}</td>
+                        <td class="text-dark">
+                            <span class="badge ${purposeBadgeClass}">${purpose}</span>
+                        </td>
+                        <td class="text-dark">${sizeMB}</td>
+                        <td>
+                            <span class="badge bg-${statusClass}">${status}</span>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="toggleMod(${currentMods.indexOf(mod)}, '${mod.enabled ? 'disable' : 'enable'}')">
+                                <i class="fas fa-${mod.enabled ? 'ban' : 'check'} me-1"></i>
+                                ${mod.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Helper for file size formatting
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Helper function to get badge class for purpose
+        function getPurposeBadgeClass(purpose) {
+            const purposeClasses = {
+                'Quality of Life (QOL)': 'bg-primary',
+                'Building & Construction': 'bg-success',
+                'Graphics & Visual': 'bg-info',
+                'Performance & Optimization': 'bg-warning text-dark',
+                'Adventure & Exploration': 'bg-secondary',
+                'Combat & Weapons': 'bg-danger',
+                'Magic & Technology': 'bg-dark',
+                'Food & Agriculture': 'bg-success',
+                'Transportation': 'bg-info',
+                'Storage & Organization': 'bg-primary',
+                'Utility & Tools': 'bg-secondary',
+                'Unknown/Other': 'bg-light text-dark'
+            };
+            return purposeClasses[purpose] || 'bg-light text-dark';
+        }
+
+        // Integration: receive problematic mods from crash_analysis.html
+        // This function can be called from crash_analysis.html via window.postMessage or direct call
+        function setProblematicMods(modNames) {
+            problematicMods = (modNames || []).map(n => n.toLowerCase());
+            // Show alert if any
+            const alertDiv = document.getElementById('problematic-mods-alert');
+            const listSpan = document.getElementById('problematic-mods-list');
+            const disableBtn = document.getElementById('disable-problematic-btn');
+            if (problematicMods.length) {
+                alertDiv.style.display = '';
+                listSpan.textContent = modNames.join(', ');
+                disableBtn.style.display = '';
+            } else {
+                alertDiv.style.display = 'none';
+                listSpan.textContent = '';
+                disableBtn.style.display = 'none';
+            }
+            renderModsTable();
+        }
+
+        // Called by "Disable Problematic Mods" button
+        function disableProblematicMods() {
+            if (!problematicMods.length) return;
+            filteredMods.forEach((mod, idx) => {
+                if (problematicMods.includes((mod.display_name || mod.name || "").toLowerCase()) && mod.enabled) {
+                    disableModByIndex(idx);
+                }
+            });
+        }
+
+        // Example: crash_analysis.html can call window.parent.setProblematicMods([...])
+        window.setProblematicMods = setProblematicMods;
+
+        // Individual mod enable/disable
+        function disableModByIndex(idx) {
+            if (filteredMods[idx] && filteredMods[idx].enabled) {
+                const mod = filteredMods[idx];
+                const origIdx = currentMods.findIndex(m => (m.display_name || m.name) === (mod.display_name || mod.name));
+                if (origIdx !== -1) {
+                    toggleMod(origIdx, 'disable');
+                }
+            }
+        }
+        function enableModByIndex(idx) {
+            if (filteredMods[idx] && !filteredMods[idx].enabled) {
+                const mod = filteredMods[idx];
+                const origIdx = currentMods.findIndex(m => (m.display_name || m.name) === (mod.display_name || mod.name));
+                if (origIdx !== -1) {
+                    toggleMod(origIdx, 'enable');
+                }
+            }
+        }
+
+        // Search on input
+        document.getElementById('mod-search').addEventListener('input', filterModsTable);
+
+        // Call updateSortIcons on page load to show default icons
+        document.addEventListener('DOMContentLoaded', function() {
+            updateSortIcons();
+            // Initialize filteredMods
+            if (Array.isArray(currentMods)) {
+                filteredMods = [...currentMods];
+            } else {
+                filteredMods = [];
+            }
+            renderModsTable();
+        });
+
+        // When mods are loaded/refreshed, update filteredMods and re-filter
+        function onModsLoaded() {
+            if (Array.isArray(currentMods)) {
+                filteredMods = [...currentMods];
+            } else {
+                filteredMods = [];
+            }
+            filterModsTable();
+        }
+
+        // For compatibility: call onModsLoaded() after loading mods in your main JS
+        
+        // Categorize mods by purpose using AI
+        function categorizeMods() {
+            const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+            const categorizeBtn = document.getElementById('categorize-btn');
+            
+            if (!minecraftDir) {
+                showAlert('Please enter a Minecraft directory path first', 'warning');
+                return;
+            }
+            
+            if (!currentMods || currentMods.length === 0) {
+                showAlert('Please load mods first', 'warning');
+                return;
+            }
+            
+            // Disable button and show loading state
+            categorizeBtn.disabled = true;
+            categorizeBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Categorizing...';
+            
+            showLoading('AI is analyzing and categorizing your mods by purpose...');
+            
+            fetch('/api/mods/categorize', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ minecraft_dir: minecraftDir })
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                console.log('Categorization response:', data);
+                
+                if (data.error) {
+                    console.log('Categorization error:', data.error);
+                    showAlert(data.error, 'danger');
+                    return;
+                }
+                
+                if (data.success && data.categories) {
+                    console.log('Categories received:', data.categories);
+                    
+                    // Update mods with their purposes
+                    currentMods.forEach(mod => {
+                        const modName = mod.display_name || mod.name;
+                        let foundCategory = null;
+                        
+                        // Try exact match first
+                        if (data.categories[modName]) {
+                            foundCategory = data.categories[modName];
+                        } else {
+                            // Try to find a match by checking if any category key contains the mod name or vice versa
+                            for (const [categoryKey, categoryValue] of Object.entries(data.categories)) {
+                                // Check if mod name contains category key or category key contains mod name
+                                if (modName.toLowerCase().includes(categoryKey.toLowerCase()) || 
+                                    categoryKey.toLowerCase().includes(modName.toLowerCase())) {
+                                    foundCategory = categoryValue;
+                                    console.log(`Found fuzzy match: "${modName}" matches "${categoryKey}"`);
+                                    break;
+                                }
+                                
+                                // Also try matching against the display name without version numbers
+                                const cleanModName = modName.replace(/[-_]\d+\.\d+.*$/, '').replace(/[-_]/g, ' ').toLowerCase();
+                                const cleanCategoryKey = categoryKey.replace(/[-_]/g, ' ').toLowerCase();
+                                
+                                if (cleanModName.includes(cleanCategoryKey) || cleanCategoryKey.includes(cleanModName)) {
+                                    foundCategory = categoryValue;
+                                    console.log(`Found clean match: "${cleanModName}" matches "${cleanCategoryKey}"`);
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (foundCategory) {
+                            mod.purpose = foundCategory;
+                            console.log(`Categorized "${modName}" as "${foundCategory}"`);
+                        } else {
+                            mod.purpose = 'Unknown/Other';
+                            console.log(`No category found for "${modName}", using Unknown/Other`);
+                        }
+                    });
+                    
+                    // Refresh the display
+                    displayMods(currentMods);
+                    
+                    showAlert(`Successfully categorized ${Object.keys(data.categories).length} mods!`, 'success');
+                } else {
+                    console.log('Categorization failed:', data);
+                    // Set default purpose for all mods if categorization fails
+                    currentMods.forEach(mod => {
+                        if (!mod.purpose) {
+                            mod.purpose = 'Unknown/Other';
+                        }
+                    });
+                    displayMods(currentMods);
+                    showAlert('Failed to categorize mods. Using default categories.', 'warning');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                showAlert('Error categorizing mods: ' + error.message, 'danger');
+            })
+            .finally(() => {
+                // Re-enable button
+                categorizeBtn.disabled = false;
+                categorizeBtn.innerHTML = '<i class="fas fa-tags me-1"></i>Categorize Mods';
+            });
+        }
+    </script>
+</div>
+
+<!-- AI Suggestions Modal -->
+<div class="modal fade" id="aiSuggestionsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-robot me-2"></i>AI Suggestions
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="mod-name" class="form-label">Mod Name</label>
+                    <input type="text" class="form-control" id="mod-name" readonly>
+                </div>
+                <div class="mb-3">
+                    <label for="error-description" class="form-label">Describe the issue</label>
+                    <textarea class="form-control" id="error-description" rows="3" 
+                              placeholder="Describe what problems you're experiencing with this mod..."></textarea>
+                </div>
+                <div id="ai-suggestions-result" class="mt-3" style="display: none;">
+                    <h6>AI Suggestions:</h6>
+                    <div class="border rounded p-3 bg-light" id="suggestions-content"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="getSuggestions()">
+                    <i class="fas fa-magic me-1"></i>Get Suggestions
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+/* Ensure table text is always dark and visible */
+#mods-table tbody td {
+    color: #212529 !important;
+}
+
+#mods-table tbody td strong {
+    color: #212529 !important;
+}
+
+#mods-table tbody td small {
+    color: #6c757d !important;
+}
+
+/* Ensure table headers are also dark */
+#mods-table thead th {
+    color: #212529 !important;
+}
+
+/* Make sure badges have proper contrast */
+#mods-table .badge {
+    color: white !important;
+}
+
+#mods-table .badge.bg-light {
+    color: #212529 !important;
+}
+</style>
+<script>
+let currentMods = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Load saved directory if available
+    const savedDir = localStorage.getItem('minecraftDirectory');
+    if (savedDir) {
+        document.getElementById('minecraft-dir').value = savedDir;
+    }
+});
+
+function loadMods() {
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    
+    if (!minecraftDir) {
+        showAlert('Please enter a Minecraft directory path', 'warning');
+        return;
+    }
+    
+    // Save directory for future use
+    localStorage.setItem('minecraftDirectory', minecraftDir);
+    
+    showLoading('Loading mods...');
+    
+    fetch('/api/mods/load', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ minecraft_dir: minecraftDir })
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoading();
+        
+        if (data.error) {
+            let errorMessage = data.error;
+            if (data.suggestion) {
+                errorMessage += '\n\n' + data.suggestion;
+            }
+            showAlert(errorMessage, 'danger');
+            return;
+        }
+        
+        currentMods = data.mods;
+        displayMods(data.mods);
+        onModsLoaded(); // Ensure filtering system is updated
+        
+        // Show appropriate message based on results
+        if (data.mods.length === 0) {
+            let warningMessage = 'No mods found';
+            if (data.warning) {
+                warningMessage = data.warning;
+            }
+            if (data.mods_directory) {
+                warningMessage += `\n\nChecked directory: ${data.mods_directory}`;
+            }
+            if (data.suggestion) {
+                warningMessage += '\n\n' + data.suggestion;
+            }
+            showAlert(warningMessage, 'warning');
+        } else {
+            showAlert(`Loaded ${data.mods.length} mods successfully`, 'success');
+        }
+        
+        // Auto-categorize mods if they don't have purposes yet
+        const needsCategorization = currentMods.some(mod => !mod.purpose || mod.purpose === 'Unknown/Other');
+        if (needsCategorization && currentMods.length > 0) {
+            // Small delay to let the UI update first
+            setTimeout(() => {
+                categorizeMods();
+            }, 1000);
+        }
+    })
+    .catch(error => {
+        hideLoading();
+        showAlert('Error loading mods: ' + error.message, 'danger');
+    });
+}
+
+function displayMods(mods) {
+    // Update currentMods and filteredMods
+    currentMods = mods;
+    filteredMods = [...mods];
+    
+    // Clear search
+    document.getElementById('mod-search').value = '';
+    lastSearch = '';
+    
+    // Render using the unified system
+    renderModsTable();
+}
+
+function toggleMod(index, action) {
+    const mod = currentMods[index];
+    
+    fetch('/api/mods/toggle', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            mod_name: mod.name,
+            action: action
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showAlert(data.error, 'danger');
+            return;
+        }
+        
+        showAlert(`Mod ${action}d successfully`, 'success');
+        // Update the mod status in currentMods and refresh display
+        currentMods[index].enabled = (action === 'enable');
+        displayMods(currentMods); // Refresh display
+    })
+    .catch(error => {
+        showAlert('Error toggling mod: ' + error.message, 'danger');
+    });
+}
+
+function backupMods() {
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    
+    if (!minecraftDir) {
+        showAlert('Please enter a Minecraft directory path first', 'warning');
+        return;
+    }
+    
+    showLoading('Creating backup...');
+    
+    fetch('/api/mods/backup', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ minecraft_dir: minecraftDir })
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoading();
+        
+        if (data.error) {
+            showAlert(data.error, 'danger');
+            return;
+        }
+        
+        showAlert(`Backup created successfully at: ${data.backup_path}`, 'success');
+    })
+    .catch(error => {
+        hideLoading();
+        showAlert('Error creating backup: ' + error.message, 'danger');
+    });
+}
+
+function toggleSelectAll() {
+    const selectAll = document.getElementById('select-all');
+    const checkboxes = document.querySelectorAll('.mod-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAll.checked;
+    });
+}
+
+function getSelectedMods() {
+    const checkboxes = document.querySelectorAll('.mod-checkbox:checked');
+    return Array.from(checkboxes).map(cb => currentMods[parseInt(cb.value)]);
+}
+
+function disableSelected() {
+    const selectedMods = getSelectedMods();
+    
+    if (selectedMods.length === 0) {
+        showAlert('Please select mods to disable', 'warning');
+        return;
+    }
+    
+    // Disable each selected mod
+    selectedMods.forEach(mod => {
+        toggleMod(currentMods.indexOf(mod), 'disable');
+    });
+}
+
+function enableSelected() {
+    const selectedMods = getSelectedMods();
+    
+    if (selectedMods.length === 0) {
+        showAlert('Please select mods to enable', 'warning');
+        return;
+    }
+    
+    // Enable each selected mod
+    selectedMods.forEach(mod => {
+        toggleMod(currentMods.indexOf(mod), 'enable');
+    });
+}
+
+function getAISuggestions() {
+    const selectedMods = getSelectedMods();
+    
+    if (selectedMods.length === 0) {
+        showAlert('Please select a mod to get AI suggestions for', 'warning');
+        return;
+    }
+    
+    if (selectedMods.length > 1) {
+        showAlert('Please select only one mod for AI suggestions', 'warning');
+        return;
+    }
+    
+    const mod = selectedMods[0];
+    document.getElementById('mod-name').value = mod.display_name || mod.name;
+    document.getElementById('error-description').value = '';
+    document.getElementById('ai-suggestions-result').style.display = 'none';
+    
+    const modal = new bootstrap.Modal(document.getElementById('aiSuggestionsModal'));
+    modal.show();
+}
+
+function getSuggestions() {
+    const modName = document.getElementById('mod-name').value;
+    const errorDescription = document.getElementById('error-description').value;
+    
+    if (!errorDescription.trim()) {
+        showAlert('Please describe the issue', 'warning');
+        return;
+    }
+    
+    showLoading('Getting AI suggestions...');
+    
+    fetch('/api/ollama/suggest', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            mod_name: modName,
+            error_description: errorDescription
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoading();
+        
+        if (data.error) {
+            showAlert(data.error, 'danger');
+            return;
+        }
+        
+        document.getElementById('suggestions-content').innerHTML = 
+            data.suggestions.replace(/\n/g, '<br>');
+        document.getElementById('ai-suggestions-result').style.display = 'block';
+    })
+    .catch(error => {
+        hideLoading();
+        showAlert('Error getting suggestions: ' + error.message, 'danger');
+    });
+}
+
+function loadATLauncherInstances() {
+    // Get elements directly - they should exist in the DOM
+    const instancesDiv = document.getElementById('atlauncher-instances');
+    const instancesList = document.getElementById('instances-list');
+    
+    // If elements don't exist, try to find them with retry logic
+    if (!instancesDiv || !instancesList) {
+        // Try to find elements with retry logic
+        function findElementsWithRetry(callback, maxRetries = 10, delay = 100) {
+            let retries = 0;
+            
+            function tryFind() {
+                const instancesDiv = document.getElementById('atlauncher-instances');
+                const instancesList = document.getElementById('instances-list');
+                
+                if (instancesDiv && instancesList) {
+                    callback(instancesDiv, instancesList);
+                } else if (retries < maxRetries) {
+                    retries++;
+                    setTimeout(tryFind, delay);
+                } else {
+                    console.error('ATLauncher elements not found after', maxRetries, 'retries');
+                    showAlert('Error: ATLauncher instances elements not found. The page may not be fully loaded. Please try again.', 'warning');
+                }
+            }
+            
+            tryFind();
+        }
+        
+        // Use retry logic
+        findElementsWithRetry((instancesDiv, instancesList) => {
+            loadAndDisplayInstances(instancesDiv, instancesList);
+        });
+    } else {
+        // Elements exist, proceed directly
+        loadAndDisplayInstances(instancesDiv, instancesList);
+    }
+    
+    function loadAndDisplayInstances(instancesDiv, instancesList) {
+        // Show loading state
+        instancesDiv.style.display = 'block';
+        instancesList.innerHTML = '<div class="text-center py-2"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+        
+        fetch('/api/atlauncher/instances')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    instancesList.innerHTML = `<div class="alert alert-danger mb-0">${data.error}</div>`;
+                    showAlert(data.error, 'danger');
+                    return;
+                }
+                
+                if (data.instances.length === 0) {
+                    instancesList.innerHTML = '<p class="text-readable mb-0">No ATLauncher instances found with mods.</p>';
+                } else {
+                    instancesList.innerHTML = '';
+                    data.instances.forEach(instance => {
+                        const instanceButton = document.createElement('button');
+                        instanceButton.className = 'btn btn-outline-primary btn-sm me-2 mb-2';
+                        instanceButton.innerHTML = `
+                            <i class="fas fa-folder me-1"></i>
+                            ${instance.name} (${instance.mod_count} mods)
+                        `;
+                        instanceButton.onclick = () => {
+                            const minecraftDirInput = document.getElementById('minecraft-dir');
+                            if (minecraftDirInput) {
+                                minecraftDirInput.value = instance.path;
+                                // Save to localStorage
+                                localStorage.setItem('minecraftDirectory', instance.path);
+                            }
+                            instancesDiv.style.display = 'none';
+                            showAlert(`Selected instance: ${instance.name}`, 'success');
+                        };
+                        instancesList.appendChild(instanceButton);
+                    });
+                }
+            })
+            .catch(error => {
+                instancesList.innerHTML = `<div class="alert alert-danger mb-0">Error loading ATLauncher instances: ${error.message}</div>`;
+                showAlert('Error loading ATLauncher instances: ' + error.message, 'danger');
+            });
+    }
+}
+
+// Mod upload and management functions
+let selectedFiles = [];
+
+function handleModUpload(event) {
+    const files = Array.from(event.target.files);
+    
+    // Filter only .jar files
+    const jarFiles = files.filter(file => file.name.toLowerCase().endsWith('.jar'));
+    
+    if (jarFiles.length !== files.length) {
+        showAlert(`Only .jar files are allowed. ${files.length - jarFiles.length} non-jar files were ignored.`, 'warning');
+    }
+    
+    if (jarFiles.length === 0) {
+        showAlert('Please select .jar files only', 'warning');
+        return;
+    }
+    
+    selectedFiles = jarFiles;
+    showUploadPreview();
+}
+
+function showUploadPreview() {
+    const previewDiv = document.getElementById('upload-preview');
+    const listDiv = document.getElementById('upload-list');
+    
+    listDiv.innerHTML = '';
+    
+    selectedFiles.forEach((file, index) => {
+        const listItem = document.createElement('div');
+        listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+        listItem.innerHTML = `
+            <div>
+                <i class="fas fa-file-archive me-2"></i>
+                <strong>${file.name}</strong>
+                <br>
+                <small class="text-readable">${formatFileSize(file.size)}</small>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" onclick="removeFileFromPreview(${index})">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        listDiv.appendChild(listItem);
+    });
+    
+    previewDiv.style.display = 'block';
+}
+
+function removeFileFromPreview(index) {
+    selectedFiles.splice(index, 1);
+    
+    if (selectedFiles.length === 0) {
+        document.getElementById('upload-preview').style.display = 'none';
+        document.getElementById('mod-upload').value = '';
+    } else {
+        showUploadPreview();
+    }
+}
+
+function confirmUpload() {
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    
+    if (!minecraftDir) {
+        showAlert('Please set a Minecraft directory first', 'warning');
+        return;
+    }
+    
+    if (selectedFiles.length === 0) {
+        showAlert('No files selected for upload', 'warning');
+        return;
+    }
+    
+    uploadMods();
+}
+
+function uploadMods() {
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    const progressDiv = document.getElementById('upload-progress');
+    const progressBar = progressDiv.querySelector('.progress-bar');
+    
+    progressDiv.style.display = 'block';
+    progressBar.style.width = '0%';
+    
+    const formData = new FormData();
+    formData.append('minecraft_dir', minecraftDir);
+    
+    selectedFiles.forEach((file, index) => {
+        formData.append('mod_files', file);
+    });
+    
+    fetch('/api/mods/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        progressDiv.style.display = 'none';
+        
+        if (data.error) {
+            showAlert(data.error, 'danger');
+            return;
+        }
+        
+        showAlert(`Successfully uploaded ${data.uploaded_count} mod(s)`, 'success');
+        
+        // Clear upload preview
+        cancelUpload();
+        
+        // Reload mods list
+        loadMods();
+    })
+    .catch(error => {
+        progressDiv.style.display = 'none';
+        showAlert('Error uploading mods: ' + error.message, 'danger');
+    });
+}
+
+function cancelUpload() {
+    selectedFiles = [];
+    document.getElementById('upload-preview').style.display = 'none';
+    document.getElementById('mod-upload').value = '';
+}
+
+function openModFolder() {
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+
+    if (!minecraftDir) {
+        showAlert('Please set a Minecraft directory first', 'warning');
+        return;
+    }
+
+    // Attempt to open the mods folder in the user's file explorer via backend
+    fetch('/api/open_mod_folder', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            minecraft_dir: minecraftDir
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('Opened mods folder in your file explorer.', 'success');
+        } else if (data.error) {
+            showAlert('Failed to open mods folder: ' + data.error, 'danger');
+        } else {
+            showAlert('Could not open mods folder. Please open it manually at: ' + minecraftDir + '/mods', 'warning');
+        }
+    })
+    .catch(error => {
+        showAlert('Error opening mods folder: ' + error.message, 'danger');
+    });
+}
+
+function removeSelectedMods() {
+    const selectedMods = getSelectedMods();
+    
+    if (selectedMods.length === 0) {
+        showAlert('Please select mods to remove', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to permanently remove ${selectedMods.length} mod(s)? This action cannot be undone.`)) {
+        return;
+    }
+    
+    const minecraftDir = document.getElementById('minecraft-dir').value.trim();
+    
+    if (!minecraftDir) {
+        showAlert('Please set a Minecraft directory first', 'warning');
+        return;
+    }
+    
+    showLoading('Removing mods...');
+    
+    const modNames = selectedMods.map(mod => mod.name);
+    
+    fetch('/api/mods/remove', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            minecraft_dir: minecraftDir,
+            mod_names: modNames
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoading();
+        
+        if (data.error) {
+            showAlert(data.error, 'danger');
+            return;
+        }
+        
+        showAlert(`Successfully removed ${data.removed_count} mod(s)`, 'success');
+        
+        // Reload mods list
+        loadMods();
+    })
+    .catch(error => {
+        hideLoading();
+        showAlert('Error removing mods: ' + error.message, 'danger');
+    });
+}
+</script>
+{% endblock %}

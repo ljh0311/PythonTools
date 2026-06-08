@@ -1,0 +1,23 @@
+{
+  "ollama": {
+    "url": "http://localhost:11434",
+    "model": "llama3:latest",
+    "timeout": 60
+  },
+  "application": {
+    "default_minecraft_dir": "C:/Users/user/AppData/Roaming/ATLauncher/instances/yippie",
+    "auto_backup": true,
+    "dark_mode": false,
+    "window_geometry": "1200x800"
+  },
+  "directories": {
+    "minecraft_dir": "C:/Users/user/AppData/Roaming/ATLauncher/instances/yippie",
+    "shaderpack_dir": "C:/Users/user/AppData/Roaming/ATLauncher/instances/yippie",
+    "compatibility_dir": "C:/Users/user/AppData/Roaming/ATLauncher/instances/yippie"
+  },
+  "ui": {
+    "theme": "default",
+    "font_size": 10,
+    "show_tooltips": true
+  }
+}
