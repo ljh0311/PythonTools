@@ -1,6 +1,6 @@
 # Live 3D Reconstruction from Camera
 
-This module enables real-time 3D reconstruction using a connected camera. It uses computer vision techniques to track features across video frames, calculate camera pose, and create a 3D point cloud which can be further processed into a 3D mesh.
+This module enables incremental 3D reconstruction using a connected camera. It tracks features across frames, estimates relative pose, triangulates inlier tracks, and accumulates a live point cloud.
 
 ## Prerequisites
 
@@ -43,6 +43,7 @@ python src/live_reconstruction_app.py
 - `--height`: Set camera capture height (default: 480)
 - `--output-dir`: Directory to save reconstruction results (default: "output")
 - `--save-keyframes`: Save keyframes to disk (default: false)
+- `--calibration-file`: Optional JSON calibration file (`camera_matrix`, `dist_coeffs`)
 
 Example with options:
 

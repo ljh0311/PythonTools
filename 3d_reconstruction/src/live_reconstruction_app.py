@@ -25,6 +25,8 @@ def parse_args():
                         help="Directory to save reconstruction results (default: output)")
     parser.add_argument("--save-keyframes", action="store_true",
                         help="Save keyframes to disk")
+    parser.add_argument("--calibration-file", type=str, default=None,
+                        help="Optional camera calibration JSON for better pose estimation")
     
     return parser.parse_args()
 
@@ -57,6 +59,11 @@ def main():
     
     # Initialize reconstruction engine
     reconstruction = ReconstructionEngine()
+    if args.calibration_file:
+        if reconstruction.load_camera_params(args.calibration_file):
+            print(f"Loaded camera calibration from: {args.calibration_file}")
+        else:
+            print(f"Warning: failed to load camera calibration from: {args.calibration_file}")
     
     # Start camera capture
     camera.start_capture()
@@ -142,6 +149,7 @@ def main():
                     mesh_path = output_dir / f"mesh_{timestamp}.ply"
                     print(f"Saving mesh to {mesh_path}")
                     o3d.io.write_triangle_mesh(str(mesh_path), reconstruction.mesh)
+                print(f"Metrics: {reconstruction.get_metrics_summary()}")
                     
     except KeyboardInterrupt:
         print("Interrupted by user")
