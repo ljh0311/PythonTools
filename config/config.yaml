@@ -1,0 +1,44 @@
+calibration:
+  num_images: 10
+  pattern_size: !!python/tuple
+  - 9
+  - 6
+  square_size: 0.025
+cameras:
+  cam0:
+    fps: 30
+    height: 480
+    id: 0
+    type: webcam
+    width: 640
+feature_matching:
+  descriptor: sift
+  detector: sift
+  lowe_ratio: 0.7
+  matcher: flann
+  max_features: 2000
+  min_matches: 10
+image_processing:
+  blur:
+    kernel_size: 3
+  clahe:
+    clip_limit: 2.0
+    tile_grid_size: !!python/tuple
+    - 8
+    - 8
+  grayscale: true
+  resize:
+    height: 480
+    width: 640
+reconstruction:
+  bundle_adjustment: true
+  max_depth: 10.0
+  method: sfm
+  min_depth: 0.1
+  triangulation: opencv
+rendering:
+  mesh_method: poisson
+  mesh_resolution: 8
+  point_size: 2.0
+  texture_mapping: true
+  viewer: open3d
