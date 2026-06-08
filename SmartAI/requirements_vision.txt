@@ -1,0 +1,15 @@
+# Vision module dependencies
+opencv-python>=4.5.0
+numpy>=1.19.0
+mediapipe>=0.10.0
+
+# Optional: For better performance
+opencv-contrib-python>=4.5.0
+
+# GUI dependencies (if using robot_gui.py)
+customtkinter>=5.0.0
+matplotlib>=3.3.0
+Pillow>=8.0.0
+
+# For development and testing
+pytest>=6.0.0 

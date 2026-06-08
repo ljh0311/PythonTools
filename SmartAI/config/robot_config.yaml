@@ -1,0 +1,103 @@
+# Smart Robot Configuration File
+
+# Hardware Configuration
+hardware:
+  # Motor pins (for Raspberry Pi GPIO)
+  left_motor:
+    forward_pin: 17
+    backward_pin: 18
+    enable_pin: 27
+    pwm_frequency: 1000
+  
+  right_motor:
+    forward_pin: 22
+    backward_pin: 23
+    enable_pin: 24
+    pwm_frequency: 1000
+  
+  # Sensor pins
+  sensors:
+    ultrasonic_front: 5
+    ultrasonic_left: 6
+    ultrasonic_right: 13
+    infrared_left: 19
+    infrared_right: 26
+    bumper_left: 20
+    bumper_right: 21
+  
+  # Camera settings
+  camera:
+    device_id: 0
+    width: 640
+    height: 480
+    fps: 30
+
+# Robot Physical Properties
+robot:
+  # Dimensions (in cm)
+  width: 30
+  length: 40
+  height: 20
+  wheel_diameter: 6.5
+  wheel_distance: 25
+  
+  # Movement parameters
+  max_speed: 50  # cm/s
+  min_speed: 10  # cm/s
+  turn_speed: 30  # cm/s
+  acceleration: 20  # cm/s²
+  
+  # Safety distances (in cm)
+  safety_distances:
+    critical: 10
+    warning: 30
+    comfortable: 50
+
+# Navigation Settings
+navigation:
+  # Pathfinding
+  grid_size: 10  # cm
+  map_width: 1000  # cm
+  map_height: 1000  # cm
+  
+  # Obstacle detection
+  min_obstacle_distance: 15  # cm
+  max_obstacle_distance: 400  # cm
+  
+  # Behavior
+  exploration_mode: true
+  return_to_base: true
+  base_location: [500, 500]  # [x, y] in cm
+  
+  # Mapping
+  update_frequency: 5  # Hz
+  mapping_enabled: true
+
+# Control Settings
+control:
+  # Manual control
+  manual_speed_limit: 30  # cm/s
+  joystick_deadzone: 0.1
+  
+  # Autonomous mode
+  auto_mode_enabled: true
+  emergency_stop_distance: 8  # cm
+  
+  # GUI settings
+  gui_update_rate: 30  # Hz
+  show_debug_info: true
+  show_sensor_data: true
+
+# Logging and Debugging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  save_logs: true
+  log_directory: "logs/"
+  max_log_size: "10MB"
+  backup_count: 5
+
+# Network Settings (for future remote control)
+network:
+  host: "localhost"
+  port: 8080
+  enable_remote_control: false 

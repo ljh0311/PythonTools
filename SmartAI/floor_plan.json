@@ -1,0 +1,202 @@
+[
+  {
+    "type": "wall",
+    "position": [0, 5.25],
+    "dimensions": [9.5, 1.0],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "North Wall"
+  },
+  {
+    "type": "wall",
+    "position": [0, -5.25],
+    "dimensions": [9.5, 1.0],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "South Wall"
+  },
+  {
+    "type": "wall",
+    "position": [-4.75, 0],
+    "dimensions": [1.0, 10.5],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "West Wall"
+  },
+  {
+    "type": "wall",
+    "position": [4.75, 0],
+    "dimensions": [1.0, 10.5],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "East Wall"
+  },
+  {
+    "type": "wall",
+    "position": [2.75, 2.35],
+    "dimensions": [1.0, 5.8],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "Living Room - Master Bedroom Wall"
+  },
+  {
+    "type": "wall",
+    "position": [-1.75, -1.05],
+    "dimensions": [2.5, 1.0],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "Living Room - Kitchen Wall"
+  },
+  {
+    "type": "wall",
+    "position": [4.75, 2.5],
+    "dimensions": [1.0, 5.5],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "Master Bedroom - Bedroom 2 Wall"
+  },
+  {
+    "type": "wall",
+    "position": [1.75, -2.9],
+    "dimensions": [1.0, 4.7],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "Bedroom 3 - Bedroom 2 Wall"
+  },
+  {
+    "type": "wall",
+    "position": [-1.75, -2.9],
+    "dimensions": [1.0, 4.7],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "Kitchen - Bedroom 3 Wall"
+  },
+  {
+    "type": "wall",
+    "position": [0, -1.05],
+    "dimensions": [3.0, 1.0],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "Bedroom 3 - Living Room Wall"
+  },
+  {
+    "type": "wall",
+    "position": [-3.25, -1.25],
+    "dimensions": [3.0, 1.0],
+    "color": [150, 150, 150],
+    "collision": true,
+    "name": "Kitchen - Bedroom 3 Wall"
+  },
+  {
+    "type": "door",
+    "position": [-4.75, -3.25],
+    "dimensions": [0.1, 1.0],
+    "color": [139, 69, 19],
+    "collision": false,
+    "name": "Main Entrance"
+  },
+  {
+    "type": "door",
+    "position": [2.75, 3.8],
+    "dimensions": [0.1, 1.0],
+    "color": [139, 69, 19],
+    "collision": false,
+    "name": "Living Room - Master Bedroom Door"
+  },
+  {
+    "type": "door",
+    "position": [0, -1.55],
+    "dimensions": [1.0, 0.1],
+    "color": [139, 69, 19],
+    "collision": false,
+    "name": "Living Room - Bedroom 3 Door"
+  },
+  {
+    "type": "door",
+    "position": [1.75, -2.9],
+    "dimensions": [0.1, 1.0],
+    "color": [139, 69, 19],
+    "collision": false,
+    "name": "Bedroom 3 - Bedroom 2 Door"
+  },
+  {
+    "type": "door",
+    "position": [-1.75, -3.25],
+    "dimensions": [0.1, 1.0],
+    "color": [139, 69, 19],
+    "collision": false,
+    "name": "Kitchen - Bedroom 3 Door"
+  },
+  {
+    "type": "furniture",
+    "position": [-1.0, 2.35],
+    "dimensions": [2.0, 1.0],
+    "color": [139, 69, 19],
+    "collision": true,
+    "name": "Living Room Sofa"
+  },
+  {
+    "type": "furniture",
+    "position": [-3.0, 2.35],
+    "dimensions": [1.2, 0.8],
+    "color": [139, 69, 19],
+    "collision": true,
+    "name": "Living Room Coffee Table"
+  },
+  {
+    "type": "furniture",
+    "position": [2.75, 3.5],
+    "dimensions": [2.0, 1.0],
+    "color": [139, 69, 19],
+    "collision": true,
+    "name": "Master Bedroom Bed"
+  },
+  {
+    "type": "furniture",
+    "position": [2.75, 1.5],
+    "dimensions": [1.2, 0.8],
+    "color": [139, 69, 19],
+    "collision": true,
+    "name": "Master Bedroom Nightstand"
+  },
+  {
+    "type": "furniture",
+    "position": [3.25, -1.9],
+    "dimensions": [2.0, 1.0],
+    "color": [139, 69, 19],
+    "collision": true,
+    "name": "Bedroom 2 Bed"
+  },
+  {
+    "type": "furniture",
+    "position": [3.25, -3.9],
+    "dimensions": [1.2, 0.8],
+    "color": [139, 69, 19],
+    "collision": true,
+    "name": "Bedroom 2 Desk"
+  },
+  {
+    "type": "furniture",
+    "position": [0, -1.9],
+    "dimensions": [2.0, 1.0],
+    "color": [139, 69, 19],
+    "collision": true,
+    "name": "Bedroom 3 Bed"
+  },
+  {
+    "type": "furniture",
+    "position": [0, -3.9],
+    "dimensions": [1.2, 0.8],
+    "color": [139, 69, 19],
+    "collision": true,
+    "name": "Bedroom 3 Desk"
+  },
+  {
+    "type": "furniture",
+    "position": [-3.25, -2.75],
+    "dimensions": [1.5, 0.6],
+    "color": [139, 69, 19],
+    "collision": true,
+    "name": "Kitchen Counter"
+  }
+]

@@ -1,0 +1,35 @@
+# Smart Robot System Dependencies
+# Core dependencies
+numpy>=1.26.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+matplotlib>=3.7.0
+
+# GUI and visualization
+customtkinter>=5.2.0
+
+# 3D Simulation and Visualization
+pygame>=2.5.0
+pyopengl>=3.1.0
+
+# Robotics and control
+pyserial>=3.5
+# RPi.GPIO>=0.7.1  # Only needed on Raspberry Pi
+# adafruit-circuitpython-motor>=3.3.8  # Only needed on Raspberry Pi
+# adafruit-circuitpython-hcsr04>=3.7.8  # Only needed on Raspberry Pi
+
+# Pathfinding and algorithms
+networkx>=3.1
+scipy>=1.11.0
+
+# Data handling and logging
+pandas>=2.0.0
+loguru>=0.7.0
+
+# Configuration and settings
+pyyaml>=6.0.0
+configparser>=5.3.0
+
+# Development and testing
+pytest>=7.4.0
+black>=23.7.0

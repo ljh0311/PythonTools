@@ -1,0 +1,3 @@
+"""
+Navigation and pathfinding components
+""" 

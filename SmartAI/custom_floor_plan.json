@@ -1,0 +1,272 @@
+[
+  {
+    "type": "wall",
+    "position": [
+      0,
+      -10
+    ],
+    "dimensions": [
+      20,
+      0.1
+    ],
+    "color": [
+      150,
+      150,
+      150
+    ],
+    "collision": true,
+    "name": "Wall_1"
+  },
+  {
+    "type": "wall",
+    "position": [
+      0,
+      10
+    ],
+    "dimensions": [
+      20,
+      0.1
+    ],
+    "color": [
+      150,
+      150,
+      150
+    ],
+    "collision": true,
+    "name": "Wall_2"
+  },
+  {
+    "type": "wall",
+    "position": [
+      10,
+      0
+    ],
+    "dimensions": [
+      0.1,
+      20
+    ],
+    "color": [
+      150,
+      150,
+      150
+    ],
+    "collision": true,
+    "name": "Wall_3"
+  },
+  {
+    "type": "wall",
+    "position": [
+      -10,
+      0
+    ],
+    "dimensions": [
+      0.1,
+      20
+    ],
+    "color": [
+      150,
+      150,
+      150
+    ],
+    "collision": true,
+    "name": "Wall_4"
+  },
+  {
+    "type": "wall",
+    "position": [
+      -5,
+      -5
+    ],
+    "dimensions": [
+      0.1,
+      10
+    ],
+    "color": [
+      150,
+      150,
+      150
+    ],
+    "collision": true,
+    "name": "Wall_5"
+  },
+  {
+    "type": "wall",
+    "position": [
+      5,
+      5
+    ],
+    "dimensions": [
+      0.1,
+      10
+    ],
+    "color": [
+      150,
+      150,
+      150
+    ],
+    "collision": true,
+    "name": "Wall_6"
+  },
+  {
+    "type": "wall",
+    "position": [
+      -5,
+      0
+    ],
+    "dimensions": [
+      10,
+      0.1
+    ],
+    "color": [
+      150,
+      150,
+      150
+    ],
+    "collision": true,
+    "name": "Wall_7"
+  },
+  {
+    "type": "wall",
+    "position": [
+      0,
+      5
+    ],
+    "dimensions": [
+      10,
+      0.1
+    ],
+    "color": [
+      150,
+      150,
+      150
+    ],
+    "collision": true,
+    "name": "Wall_8"
+  },
+  {
+    "type": "obstacle",
+    "position": [
+      -7,
+      -7
+    ],
+    "dimensions": [
+      0.5,
+      0.5
+    ],
+    "color": [
+      255,
+      0,
+      0
+    ],
+    "collision": true,
+    "name": "Red Cube"
+  },
+  {
+    "type": "obstacle",
+    "position": [
+      7,
+      7
+    ],
+    "dimensions": [
+      0.5,
+      0.5
+    ],
+    "color": [
+      255,
+      0,
+      0
+    ],
+    "collision": true,
+    "name": "Green Cube"
+  },
+  {
+    "type": "obstacle",
+    "position": [
+      0,
+      -8
+    ],
+    "dimensions": [
+      0.3,
+      0.3
+    ],
+    "color": [
+      255,
+      0,
+      0
+    ],
+    "collision": true,
+    "name": "Blue Cylinder"
+  },
+  {
+    "type": "furniture",
+    "position": [
+      -3,
+      3
+    ],
+    "dimensions": [
+      1.5,
+      1
+    ],
+    "color": [
+      139,
+      69,
+      19
+    ],
+    "collision": true,
+    "name": "Table"
+  },
+  {
+    "type": "furniture",
+    "position": [
+      3,
+      -3
+    ],
+    "dimensions": [
+      1,
+      0.5
+    ],
+    "color": [
+      139,
+      69,
+      19
+    ],
+    "collision": true,
+    "name": "Chair"
+  },
+  {
+    "type": "door",
+    "position": [
+      0,
+      -5
+    ],
+    "dimensions": [
+      0.1,
+      1.0
+    ],
+    "color": [
+      139,
+      69,
+      19
+    ],
+    "collision": false,
+    "name": "Main Door"
+  },
+  {
+    "type": "window",
+    "position": [
+      5,
+      8
+    ],
+    "dimensions": [
+      0.1,
+      1.5
+    ],
+    "color": [
+      173,
+      216,
+      230
+    ],
+    "collision": false,
+    "name": "Window"
+  }
+]

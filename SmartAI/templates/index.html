@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Robot Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: #333;
+            margin-bottom: 40px;
+            padding: 30px 20px;
+        }
+
+        .header h1 {
+            font-size: 2.8em;
+            margin-bottom: 10px;
+            color: #4285f4;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            font-size: 1.3em;
+            color: #666;
+            font-weight: 400;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .card h2 {
+            color: #4285f4;
+            margin-bottom: 24px;
+            font-size: 1.6em;
+            font-weight: 600;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card h3 {
+            color: #555;
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #4285f4;
+            transition: background 0.2s ease;
+        }
+
+        .status-item:hover {
+            background: #f0f0f0;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .status-value {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .status-value.online {
+            color: #28a745;
+        }
+
+        .status-value.offline {
+            color: #dc3545;
+        }
+
+        .control-panel {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .movement-controls {
+            text-align: center;
+        }
+
+        .direction-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 200px;
+            margin: 0 auto 20px;
+        }
+
+        .direction-btn {
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            background: #4285f4;
+            color: white;
+            font-size: 1.3em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(66, 133, 244, 0.2);
+        }
+
+        .direction-btn:hover {
+            background: #3367d6;
+            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(66, 133, 244, 0.3);
+        }
+
+        .direction-btn:active {
+            transform: scale(0.95);
+        }
+
+        .direction-btn.forward {
+            grid-column: 2;
+        }
+
+        .direction-btn.backward {
+            grid-column: 2;
+            grid-row: 3;
+        }
+
+        .direction-btn.left {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .direction-btn.right {
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        .direction-btn.stop {
+            grid-column: 2;
+            grid-row: 2;
+            background: #dc3545;
+        }
+
+        .direction-btn.stop:hover {
+            background: #c82333;
+        }
+
+        .speed-control {
+            margin-top: 20px;
+        }
+
+        .speed-slider {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .action-btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .action-btn.primary {
+            background: #4285f4;
+            color: white;
+        }
+
+        .action-btn.primary:hover {
+            background: #3367d6;
+        }
+
+        .action-btn.secondary {
+            background: #ff9800;
+            color: white;
+        }
+
+        .action-btn.secondary:hover {
+            background: #f57c00;
+        }
+
+        .action-btn.danger {
+            background: #ea4335;
+            color: white;
+        }
+
+        .action-btn.danger:hover {
+            background: #d33b2c;
+        }
+
+        .navigation-controls {
+            margin-top: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 1em;
+            transition: border-color 0.3s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #4285f4;
+            box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+        }
+
+        .coordinates-input {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .sensor-display {
+            margin-top: 20px;
+        }
+
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .sensor-item {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .sensor-value {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #4285f4;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #c3e6cb;
+        }
+
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #ffeaa7;
+        }
+
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #bee5eb;
+        }
+
+        /* Waypoints Section */
+        .waypoints-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        .waypoints-controls {
+            margin-bottom: 20px;
+        }
+
+        .waypoint-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .waypoints-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .waypoint-item {
+            background: #f8f9fa;
+            padding: 12px 16px;
+            border-radius: 10px;
+            border-left: 4px solid #4285f4;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s ease;
+        }
+
+        .waypoint-item:hover {
+            background: #f0f0f0;
+        }
+
+        .waypoint-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .waypoint-coords {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .waypoint-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .waypoint-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s ease;
+        }
+
+        .waypoint-btn.navigate {
+            background: #4285f4;
+            color: white;
+        }
+
+        .waypoint-btn.navigate:hover {
+            background: #3367d6;
+        }
+
+        .waypoint-btn.delete {
+            background: #ea4335;
+            color: white;
+        }
+
+        .waypoint-btn.delete:hover {
+            background: #d33b2c;
+        }
+
+        /* Map Tabs */
+        .map-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            justify-content: center;
+        }
+
+        .tab-btn {
+            padding: 10px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: white;
+            color: #666;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            border-color: #4285f4;
+            color: #4285f4;
+        }
+
+        .tab-btn.active {
+            background: #4285f4;
+            color: white;
+            border-color: #4285f4;
+        }
+
+        /* Camera Container */
+        .camera-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .camera-view {
+            transition: opacity 0.3s ease, display 0.3s ease;
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .camera-feed {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 12px;
+        }
+
+        .camera-overlay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+
+        .camera-status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #28a745;
+            box-shadow: 0 0 8px rgba(40, 167, 69, 0.6);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .camera-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        /* Feature Toggles */
+        .feature-toggles {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .toggle-item {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            transition: background 0.2s ease;
+        }
+
+        .toggle-item:hover {
+            background: #f0f0f0;
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            cursor: pointer;
+        }
+
+        .feature-toggle {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            margin-top: 2px;
+        }
+
+        .toggle-text {
+            font-weight: 600;
+            color: #333;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .toggle-description {
+            font-size: 0.9em;
+            color: #666;
+            display: block;
+        }
+
+        /* Room Navigation */
+        .room-navigation {
+            margin-top: 20px;
+        }
+
+        .room-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+            margin-top: 15px;
+        }
+
+        .room-button {
+            padding: 14px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            background: white;
+            color: #333;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .room-button:hover {
+            border-color: #4285f4;
+            background: #f0f7ff;
+            color: #4285f4;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(66, 133, 244, 0.15);
+        }
+
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+
+        .quick-action-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1em;
+        }
+
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+            max-width: 400px;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Status Indicator */
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-indicator.online {
+            background: #28a745;
+            box-shadow: 0 0 6px rgba(40, 167, 69, 0.6);
+        }
+
+        .status-indicator.offline {
+            background: #dc3545;
+            box-shadow: 0 0 6px rgba(220, 53, 69, 0.6);
+        }
+
+        /* Collapsible Section */
+        .collapsible-section {
+            margin-top: 20px;
+        }
+
+        .collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .collapsible-header:hover {
+            background: #f0f0f0;
+        }
+
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .collapsible-content.expanded {
+            max-height: 1000px;
+            padding-top: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .control-panel {
+                grid-template-columns: 1fr;
+            }
+            
+            .status-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .camera-container {
+                grid-template-columns: 1fr;
+            }
+
+            .room-buttons {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .header h1 {
+                font-size: 2.2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Smart Home Robot Assistant</h1>
+            <p>Your intelligent home companion</p>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 14px;">
+            <button class="quick-action-btn action-btn" 
+                    id="devModeBtn"
+                    style="background: #6c757d; color: #fff; margin-right: 0;"
+                    onclick="toggleDevMode()">
+                Dev Mode
+            </button>
+        </div>
+        <script>
+            function toggleDevMode() {
+                // Simple example: Toggle a CSS class on body and print to console
+                document.body.classList.toggle('dev-mode');
+                const enabled = document.body.classList.contains('dev-mode');
+                document.getElementById('devModeBtn').textContent = enabled ? 'Dev Mode: ON' : 'Dev Mode';
+                if (enabled) {
+                    console.log("Developer Mode Enabled");
+                } else {
+                    console.log("Developer Mode Disabled");
+                }
+                // TODO: Add additional dev mode functionality as needed
+            }
+        </script>
+
+        <!-- Quick Actions Bar -->
+        <div class="quick-actions">
+            <button class="quick-action-btn action-btn danger" onclick="emergencyStop()">Emergency Stop</button>
+            <button class="quick-action-btn action-btn primary" onclick="setMode('autonomous')">Autonomous Mode</button>
+            <button class="quick-action-btn action-btn secondary" onclick="setMode('manual')">Manual Mode</button>
+        </div>
+
+        <div class="dashboard">
+            <!-- Status Panel -->
+            <div class="card">
+                <h2>Robot Status</h2>
+                <div class="status-grid" id="statusGrid">
+                    <div class="status-item">
+                        <span class="status-label">Operating Mode:</span>
+                        <span class="status-value" id="mode">Loading...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Current Status:</span>
+                        <span class="status-value" id="status">Loading...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Battery Level:</span>
+                        <span class="status-value" id="battery">Loading...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Current Location:</span>
+                        <span class="status-value" id="currentLocation">Loading...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Facing Direction:</span>
+                        <span class="status-value" id="orientation">Loading...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Safe to Move:</span>
+                        <span class="status-value" id="safeToMove">Loading...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Obstacle Detected:</span>
+                        <span class="status-value" id="obstacleDetected">Loading...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="card">
+                <h2>Manual Control</h2>
+                <div class="control-panel">
+                    <!-- Movement Controls -->
+                    <div class="movement-controls">
+                        <h3>Movement</h3>
+                        <div class="direction-grid">
+                            <button class="direction-btn forward" onclick="moveRobot('forward')" title="Move Forward">↑</button>
+                            <button class="direction-btn left" onclick="moveRobot('left')" title="Turn Left">←</button>
+                            <button class="direction-btn stop" onclick="moveRobot('stop')" title="Stop">⏹</button>
+                            <button class="direction-btn right" onclick="moveRobot('right')" title="Turn Right">→</button>
+                            <button class="direction-btn backward" onclick="moveRobot('backward')" title="Move Backward">↓</button>
+                        </div>
+                        
+                        <div class="speed-control">
+                            <label for="speedSlider">Speed: <span id="speedValue">50%</span></label>
+                            <input type="range" id="speedSlider" class="speed-slider" min="0" max="100" value="50" oninput="updateSpeed()">
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="action-buttons">
+                        <h3>Actions</h3>
+                        <button class="action-btn secondary" onclick="startExploration()">Start Exploration</button>
+                        <button class="action-btn secondary" onclick="stopNavigation()">Stop Navigation</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Panel -->
+        <div class="card">
+            <h2>Navigation</h2>
+            
+            <!-- Room Navigation -->
+            <div class="room-navigation">
+                <h3>Quick Room Navigation</h3>
+                <div class="room-buttons">
+                    <button class="room-button" onclick="navigateToRoom('Kitchen')">Kitchen</button>
+                    <button class="room-button" onclick="navigateToRoom('Living Room')">Living Room</button>
+                    <button class="room-button" onclick="navigateToRoom('Bedroom')">Bedroom</button>
+                    <button class="room-button" onclick="navigateToRoom('Bathroom')">Bathroom</button>
+                    <button class="room-button" onclick="navigateToRoom('Dining Room')">Dining Room</button>
+                    <button class="room-button" onclick="navigateToRoom('Office')">Office</button>
+                </div>
+            </div>
+
+            <div class="navigation-controls" style="margin-top: 30px;">
+                <div class="input-group">
+                    <label>Go to Custom Location:</label>
+                    <div class="coordinates-input">
+                        <div>
+                            <label for="targetX">X Position:</label>
+                            <input type="number" id="targetX" placeholder="0" step="0.1" class="coordinate-input">
+                        </div>
+                        <div>
+                            <label for="targetY">Y Position:</label>
+                            <input type="number" id="targetY" placeholder="0" step="0.1" class="coordinate-input">
+                        </div>
+                    </div>
+                </div>
+                <div class="navigation-buttons">
+                    <button class="action-btn primary" onclick="navigateToTarget()">Go to Location</button>
+                    <button class="action-btn secondary" onclick="clearTarget()">Clear</button>
+                </div>
+            </div>
+            
+            <!-- Waypoints Section -->
+            <div class="waypoints-section">
+                <h3>Saved Locations</h3>
+                <div class="waypoints-controls">
+                    <div class="input-group">
+                        <label>Add New Waypoint:</label>
+                        <div class="coordinates-input">
+                            <div>
+                                <label for="waypointName">Name:</label>
+                                <input type="text" id="waypointName" placeholder="e.g., Kitchen, Living Room" class="waypoint-input">
+                            </div>
+                            <div>
+                                <label for="waypointX">X:</label>
+                                <input type="number" id="waypointX" placeholder="0" step="0.1" class="coordinate-input">
+                            </div>
+                            <div>
+                                <label for="waypointY">Y:</label>
+                                <input type="number" id="waypointY" placeholder="0" step="0.1" class="coordinate-input">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="waypoint-buttons">
+                        <button class="action-btn secondary" onclick="addWaypoint()">Add Waypoint</button>
+                        <button class="action-btn secondary" onclick="loadWaypoints()">Load Waypoints</button>
+                        <button class="action-btn secondary" onclick="saveWaypoints()">Save Waypoints</button>
+                        <button class="action-btn danger" onclick="clearAllWaypoints()">Clear All</button>
+                    </div>
+                </div>
+                
+                <div class="waypoints-list" id="waypointsList">
+                    <!-- Waypoints will be dynamically loaded here -->
+                </div>
+            </div>
+            
+            <!-- Navmesh Map Canvas -->
+            <div style="margin-top:20px; text-align:center;">
+                <div class="map-tabs">
+                    <button class="tab-btn active" onclick="switchMapTab('navmesh')">Navmesh Map</button>
+                    <button class="tab-btn" onclick="switchMapTab('stuck')">Stuck Locations</button>
+                </div>
+                <canvas id="navMap" width="400" height="400" style="border:2px solid #4285f4; border-radius:12px; background:#f8f9fa; display:block;"></canvas>
+                <canvas id="stuckMap" width="400" height="400" style="border:2px solid #4285f4; border-radius:12px; background:#f8f9fa; display:none;"></canvas>
+                <div style="font-size:0.9em; color:#888; margin-top:5px;">
+                    <span id="navMapLegend">Map: Navmesh (magenta), Stuck Locations (red), Areas of Caution (orange), Valid Paths (green), Robot (blue dot)</span>
+                    <span id="stuckMapLegend" style="display:none;">Stuck Locations Visualization: Red dots show where robot got stuck</span>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- Sensor Panel -->
+        <div class="card">
+            <h2>Sensor Data</h2>
+            <div class="sensor-display">
+                <div class="sensor-grid" id="sensorGrid">
+                    <div class="sensor-item">
+                        <div>Ultrasonic Front</div>
+                        <div class="sensor-value" id="ultrasonicFront">--</div>
+                    </div>
+                    <div class="sensor-item">
+                        <div>Ultrasonic Left</div>
+                        <div class="sensor-value" id="ultrasonicLeft">--</div>
+                    </div>
+                    <div class="sensor-item">
+                        <div>Ultrasonic Right</div>
+                        <div class="sensor-value" id="ultrasonicRight">--</div>
+                    </div>
+                    <div class="sensor-item">
+                        <div>Infrared Left</div>
+                        <div class="sensor-value" id="infraredLeft">--</div>
+                    </div>
+                    <div class="sensor-item">
+                        <div>Infrared Right</div>
+                        <div class="sensor-value" id="infraredRight">--</div>
+                    </div>
+                    <div class="sensor-item">
+                        <div>Bumper Left</div>
+                        <div class="sensor-value" id="bumperLeft">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Camera & Vision Panel -->
+        <div class="card">
+            <h2>Camera & Vision</h2>
+            <div class="camera-container">
+                <div class="camera-view">
+                    <img id="cameraImage" src="" alt="Camera View" class="camera-feed" />
+                    <div class="camera-overlay">
+                        <div class="camera-status-indicator" id="cameraStatusIndicator"></div>
+                    </div>
+                </div>
+                <div class="camera-controls">
+                    <div class="status-item">
+                        <strong>Camera Status:</strong> 
+                        <span id="cameraStatus" class="status-badge">Loading...</span>
+                    </div>
+                    <div class="feature-toggles">
+                        <div class="toggle-item">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="toggleCameraDisplay" class="feature-toggle" checked>
+                                <span class="toggle-text">Show Camera Feed</span>
+                                <span class="toggle-description">Display camera video feed</span>
+                            </label>
+                        </div>
+                        <div class="toggle-item">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="toggleVO" class="feature-toggle">
+                                <span class="toggle-text">Visual Odometry</span>
+                                <span class="toggle-description">Track robot movement using visual features</span>
+                            </label>
+                        </div>
+                        <div class="toggle-item">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="toggleDynObs" class="feature-toggle">
+                                <span class="toggle-text">Dynamic Obstacle Prediction</span>
+                                <span class="toggle-description">Predict and avoid moving obstacles</span>
+                            </label>
+                        </div>
+                        <div class="toggle-item">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="toggleScene" class="feature-toggle">
+                                <span class="toggle-text">Scene Understanding</span>
+                                <span class="toggle-description">Analyze environment and objects</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message Display -->
+        <div id="messageContainer"></div>
+    </div>
+
+    <script>
+        let currentSpeed = 50;
+        let updateInterval;
+        let waypoints = JSON.parse(localStorage.getItem('robotWaypoints') || '[]');
+        let currentMapTab = 'navmesh';
+
+        // Room coordinates mapping (can be customized)
+        const roomCoordinates = {
+            'Kitchen': { x: 200, y: 150 },
+            'Living Room': { x: 300, y: 200 },
+            'Bedroom': { x: 150, y: 250 },
+            'Bathroom': { x: 100, y: 100 },
+            'Dining Room': { x: 250, y: 180 },
+            'Office': { x: 350, y: 300 }
+        };
+
+        // Initialize the interface
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus();
+            updateSensors();
+            loadWaypoints();
+            
+            // Update status every 2 seconds
+            updateInterval = setInterval(function() {
+                updateStatus();
+                updateSensors();
+            }, 2000);
+        });
+
+        // Update robot status
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                if (data.robot_state) {
+                    document.getElementById('mode').textContent = data.robot_state.mode.charAt(0).toUpperCase() + data.robot_state.mode.slice(1);
+                    document.getElementById('status').textContent = data.robot_state.status.charAt(0).toUpperCase() + data.robot_state.status.slice(1);
+                    document.getElementById('battery').textContent = data.robot_state.battery + '%';
+                    
+                    // Update current location display
+                    const posX = data.robot_state.position.x;
+                    const posY = data.robot_state.position.y;
+                    document.getElementById('currentLocation').textContent = `(${posX.toFixed(1)}, ${posY.toFixed(1)}) cm`;
+                    
+                    document.getElementById('orientation').textContent = data.robot_state.position.theta + '°';
+                    
+                    const safeToMove = document.getElementById('safeToMove');
+                    const obstacleDetected = document.getElementById('obstacleDetected');
+                    
+                    if (data.robot_state.safe_to_move) {
+                        safeToMove.textContent = 'Yes';
+                        safeToMove.className = 'status-value online';
+                    } else {
+                        safeToMove.textContent = 'No';
+                        safeToMove.className = 'status-value offline';
+                    }
+                    
+                    if (data.robot_state.obstacle_detected) {
+                        obstacleDetected.textContent = 'Yes';
+                        obstacleDetected.className = 'status-value offline';
+                    } else {
+                        obstacleDetected.textContent = 'No';
+                        obstacleDetected.className = 'status-value online';
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        }
+
+        // Update sensor data
+        async function updateSensors() {
+            try {
+                const response = await fetch('/api/sensors');
+                const data = await response.json();
+                
+                document.getElementById('ultrasonicFront').textContent = data.ultrasonic_front?.value?.toFixed(1) + ' cm' || '--';
+                document.getElementById('ultrasonicLeft').textContent = data.ultrasonic_left?.value?.toFixed(1) + ' cm' || '--';
+                document.getElementById('ultrasonicRight').textContent = data.ultrasonic_right?.value?.toFixed(1) + ' cm' || '--';
+                document.getElementById('infraredLeft').textContent = data.infrared_left?.value ? 'Yes' : 'No';
+                document.getElementById('infraredRight').textContent = data.infrared_right?.value ? 'Yes' : 'No';
+                document.getElementById('bumperLeft').textContent = data.bumper_left?.value ? 'Yes' : 'No';
+            } catch (error) {
+                console.error('Error updating sensors:', error);
+            }
+        }
+
+        // Move robot
+        async function moveRobot(direction) {
+            try {
+                const response = await fetch('/api/move', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        direction: direction,
+                        speed: currentSpeed
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showMessage('Robot moved ' + direction, 'success');
+                } else {
+                    showMessage('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error moving robot: ' + error.message, 'error');
+            }
+        }
+
+        // Set robot mode
+        async function setMode(mode) {
+            try {
+                const response = await fetch('/api/mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ mode: mode })
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showMessage('Mode set to ' + mode, 'success');
+                } else {
+                    showMessage('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error setting mode: ' + error.message, 'error');
+            }
+        }
+
+        // Navigate to target
+        async function navigateToTarget() {
+            const x = parseFloat(document.getElementById('targetX').value);
+            const y = parseFloat(document.getElementById('targetY').value);
+            
+            if (isNaN(x) || isNaN(y)) {
+                showMessage('Please enter valid coordinates', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/navigate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ x: x, y: y })
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showMessage('Navigation started to (' + x + ', ' + y + ')', 'success');
+                } else {
+                    showMessage('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error starting navigation: ' + error.message, 'error');
+            }
+        }
+
+        // Start exploration
+        async function startExploration() {
+            try {
+                const response = await fetch('/api/explore', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showMessage('Exploration started', 'success');
+                } else {
+                    showMessage('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error starting exploration: ' + error.message, 'error');
+            }
+        }
+
+        // Stop navigation
+        async function stopNavigation() {
+            try {
+                const response = await fetch('/api/stop', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showMessage('Navigation stopped', 'success');
+                } else {
+                    showMessage('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error stopping navigation: ' + error.message, 'error');
+            }
+        }
+
+        // Emergency stop
+        async function emergencyStop() {
+            if (!confirm('Are you sure you want to emergency stop the robot? Emergency stop will activate in 3 seconds unless cancelled.')) {
+                return;
+            }
+            
+            showMessage('Emergency stop will activate in 3 seconds...', 'warning');
+            
+            const timeoutId = setTimeout(async () => {
+                try {
+                    const response = await fetch('/api/emergency_stop', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        showMessage('Emergency stop activated', 'success');
+                    } else {
+                        showMessage('Error: ' + data.error, 'error');
+                    }
+                } catch (error) {
+                    showMessage('Error emergency stopping: ' + error.message, 'error');
+                }
+            }, 3000);
+            
+            // Allow user to cancel the emergency stop
+            if (confirm('Click OK to cancel emergency stop, or Cancel to let it proceed.')) {
+                clearTimeout(timeoutId);
+                showMessage('Emergency stop cancelled', 'info');
+            }
+        }
+
+        // Update speed display
+        function updateSpeed() {
+            currentSpeed = document.getElementById('speedSlider').value;
+            document.getElementById('speedValue').textContent = currentSpeed + '%';
+        }
+
+        // Show message (toast notification)
+        function showMessage(message, type) {
+            // Create toast notification
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // Remove toast after 4 seconds
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.3s ease reverse';
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }, 4000);
+        }
+
+        // Navigate to room
+        async function navigateToRoom(roomName) {
+            if (roomCoordinates[roomName]) {
+                const coords = roomCoordinates[roomName];
+                document.getElementById('targetX').value = coords.x;
+                document.getElementById('targetY').value = coords.y;
+                await navigateToTarget();
+                showMessage(`Navigating to ${roomName}...`, 'success');
+            } else {
+                showMessage(`Room "${roomName}" not found in saved locations`, 'error');
+            }
+        }
+
+        // Clear target
+        function clearTarget() {
+            document.getElementById('targetX').value = '';
+            document.getElementById('targetY').value = '';
+            showMessage('Target cleared', 'info');
+        }
+
+        // Add waypoint
+        function addWaypoint() {
+            const name = document.getElementById('waypointName').value.trim();
+            const x = parseFloat(document.getElementById('waypointX').value);
+            const y = parseFloat(document.getElementById('waypointY').value);
+            
+            if (!name) {
+                showMessage('Please enter a location name', 'error');
+                return;
+            }
+            
+            if (isNaN(x) || isNaN(y)) {
+                showMessage('Please enter valid coordinates', 'error');
+                return;
+            }
+            
+            waypoints.push({ name, x, y });
+            saveWaypoints();
+            loadWaypoints();
+            
+            // Clear inputs
+            document.getElementById('waypointName').value = '';
+            document.getElementById('waypointX').value = '';
+            document.getElementById('waypointY').value = '';
+            
+            showMessage(`Location "${name}" added`, 'success');
+        }
+
+        // Load waypoints
+        function loadWaypoints() {
+            const list = document.getElementById('waypointsList');
+            list.innerHTML = '';
+            
+            if (waypoints.length === 0) {
+                list.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No saved locations yet. Add one above!</p>';
+                return;
+            }
+            
+            waypoints.forEach((wp, index) => {
+                const item = document.createElement('div');
+                item.className = 'waypoint-item';
+                item.innerHTML = `
+                    <div>
+                        <div class="waypoint-name">${wp.name}</div>
+                        <div class="waypoint-coords">(${wp.x.toFixed(1)}, ${wp.y.toFixed(1)})</div>
+                    </div>
+                    <div class="waypoint-actions">
+                        <button class="waypoint-btn navigate" onclick="navigateToWaypoint(${index})">Go</button>
+                        <button class="waypoint-btn delete" onclick="deleteWaypoint(${index})">Delete</button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        // Save waypoints
+        function saveWaypoints() {
+            localStorage.setItem('robotWaypoints', JSON.stringify(waypoints));
+        }
+
+        // Clear all waypoints
+        function clearAllWaypoints() {
+            if (confirm('Are you sure you want to delete all saved locations?')) {
+                waypoints = [];
+                saveWaypoints();
+                loadWaypoints();
+                showMessage('All locations cleared', 'info');
+            }
+        }
+
+        // Navigate to waypoint
+        async function navigateToWaypoint(index) {
+            const wp = waypoints[index];
+            if (wp) {
+                document.getElementById('targetX').value = wp.x;
+                document.getElementById('targetY').value = wp.y;
+                await navigateToTarget();
+                showMessage(`Navigating to ${wp.name}...`, 'success');
+            }
+        }
+
+        // Delete waypoint
+        function deleteWaypoint(index) {
+            const wp = waypoints[index];
+            if (wp && confirm(`Delete location "${wp.name}"?`)) {
+                waypoints.splice(index, 1);
+                saveWaypoints();
+                loadWaypoints();
+                showMessage(`Location "${wp.name}" deleted`, 'info');
+            }
+        }
+
+        // Switch map tab
+        function switchMapTab(tab) {
+            currentMapTab = tab;
+            const navMap = document.getElementById('navMap');
+            const stuckMap = document.getElementById('stuckMap');
+            const navLegend = document.getElementById('navMapLegend');
+            const stuckLegend = document.getElementById('stuckMapLegend');
+            const tabs = document.querySelectorAll('.tab-btn');
+            
+            tabs.forEach(t => {
+                t.classList.remove('active');
+                if ((tab === 'navmesh' && t.textContent.includes('Navmesh')) ||
+                    (tab === 'stuck' && t.textContent.includes('Stuck'))) {
+                    t.classList.add('active');
+                }
+            });
+            
+            if (tab === 'navmesh') {
+                navMap.style.display = 'block';
+                stuckMap.style.display = 'none';
+                navLegend.style.display = 'inline';
+                stuckLegend.style.display = 'none';
+            } else {
+                navMap.style.display = 'none';
+                stuckMap.style.display = 'block';
+                navLegend.style.display = 'none';
+                stuckLegend.style.display = 'inline';
+                drawStuckMap();
+            }
+        }
+
+        // Draw stuck locations map
+        async function drawStuckMap() {
+            const canvas = document.getElementById('stuckMap');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            let learningData = {};
+            try {
+                const response = await fetch('/api/learning_data');
+                learningData = await response.json();
+            } catch (e) {
+                ctx.fillStyle = '#dc3545';
+                ctx.fillText('Stuck locations data unavailable', 10, 20);
+                return;
+            }
+            
+            const scale = 8;
+            const offsetX = 30, offsetY = 30;
+            
+            if (learningData.stuck_locations && learningData.stuck_locations.length > 0) {
+                ctx.save();
+                ctx.fillStyle = 'red';
+                ctx.globalAlpha = 0.7;
+                for (const location of learningData.stuck_locations) {
+                    if (location.length >= 2) {
+                        const x = offsetX + location[0] * scale;
+                        const y = offsetY + location[1] * scale;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                }
+                ctx.restore();
+            } else {
+                ctx.fillStyle = '#666';
+                ctx.font = '14px Arial';
+                ctx.fillText('No stuck locations recorded', 100, 200);
+            }
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+        });
+
+        // Camera and Vision Feature Toggles
+        async function updateVisionFeaturesUI() {
+            try {
+                const response = await fetch('/api/vision_features');
+                const data = await response.json();
+                document.getElementById('toggleVO').checked = !!data.visual_odometry;
+                document.getElementById('toggleDynObs').checked = !!data.dynamic_obstacle;
+                document.getElementById('toggleScene').checked = !!data.scene_understanding;
+                document.getElementById('cameraStatus').textContent = data.camera_available ? 'Available' : 'Not Available';
+                document.getElementById('cameraStatus').style.color = data.camera_available ? '#28a745' : '#dc3545';
+                document.getElementById('toggleVO').disabled = !data.camera_available;
+                document.getElementById('toggleDynObs').disabled = !data.camera_available;
+                document.getElementById('toggleScene').disabled = !data.camera_available;
+            } catch (error) {
+                document.getElementById('cameraStatus').textContent = 'Error';
+                document.getElementById('cameraStatus').style.color = '#dc3545';
+            }
+        }
+
+        async function setVisionFeatures() {
+            const vo = document.getElementById('toggleVO').checked;
+            const dynObs = document.getElementById('toggleDynObs').checked;
+            const scene = document.getElementById('toggleScene').checked;
+            await fetch('/api/vision_features', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    visual_odometry: vo,
+                    dynamic_obstacle: dynObs,
+                    scene_understanding: scene
+                })
+            });
+        }
+
+        document.getElementById('toggleVO').addEventListener('change', setVisionFeatures);
+        document.getElementById('toggleDynObs').addEventListener('change', setVisionFeatures);
+        document.getElementById('toggleScene').addEventListener('change', setVisionFeatures);
+        
+        // Toggle camera display
+        const toggleCameraDisplay = document.getElementById('toggleCameraDisplay');
+        const cameraView = document.querySelector('.camera-view');
+        
+        function updateCameraDisplay() {
+            if (toggleCameraDisplay.checked) {
+                cameraView.style.display = 'flex';
+            } else {
+                cameraView.style.display = 'none';
+            }
+            // Save state to localStorage
+            localStorage.setItem('cameraDisplayVisible', toggleCameraDisplay.checked);
+        }
+        
+        toggleCameraDisplay.addEventListener('change', updateCameraDisplay);
+        
+        // Restore state on page load
+        const savedCameraDisplayState = localStorage.getItem('cameraDisplayVisible');
+        if (savedCameraDisplayState !== null) {
+            toggleCameraDisplay.checked = savedCameraDisplayState === 'true';
+            updateCameraDisplay();
+        }
+
+        // Camera image refresh
+        async function updateCameraImage() {
+            try {
+                const img = document.getElementById('cameraImage');
+                // Add cache buster
+                img.src = '/api/camera?_=' + Date.now();
+            } catch (error) {
+                // ignore
+            }
+        }
+
+        // Update vision features and camera every 2 seconds
+        setInterval(updateVisionFeaturesUI, 2000);
+        setInterval(updateCameraImage, 2000);
+        // Initial load
+        updateVisionFeaturesUI();
+        updateCameraImage();
+
+        // Navmesh Visualization
+        async function drawNavmesh() {
+            const canvas = document.getElementById('navMap');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Fetch navmesh
+            let navmesh = {};
+            try {
+                const response = await fetch('/api/navmesh');
+                navmesh = await response.json();
+            } catch (e) {
+                // Draw error
+                ctx.fillStyle = '#dc3545';
+                ctx.fillText('Navmesh unavailable', 10, 20);
+                return;
+            }
+            
+            // Fetch learning data
+            let learningData = {};
+            try {
+                const response = await fetch('/api/learning_data');
+                learningData = await response.json();
+            } catch (e) {
+                // Learning data not available, continue without it
+            }
+            
+            // Optionally fetch robot position
+            let robotX = null, robotY = null;
+            try {
+                const resp = await fetch('/api/status');
+                const data = await resp.json();
+                if (data.robot_state && data.robot_state.position) {
+                    robotX = data.robot_state.position.x;
+                    robotY = data.robot_state.position.y;
+                }
+            } catch (e) {}
+            
+            // Map world/grid to canvas
+            const scale = 8; // 1 grid = 8px (adjust as needed)
+            const offsetX = 30, offsetY = 30;
+            
+            // Draw learning data first (so it's behind navmesh)
+            if (learningData.stuck_locations) {
+                ctx.save();
+                ctx.fillStyle = 'red';
+                ctx.globalAlpha = 0.6;
+                for (const location of learningData.stuck_locations) {
+                    if (location.length >= 2) {
+                        const x = offsetX + location[0] * scale;
+                        const y = offsetY + location[1] * scale;
+                        ctx.fillRect(x - scale/2, y - scale/2, scale, scale);
+                    }
+                }
+                ctx.restore();
+            }
+            
+            if (learningData.areas_of_caution) {
+                ctx.save();
+                ctx.fillStyle = 'orange';
+                ctx.globalAlpha = 0.4;
+                for (const area of learningData.areas_of_caution) {
+                    if (area.length >= 2) {
+                        const x = offsetX + (area[1] + 0.5) * scale; // j + 0.5 for center
+                        const y = offsetY + (area[0] + 0.5) * scale; // i + 0.5 for center
+                        ctx.fillRect(x - scale/2, y - scale/2, scale, scale);
+                    }
+                }
+                ctx.restore();
+            }
+            
+            if (learningData.valid_paths) {
+                ctx.save();
+                ctx.strokeStyle = 'green';
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = 0.7;
+                for (const pathKey in learningData.valid_paths) {
+                    const path = learningData.valid_paths[pathKey];
+                    if (Array.isArray(path) && path.length >= 2) {
+                        ctx.beginPath();
+                        for (let i = 0; i < path.length; i++) {
+                            const pt = path[i];
+                            if (pt.length >= 2) {
+                                const x = offsetX + pt[0] * scale;
+                                const y = offsetY + pt[1] * scale;
+                                if (i === 0) ctx.moveTo(x, y);
+                                else ctx.lineTo(x, y);
+                            }
+                        }
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
+            
+            // Draw navmesh edges
+            ctx.save();
+            ctx.strokeStyle = 'magenta';
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.7;
+            for (const key in navmesh) {
+                const edge = navmesh[key];
+                if (Array.isArray(edge) && edge.length >= 2) {
+                    ctx.beginPath();
+                    for (let i = 0; i < edge.length; i++) {
+                        const pt = edge[i];
+                        if (pt.length >= 2) {
+                            const x = offsetX + pt[0] * scale;
+                            const y = offsetY + pt[1] * scale;
+                            if (i === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        }
+                    }
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+            
+            // Draw robot position
+            if (robotX !== null && robotY !== null) {
+                ctx.save();
+                ctx.fillStyle = 'blue';
+                ctx.beginPath();
+                ctx.arc(offsetX + robotX * scale, offsetY + robotY * scale, 6, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.restore();
+            }
+            
+            // Draw legend
+            ctx.save();
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#333';
+            let legendY = 20;
+            
+            // Navmesh legend
+            ctx.strokeStyle = 'magenta';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(10, legendY);
+            ctx.lineTo(30, legendY);
+            ctx.stroke();
+            ctx.fillText('Navmesh', 35, legendY + 4);
+            legendY += 20;
+            
+            // Stuck locations legend
+            ctx.fillStyle = 'red';
+            ctx.fillRect(10, legendY - 8, 20, 8);
+            ctx.fillStyle = '#333';
+            ctx.fillText('Stuck Locations', 35, legendY + 4);
+            legendY += 20;
+            
+            // Areas of caution legend
+            ctx.fillStyle = 'orange';
+            ctx.fillRect(10, legendY - 8, 20, 8);
+            ctx.fillStyle = '#333';
+            ctx.fillText('Areas of Caution', 35, legendY + 4);
+            legendY += 20;
+            
+            // Valid paths legend
+            ctx.strokeStyle = 'green';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(10, legendY);
+            ctx.lineTo(30, legendY);
+            ctx.stroke();
+            ctx.fillStyle = '#333';
+            ctx.fillText('Valid Paths', 35, legendY + 4);
+            legendY += 20;
+            
+            // Robot legend
+            ctx.fillStyle = 'blue';
+            ctx.beginPath();
+            ctx.arc(20, legendY, 4, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.fillStyle = '#333';
+            ctx.fillText('Robot', 35, legendY + 4);
+            
+            ctx.restore();
+        }
+        setInterval(drawNavmesh, 2000);
+        drawNavmesh();
+    </script>
+</body>
+</html> 
