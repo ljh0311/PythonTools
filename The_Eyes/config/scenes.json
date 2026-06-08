@@ -1,0 +1,50 @@
+[
+    {
+        "name": "Default Home Monitoring",
+        "description": "Default scene configuration for home monitoring",
+        "cameras": {
+            "cam0": {
+                "position": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 1.8
+                },
+                "rotation": {
+                    "pan": 0.0,
+                    "tilt": -15.0,
+                    "roll": 0.0
+                }
+            },
+            "webcam_0": {
+                "position": {
+                    "x": 0.5,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "rotation": {
+                    "pan": 0.0,
+                    "tilt": 0.0,
+                    "roll": 0.0
+                }
+            }
+        }
+    },
+    {
+        "name": "Living Room",
+        "description": "Living room monitoring configuration",
+        "cameras": {
+            "cam0": {
+                "position": {
+                    "x": 0.0,
+                    "y": 2.5,
+                    "z": 2.0
+                },
+                "rotation": {
+                    "pan": 0.0,
+                    "tilt": -30.0,
+                    "roll": 0.0
+                }
+            }
+        }
+    }
+]

@@ -1,0 +1,33 @@
+[
+  {
+    "ip": "192.168.10.1",
+    "hostname": "Linksys10995",
+    "open_ports": [
+      80,
+      443
+    ],
+    "camera_endpoints": [],
+    "is_camera": false
+  },
+  {
+    "ip": "192.168.10.102",
+    "hostname": "MSI",
+    "open_ports": [],
+    "camera_endpoints": [],
+    "is_camera": false
+  },
+  {
+    "ip": "192.168.10.105",
+    "hostname": "iPad",
+    "open_ports": [],
+    "camera_endpoints": [],
+    "is_camera": false
+  },
+  {
+    "ip": "192.168.10.145",
+    "hostname": "sinus",
+    "open_ports": [],
+    "camera_endpoints": [],
+    "is_camera": false
+  }
+]

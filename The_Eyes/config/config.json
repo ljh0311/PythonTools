@@ -1,0 +1,93 @@
+{
+  "appearance": {
+    "dark_mode": false,
+    "theme": "clam"
+  },
+  "cameras": {},
+  "display": {
+    "show_fps": true,
+    "default_layout": "grid",
+    "default_resolution": "640x480"
+  },
+  "system": {
+    "fps_limit": 30,
+    "gc_interval": 60,
+    "log_level": "INFO"
+  },
+  "paths": {
+    "screenshots": "screenshots",
+    "models": "models",
+    "data": "data",
+    "logs": "logs"
+  },
+  "calibration": {
+    "pattern_size": [9, 6],
+    "square_size": 0.025,
+    "num_images": 10
+  },
+  "image_processing": {
+    "resize": {
+      "width": 1280,
+      "height": 720
+    },
+    "grayscale": true,
+    "blur": {
+      "kernel_size": 3
+    },
+    "clahe": {
+      "clip_limit": 2.0,
+      "tile_grid_size": [8, 8]
+    }
+  },
+  "feature_matching": {
+    "detector": "sift",
+    "descriptor": "sift",
+    "matcher": "flann",
+    "max_features": 2000,
+    "min_matches": 10,
+    "lowe_ratio": 0.7
+  },
+  "reconstruction": {
+    "method": "sfm",
+    "triangulation": "opencv",
+    "bundle_adjustment": true,
+    "min_depth": 0.1,
+    "max_depth": 10.0
+  },
+  "rendering": {
+    "mesh_method": "poisson",
+    "point_size": 2.0,
+    "mesh_resolution": 8,
+    "texture_mapping": true,
+    "viewer": "open3d"
+  },
+  "security": {
+    "motion_detection": {
+      "enabled": false,
+      "method": "mog2",
+      "sensitivity": 0.5,
+      "min_area": 500,
+      "detection_zones": []
+    },
+    "recording": {
+      "enabled": false,
+      "motion_triggered": true,
+      "continuous": false,
+      "output_dir": "recordings",
+      "codec": "mp4v",
+      "fps": 30.0,
+      "max_file_size_mb": 500,
+      "max_duration_minutes": 60,
+      "retention_days": 30
+    },
+    "alerts": {
+      "enabled": true,
+      "motion_alerts": true,
+      "camera_offline_alerts": true,
+      "enable_sound": true,
+      "enable_visual": true,
+      "log_file": "logs/alerts.json",
+      "suppress_duplicates_seconds": 5.0
+    }
+  }
+} 
