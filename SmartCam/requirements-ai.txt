@@ -1,0 +1,10 @@
+# Heavy AI dependencies (optional). Install on top of `requirements.txt`
+# when you want object detection, scene classification, and full enhancement.
+torch>=2.0.0
+torchvision>=0.15.0
+mediapipe>=0.10.0
+tensorflow>=2.13.0
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
+ultralytics>=8.0.0
+opencv-contrib-python>=4.8.0

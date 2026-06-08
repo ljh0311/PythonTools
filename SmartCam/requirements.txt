@@ -1,0 +1,11 @@
+# SmartCam core dependencies (Windows / Linux / Raspberry Pi).
+# Install everything: pip install -r requirements.txt -r requirements-ai.txt
+# Raspberry Pi minimal: pip install -r requirements-rpi.txt
+opencv-python>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# Windows-specific dependencies (used by the camera-name helpers).
+pywin32>=306; sys_platform == "win32"
+WMI>=1.5.1; sys_platform == "win32"
+comtypes>=1.2.0; sys_platform == "win32"

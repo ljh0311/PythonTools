@@ -1,0 +1,56 @@
+{
+  "GUI_CONFIG": {
+    "splash_duration": 5000,
+    "theme": "default",
+    "window_size": "800x600",
+    "auto_save_settings": true,
+    "show_tooltips": true,
+    "enable_animations": true
+  },
+  "CAMERA_CONFIG": {
+    "default_camera_id": 0,
+    "default_resolution": [
+      640,
+      480
+    ],
+    "default_fps": 30,
+    "auto_detect_cameras": true,
+    "camera_timeout": 5000,
+    "retry_attempts": 3
+  },
+  "AI_CONFIG": {
+    "enable_face_detection": true,
+    "enable_motion_detection": true,
+    "enable_object_detection": true,
+    "detection_confidence": 0.5,
+    "detection_interval": 100,
+    "max_detections_per_frame": 10
+  },
+  "STORAGE_CONFIG": {
+    "output_directory": "captures",
+    "auto_cleanup_enabled": true,
+    "cleanup_age_hours": 24,
+    "max_storage_mb": 1024,
+    "compression_enabled": true
+  },
+  "ENHANCEMENT_CONFIG": {
+    "default_enhancement": "auto",
+    "enable_ai_enhancement": true,
+    "enhancement_quality": "high",
+    "save_original": true,
+    "save_enhanced": true
+  },
+  "ERROR_HANDLING": {
+    "show_detailed_errors": true,
+    "log_errors_to_file": true,
+    "error_log_file": "error_log.txt",
+    "max_error_log_size_mb": 10
+  },
+  "SMART_PROCESSING_CONFIG": {
+    "auto_tagging_enabled": true,
+    "scene_classification_enabled": true,
+    "anomaly_detection_enabled": true,
+    "anomaly_sensitivity": 0.7,
+    "baseline_frames": 30
+  }
+}

@@ -1,0 +1,5 @@
+# Minimal Raspberry Pi install profile (no PyTorch / TensorFlow / mediapipe).
+# Pair with the "rpi" processing profile.
+opencv-python>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
