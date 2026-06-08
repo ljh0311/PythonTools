@@ -1,0 +1,587 @@
+import csv
+import io
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+from backend.config import DASHBOARD_API_KEY
+from backend.models.store import store
+from backend.routes.deps import verify_operator
+from backend.services.ai_service import ai_service
+from backend.services.auth_service import validate_token
+from backend.services.telegram_service import telegram_service
+
+
+router = APIRouter(prefix="/api", tags=["dashboard"])
+
+
+class SendMessageRequest(BaseModel):
+    chat_id: int | str
+    text: str = Field(min_length=1, max_length=4096)
+
+
+class QuickAction(BaseModel):
+    label: str
+    command: str
+    enabled: bool = True
+
+
+class QuickActionsRequest(BaseModel):
+    actions: list[QuickAction]
+
+
+class FeedbackRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str = Field(min_length=1, max_length=1000)
+    user_id: int | None = None
+    username: str | None = None
+
+
+class SummarizeThreadRequest(BaseModel):
+    chat_id: int
+    message_ids: list[int] | None = None
+
+
+class FilteredAiRequest(BaseModel):
+    summary_type: str = "brief"
+    user_ids: str = ""
+    chat_type: str | None = None
+    direction: str | None = None
+    q: str | None = None
+    topics: str | None = None
+    date_from: str | None = None
+    date_to: str | None = None
+
+
+class ReplyModeRequest(BaseModel):
+    mode: str = Field(pattern="^(manual|auto|per_chat)$")
+
+
+class TopicModeRequest(BaseModel):
+    mode: str = Field(pattern="^(user_type|ai_assign)$")
+
+
+class ChatSettingsRequest(BaseModel):
+    enabled: bool | None = None
+    relationship: str | None = Field(default=None, max_length=2000)
+
+
+class MessageTopicsRequest(BaseModel):
+    topics: list[str] = Field(min_length=1)
+
+
+class SuggestionStatusRequest(BaseModel):
+    status: str = Field(pattern="^(pending|sent|dismissed|done)$")
+
+
+class FilterPresetRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    filters: dict[str, Any]
+
+
+def _fetch_filtered_messages(body: FilteredAiRequest, limit: int = 500) -> tuple[list[dict], dict]:
+    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
+        body.user_ids, body.chat_type, body.direction, body.date_from, body.date_to
+    )
+    filters = {
+        "user_ids": body.user_ids,
+        "chat_type": body.chat_type,
+        "direction": body.direction,
+        "q": body.q,
+        "topics": body.topics,
+        "date_from": body.date_from,
+        "date_to": body.date_to,
+    }
+    result = store.query_messages(
+        user_ids=parsed_user_ids,
+        chat_type=chat_type,
+        direction=direction,
+        q=body.q,
+        topics=body.topics,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=0,
+    )
+    return result["items"], filters
+
+
+class WebSocketManager:
+    def __init__(self):
+        self.connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        self.connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket) -> None:
+        if websocket in self.connections:
+            self.connections.remove(websocket)
+
+    async def broadcast(self, event: str, data: dict[str, Any]) -> None:
+        dead: list[WebSocket] = []
+        for connection in self.connections:
+            try:
+                await connection.send_json({"event": event, "data": data})
+            except Exception:
+                dead.append(connection)
+        for connection in dead:
+            self.disconnect(connection)
+
+
+ws_manager = WebSocketManager()
+
+
+@router.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@router.get("/metrics", dependencies=[Depends(verify_operator)])
+async def metrics() -> dict[str, Any]:
+    return store.metrics()
+
+
+@router.get("/users", dependencies=[Depends(verify_operator)])
+async def users() -> list[dict[str, Any]]:
+    return store.list_users()
+
+
+def _parse_message_filters(
+    user_ids: str,
+    chat_type: str | None,
+    direction: str | None,
+    date_from: str | None,
+    date_to: str | None,
+) -> tuple[list[int] | None, str | None, str | None, str | None, str | None]:
+    parsed_user_ids: list[int] | None = None
+    if user_ids.strip():
+        parsed_user_ids = [int(uid) for uid in user_ids.split(",") if uid.strip()]
+
+    if chat_type and chat_type not in ("private", "group"):
+        raise HTTPException(status_code=400, detail="chat_type must be private or group")
+
+    if direction and direction not in ("incoming", "outgoing"):
+        raise HTTPException(status_code=400, detail="direction must be incoming or outgoing")
+
+    if date_from and len(date_from) == 10:
+        date_from = f"{date_from}T00:00:00"
+    if date_to and len(date_to) == 10:
+        date_to = f"{date_to}T23:59:59"
+
+    return parsed_user_ids, chat_type, direction, date_from, date_to
+
+
+@router.get("/messages", dependencies=[Depends(verify_operator)])
+async def messages(
+    user_ids: str = "",
+    chat_type: str | None = None,
+    direction: str | None = None,
+    q: str | None = None,
+    topics: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
+        user_ids, chat_type, direction, date_from, date_to
+    )
+    return store.query_messages(
+        user_ids=parsed_user_ids,
+        chat_type=chat_type,
+        direction=direction,
+        q=q,
+        topics=topics,
+        date_from=date_from,
+        date_to=date_to,
+        limit=min(limit, 200),
+        offset=offset,
+    )
+
+
+@router.get("/inbox/threads", dependencies=[Depends(verify_operator)])
+async def inbox_threads(
+    user_ids: str = "",
+    chat_type: str | None = None,
+    direction: str | None = None,
+    q: str | None = None,
+    topics: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
+    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
+        user_ids, chat_type, direction, date_from, date_to
+    )
+    return store.query_threads(
+        user_ids=parsed_user_ids,
+        chat_type=chat_type,
+        direction=direction,
+        q=q,
+        topics=topics,
+        date_from=date_from,
+        date_to=date_to,
+        thread_limit=min(limit, 50),
+        thread_offset=offset,
+    )
+
+
+@router.post("/ai/summarize-thread", dependencies=[Depends(verify_operator)])
+async def summarize_thread(body: SummarizeThreadRequest) -> dict[str, Any]:
+    if body.message_ids:
+        messages = store.get_messages_by_ids(body.message_ids)
+    else:
+        messages = store.get_messages_by_chat_id(body.chat_id)
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages for this chat")
+    result = await ai_service.summarize_thread(messages)
+    return {"chat_id": body.chat_id, **result}
+
+
+@router.post("/ai/summarize", dependencies=[Depends(verify_operator)])
+async def summarize_filtered(body: FilteredAiRequest) -> dict[str, Any]:
+    if body.summary_type not in ("brief", "detailed", "bullets", "unanswered"):
+        raise HTTPException(status_code=400, detail="Invalid summary_type")
+    messages, filters = _fetch_filtered_messages(body)
+    return await ai_service.summarize_messages(
+        messages, summary_type=body.summary_type, filters={**filters, "summary_type": body.summary_type}
+    )
+
+
+@router.post("/ai/suggest-actions", dependencies=[Depends(verify_operator)])
+async def suggest_actions(body: FilteredAiRequest) -> dict[str, Any]:
+    messages, filters = _fetch_filtered_messages(body)
+    chat_ids = list({m["chat_id"] for m in messages if m.get("chat_id") is not None})
+    relationship_map = store.get_relationship_map(chat_ids)
+    result = await ai_service.suggest_actions(messages, relationship_map)
+    fhash = store.filter_hash(filters)
+    saved = store.save_suggestions(fhash, result.get("suggestions", []))
+    return {**result, "filter_hash": fhash, "suggestions": saved}
+
+
+async def _ensure_chat_relationships() -> None:
+    store.sync_chat_settings_from_messages()
+    for chat_id in store.chats_missing_relationship():
+        messages = store.get_messages_by_chat_id(chat_id)
+        if not messages:
+            continue
+        chat_type = messages[-1].get("chat_type")
+        chat_title = messages[-1].get("chat_title")
+        generated = await ai_service.generate_relationship(
+            messages, chat_type=chat_type, chat_title=chat_title
+        )
+        store.set_chat_relationship(
+            chat_id, generated["relationship"], source=generated["source"]
+        )
+
+
+@router.get("/settings/reply-mode", dependencies=[Depends(verify_operator)])
+async def get_reply_mode() -> dict[str, Any]:
+    await _ensure_chat_relationships()
+    return {
+        "mode": store.get_reply_mode(),
+        "chats": store.list_chat_settings(),
+    }
+
+
+@router.put("/settings/reply-mode", dependencies=[Depends(verify_operator)])
+async def set_reply_mode(body: ReplyModeRequest) -> dict[str, Any]:
+    try:
+        store.set_reply_mode(body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    store.sync_chat_settings_from_messages()
+    payload = {"mode": body.mode, "chats": store.list_chat_settings()}
+    await ws_manager.broadcast("reply_mode_updated", payload)
+    return payload
+
+
+@router.get("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_operator)])
+async def get_chat_settings(chat_id: int) -> dict[str, Any]:
+    store.sync_chat_settings_from_messages()
+    saved = store.get_chat_setting(chat_id)
+    if not saved:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return saved
+
+
+@router.put("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_operator)])
+async def update_chat_settings(chat_id: int, body: ChatSettingsRequest) -> dict[str, Any]:
+    if body.enabled is None and body.relationship is None:
+        raise HTTPException(status_code=400, detail="No settings to update")
+    try:
+        saved = store.update_chat_settings(
+            chat_id,
+            enabled=body.enabled,
+            relationship=body.relationship,
+            relationship_source="manual" if body.relationship is not None else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    await ws_manager.broadcast("chat_reply_updated", saved)
+    return saved
+
+
+@router.post(
+    "/settings/chat-replies/{chat_id}/regenerate-relationship",
+    dependencies=[Depends(verify_operator)],
+)
+async def regenerate_chat_relationship(chat_id: int) -> dict[str, Any]:
+    messages = store.get_messages_by_chat_id(chat_id)
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages for this chat")
+    chat_type = messages[-1].get("chat_type")
+    chat_title = messages[-1].get("chat_title")
+    generated = await ai_service.generate_relationship(
+        messages, chat_type=chat_type, chat_title=chat_title
+    )
+    saved = store.set_chat_relationship(
+        chat_id, generated["relationship"], source=generated["source"]
+    )
+    await ws_manager.broadcast("chat_relationship_updated", saved)
+    return saved
+
+
+@router.get("/settings/topic-mode", dependencies=[Depends(verify_operator)])
+async def get_topic_mode() -> dict[str, str]:
+    return {"mode": store.get_topic_mode()}
+
+
+@router.put("/settings/topic-mode", dependencies=[Depends(verify_operator)])
+async def set_topic_mode(body: TopicModeRequest) -> dict[str, str]:
+    try:
+        mode = store.set_topic_mode(body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await ws_manager.broadcast("topic_mode_updated", {"mode": mode})
+    return {"mode": mode}
+
+
+@router.get("/topics", dependencies=[Depends(verify_operator)])
+async def list_topics() -> list[dict[str, Any]]:
+    return store.list_topics()
+
+
+@router.post("/messages/{message_id}/topics", dependencies=[Depends(verify_operator)])
+async def add_message_topics(message_id: int, body: MessageTopicsRequest) -> dict[str, Any]:
+    added = store.add_message_topics(message_id, body.topics, source="manual")
+    return {"message_id": message_id, "topics": added}
+
+
+@router.delete(
+    "/messages/{message_id}/topics/{topic_name}",
+    dependencies=[Depends(verify_operator)],
+)
+async def remove_message_topic(message_id: int, topic_name: str) -> dict[str, Any]:
+    removed = store.remove_message_topic(message_id, topic_name)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Topic not found on message")
+    return {"message_id": message_id, "removed": topic_name}
+
+
+@router.get("/suggestions", dependencies=[Depends(verify_operator)])
+async def list_suggestions(
+    filter_hash: str | None = None,
+    include_dismissed: bool = False,
+) -> list[dict[str, Any]]:
+    return store.list_suggestions(filter_hash, include_dismissed)
+
+
+@router.patch("/suggestions/{suggestion_id}", dependencies=[Depends(verify_operator)])
+async def update_suggestion_status(
+    suggestion_id: int, body: SuggestionStatusRequest
+) -> dict[str, Any]:
+    try:
+        updated = store.update_suggestion_status(suggestion_id, body.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not updated:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+    await ws_manager.broadcast("suggestion_updated", updated)
+    return updated
+
+
+@router.get("/events", dependencies=[Depends(verify_operator)])
+async def events(limit: int = 50) -> list[dict[str, Any]]:
+    return store.recent_events(limit)
+
+
+@router.get("/analytics/commands", dependencies=[Depends(verify_operator)])
+async def command_analytics(days: int = 7) -> dict[str, Any]:
+    return store.command_usage_over_time(days)
+
+
+@router.get("/quick-actions", dependencies=[Depends(verify_operator)])
+async def get_quick_actions() -> list[dict[str, Any]]:
+    return store.list_quick_actions()
+
+
+@router.put("/quick-actions", dependencies=[Depends(verify_operator)])
+async def update_quick_actions(body: QuickActionsRequest) -> list[dict[str, Any]]:
+    actions = [action.model_dump() for action in body.actions]
+    saved = store.save_quick_actions(actions)
+    await ws_manager.broadcast("quick_actions_updated", {"actions": saved})
+    return saved
+
+
+@router.get("/feedback", dependencies=[Depends(verify_operator)])
+async def feedback(limit: int = 20) -> list[dict[str, Any]]:
+    return store.recent_feedback(limit)
+
+
+@router.post("/feedback", dependencies=[Depends(verify_operator)])
+async def submit_feedback(body: FeedbackRequest) -> dict[str, Any]:
+    item = store.add_feedback(body.user_id, body.username, body.rating, body.comment)
+    await ws_manager.broadcast("feedback_received", item)
+    return item
+
+
+@router.post("/send", dependencies=[Depends(verify_operator)])
+async def send_message(body: SendMessageRequest) -> dict[str, Any]:
+    if not telegram_service.configured:
+        raise HTTPException(status_code=400, detail="Telegram bot token not configured")
+
+    result = await telegram_service.send_message(body.chat_id, body.text)
+    chat_id_int = int(body.chat_id)
+    store.add_message(
+        0,
+        "operator",
+        "outgoing",
+        body.text,
+        chat_id=chat_id_int,
+        chat_type="private",
+    )
+    await ws_manager.broadcast(
+        "message_sent", {"chat_id": body.chat_id, "text": body.text}
+    )
+    return result
+
+
+@router.get("/ai/status", dependencies=[Depends(verify_operator)])
+async def ai_status() -> dict[str, Any]:
+    return await ai_service.provider_status()
+
+
+@router.get("/bot/status", dependencies=[Depends(verify_operator)])
+async def bot_status() -> dict[str, Any]:
+    if not telegram_service.configured:
+        return {"configured": False, "bot": None}
+    try:
+        me = await telegram_service.get_me()
+        return {"configured": True, "bot": me.get("result")}
+    except Exception as exc:
+        return {"configured": True, "bot": None, "error": str(exc)}
+
+
+@router.get("/export/messages", dependencies=[Depends(verify_operator)])
+async def export_messages(
+    user_ids: str = "",
+    chat_type: str | None = None,
+    direction: str | None = None,
+    q: str | None = None,
+    topics: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 1000,
+) -> StreamingResponse:
+    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
+        user_ids, chat_type, direction, date_from, date_to
+    )
+    result = store.query_messages(
+        user_ids=parsed_user_ids,
+        chat_type=chat_type,
+        direction=direction,
+        q=q,
+        topics=topics,
+        date_from=date_from,
+        date_to=date_to,
+        limit=min(limit, 5000),
+        offset=0,
+    )
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "id",
+            "user_id",
+            "username",
+            "direction",
+            "text",
+            "chat_id",
+            "chat_type",
+            "chat_title",
+            "created_at",
+            "topics",
+        ]
+    )
+    for item in result["items"]:
+        topics_str = ",".join(t["name"] for t in item.get("topics", []))
+        writer.writerow(
+            [
+                item.get("id"),
+                item.get("user_id"),
+                item.get("username"),
+                item.get("direction"),
+                item.get("text"),
+                item.get("chat_id"),
+                item.get("chat_type"),
+                item.get("chat_title"),
+                item.get("created_at"),
+                topics_str,
+            ]
+        )
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=messages-export.csv"},
+    )
+
+
+@router.get("/presets", dependencies=[Depends(verify_operator)])
+async def list_presets() -> list[dict[str, Any]]:
+    return store.list_filter_presets()
+
+
+@router.post("/presets", dependencies=[Depends(verify_operator)])
+async def save_preset(body: FilterPresetRequest) -> dict[str, Any]:
+    return store.save_filter_preset(body.name, body.filters)
+
+
+@router.delete("/presets/{preset_id}", dependencies=[Depends(verify_operator)])
+async def delete_preset(preset_id: int) -> dict[str, str]:
+    if not store.delete_filter_preset(preset_id):
+        raise HTTPException(status_code=404, detail="Preset not found")
+    return {"status": "deleted"}
+
+
+@router.websocket("/ws")
+async def dashboard_ws(websocket: WebSocket, api_key: str = "", token: str = ""):
+    credential = token or api_key
+    if not validate_token(credential):
+        await websocket.close(code=1008)
+        return
+
+    await ws_manager.connect(websocket)
+    try:
+        await websocket.send_json(
+            {
+                "event": "snapshot",
+                "data": {
+                    "metrics": store.metrics(),
+                    "messages": store.recent_messages(20),
+                    "events": store.recent_events(20),
+                    "quick_actions": store.list_quick_actions(),
+                    "analytics": store.command_usage_over_time(),
+                    "feedback": store.recent_feedback(10),
+                },
+            }
+        )
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)

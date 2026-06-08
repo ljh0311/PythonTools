@@ -1,0 +1,17 @@
+// Copy relevant parts into ~/.openclaw/openclaw.json
+// Use when BOTH OpenClaw and telegram-dashboard run in Docker on the same laptop.
+
+{
+  skills: {
+    entries: {
+      "telegram-dashboard": {
+        enabled: true,
+        env: {
+          // NOT localhost — use the dashboard container name on openclaw-net
+          TELEGRAM_DASHBOARD_URL: "http://telegram-dashboard:8000",
+          DASHBOARD_API_KEY: "match-Telegram_dashboard-.env-exactly",
+        },
+      },
+    },
+  },
+}

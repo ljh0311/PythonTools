@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram Dashboard</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="sidebar-brand">
+        <span class="brand-icon" aria-hidden="true">✈</span>
+        <span class="sidebar-title">Operator</span>
+      </div>
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-item active" data-view-target="inbox" aria-current="page">
+          <span class="nav-label">Inbox</span>
+          <span class="nav-desc">Messages &amp; AI</span>
+        </button>
+        <button type="button" class="nav-item" data-view-target="workflow">
+          <span class="nav-label">Workflow</span>
+          <span class="nav-desc">Reply &amp; topics</span>
+        </button>
+        <button type="button" class="nav-item" data-view-target="analytics">
+          <span class="nav-label">Analytics</span>
+          <span class="nav-desc">Stats &amp; events</span>
+        </button>
+        <button type="button" class="nav-item" data-view-target="tools">
+          <span class="nav-label">Tools</span>
+          <span class="nav-desc">Send &amp; commands</span>
+        </button>
+        <a href="/feedback" class="nav-item nav-link-item">
+          <span class="nav-label">Feedback</span>
+          <span class="nav-desc">User ratings</span>
+        </a>
+      </nav>
+    </aside>
+
+    <div class="main-column">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h1>Telegram Dashboard</h1>
+          <p id="bot-status" class="subtitle">Checking bot connection…</p>
+        </div>
+        <div class="topbar-actions">
+          <button id="theme-toggle" class="btn btn-ghost btn-sm" type="button">Toggle theme</button>
+          <button id="refresh-btn" class="btn btn-primary btn-sm" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <main class="view-container">
+        <!-- INBOX — primary operator workspace -->
+        <section class="app-view" data-view="inbox">
+          <div class="stats-strip" aria-label="Overview metrics">
+            <div class="stat-pill">
+              <span class="stat-label">Users (24h)</span>
+              <span id="connected-users" class="stat-value">0</span>
+            </div>
+            <div class="stat-pill">
+              <span class="stat-label">Messages</span>
+              <span id="total-messages" class="stat-value">0</span>
+            </div>
+            <div class="stat-pill">
+              <span class="stat-label">Commands</span>
+              <span id="total-commands" class="stat-value">0</span>
+            </div>
+            <span id="inbox-count" class="stat-pill stat-muted">0 conversations</span>
+          </div>
+
+          <div id="inbox-layout" class="inbox-layout ai-panel-open">
+            <div id="ai-drawer-backdrop" class="ai-drawer-backdrop" hidden aria-hidden="true"></div>
+            <div class="inbox-main card">
+              <div class="inbox-toolbar">
+                <input id="inbox-search" type="search" placeholder="Search messages…" aria-label="Search messages" />
+                <input id="inbox-topics" type="search" placeholder="Topic filter…" aria-label="Filter by topics" />
+                <button id="toggle-filters" class="btn btn-ghost btn-sm" type="button" aria-expanded="false" aria-controls="advanced-filters">
+                  Filters
+                </button>
+                <button id="toggle-ai-panel" class="btn btn-ghost btn-sm ai-toggle-btn" type="button" aria-expanded="true" aria-controls="ai-drawer">
+                  AI panel
+                </button>
+                <button id="inbox-apply" class="btn btn-primary btn-sm" type="button">Apply</button>
+              </div>
+
+              <div id="advanced-filters" class="advanced-filters" hidden>
+                <select id="inbox-users" multiple size="3" aria-label="Filter by users"></select>
+                <p class="filter-hint">Hold Ctrl/Cmd for multiple users</p>
+                <div class="filter-row">
+                  <select id="inbox-view" aria-label="Inbox view">
+                    <option value="threads">Thread view</option>
+                    <option value="flat">Flat list</option>
+                  </select>
+                  <select id="inbox-chat-type" aria-label="Chat type">
+                    <option value="">All types</option>
+                    <option value="private">Private</option>
+                    <option value="group">Group</option>
+                  </select>
+                  <select id="inbox-direction" aria-label="Direction">
+                    <option value="">All directions</option>
+                    <option value="incoming">Incoming</option>
+                    <option value="outgoing">Outgoing</option>
+                  </select>
+                </div>
+                <div class="filter-row">
+                  <input id="inbox-date-from" type="date" aria-label="From date" />
+                  <input id="inbox-date-to" type="date" aria-label="To date" />
+                </div>
+                <div class="filter-row preset-row">
+                  <select id="inbox-presets" aria-label="Saved presets">
+                    <option value="">Load preset…</option>
+                  </select>
+                  <button id="inbox-save-preset" class="btn btn-ghost btn-sm" type="button">Save</button>
+                  <button id="inbox-delete-preset" class="btn btn-ghost btn-sm" type="button">Delete</button>
+                </div>
+                <div class="filter-actions">
+                  <button id="inbox-clear" class="btn btn-ghost btn-sm" type="button">Clear all</button>
+                  <button id="inbox-export" class="btn btn-ghost btn-sm" type="button">Export CSV</button>
+                </div>
+              </div>
+
+              <div id="messages-feed" class="thread-list" aria-live="polite"></div>
+              <button id="inbox-load-more" class="btn btn-ghost load-more" type="button" hidden>Load more</button>
+            </div>
+
+            <aside id="ai-drawer" class="inbox-side card ai-drawer" aria-labelledby="ai-insights-title">
+              <div class="card-header">
+                <h2 id="ai-insights-title">AI Assistant</h2>
+                <button id="close-ai-panel" class="btn btn-ghost btn-sm ai-drawer-close" type="button" aria-label="Close AI panel">✕</button>
+              </div>
+              <p class="filter-hint">Works on your current inbox filters</p>
+              <div class="insight-toolbar">
+                <select id="summary-type" aria-label="Summary type">
+                  <option value="brief">Brief</option>
+                  <option value="detailed">Detailed</option>
+                  <option value="bullets">Bullets</option>
+                  <option value="unanswered">Unanswered</option>
+                </select>
+                <button id="btn-summarize" class="btn btn-primary btn-sm" type="button">Summarize</button>
+                <button id="btn-suggest" class="btn btn-ghost btn-sm" type="button">Suggest</button>
+              </div>
+              <div id="summary-panel" class="insight-panel" hidden></div>
+              <div id="suggestions-panel" class="insight-panel" hidden></div>
+            </aside>
+          </div>
+
+          <div class="compose-bar card" aria-labelledby="compose-title">
+            <h2 id="compose-title" class="sr-only">Quick reply</h2>
+            <form id="send-form" class="compose-form">
+              <input id="chat-id" type="text" placeholder="Chat ID" required aria-label="Chat ID" />
+              <textarea id="message-text" rows="2" placeholder="Type your reply…" required aria-label="Message"></textarea>
+              <button class="btn btn-primary" type="submit">Send</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- WORKFLOW -->
+        <section class="app-view" data-view="workflow" hidden>
+          <div class="view-intro">
+            <h2>Operator workflow</h2>
+            <p>Control how the bot replies and how messages are organised.</p>
+          </div>
+          <section class="card workflow-card" aria-labelledby="workflow-title">
+            <div class="card-header">
+              <h2 id="workflow-title">Reply &amp; topic settings</h2>
+              <span id="reply-mode-label" class="subtitle">Operator approves</span>
+            </div>
+            <div class="workflow-grid">
+              <label>
+                Reply mode
+                <select id="reply-mode" aria-label="Reply mode">
+                  <option value="manual">B — Operator approves</option>
+                  <option value="auto">A — Auto-reply</option>
+                  <option value="per_chat">C — Per-chat</option>
+                </select>
+              </label>
+              <label>
+                Topic mode
+                <select id="topic-mode" aria-label="Topic mode">
+                  <option value="user_type">User type</option>
+                  <option value="ai_assign">AI assign</option>
+                </select>
+              </label>
+            </div>
+            <p id="topic-mode-hint" class="filter-hint">Type topic keywords to search tags and message text.</p>
+            <div id="per-chat-panel" class="per-chat-panel" hidden>
+              <div class="per-chat-header">
+                <div>
+                  <h3>Per-chat controls</h3>
+                  <p class="filter-hint">Auto-reply and relationship context per conversation.</p>
+                </div>
+                <span id="per-chat-count" class="badge">0 chats</span>
+              </div>
+              <div id="per-chat-list" class="per-chat-list"></div>
+            </div>
+          </section>
+        </section>
+
+        <!-- ANALYTICS -->
+        <section class="app-view" data-view="analytics" hidden>
+          <div class="view-intro">
+            <h2>Analytics</h2>
+            <p>Bot activity and incoming event log.</p>
+          </div>
+          <div class="analytics-grid">
+            <section class="card metric-card">
+              <h2>Connected Users</h2>
+              <p id="analytics-users" class="metric-value">0</p>
+              <p class="metric-hint">Active in the last 24 hours</p>
+            </section>
+            <section class="card metric-card">
+              <h2>Total Messages</h2>
+              <p id="analytics-messages" class="metric-value">0</p>
+              <p class="metric-hint">All-time count</p>
+            </section>
+            <section class="card metric-card">
+              <h2>Commands Run</h2>
+              <p id="analytics-commands" class="metric-value">0</p>
+              <p class="metric-hint">Tracked bot commands</p>
+            </section>
+            <section class="card span-full">
+              <div class="card-header">
+                <h2>Command usage over time</h2>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="command-chart" aria-label="Command usage chart"></canvas>
+              </div>
+            </section>
+            <section class="card span-full">
+              <div class="card-header">
+                <h2>Incoming events</h2>
+              </div>
+              <ul id="events-feed" class="feed" aria-live="polite"></ul>
+            </section>
+          </div>
+        </section>
+
+        <!-- TOOLS -->
+        <section class="app-view" data-view="tools" hidden>
+          <div class="view-intro">
+            <h2>Tools</h2>
+            <p>Send messages and manage bot command shortcuts.</p>
+          </div>
+          <div class="tools-grid">
+            <section class="card" aria-labelledby="send-title">
+              <div class="card-header">
+                <h2 id="send-title">Send message</h2>
+              </div>
+              <form id="send-form-tools" class="send-form">
+                <input id="chat-id-tools" type="text" placeholder="Chat ID" required />
+                <textarea id="message-text-tools" rows="4" placeholder="Message text" required></textarea>
+                <button class="btn btn-primary" type="submit">Send via Telegram</button>
+              </form>
+            </section>
+            <section class="card" aria-labelledby="quick-actions-title">
+              <div class="card-header">
+                <h2 id="quick-actions-title">Quick actions</h2>
+                <button id="save-actions-btn" class="btn btn-ghost btn-sm" type="button">Save</button>
+              </div>
+              <div id="quick-actions" class="actions-panel"></div>
+              <form id="add-action-form" class="inline-form">
+                <input id="action-label" type="text" placeholder="Label" required />
+                <input id="action-command" type="text" placeholder="/command" required />
+                <button class="btn btn-primary btn-sm" type="submit">Add</button>
+              </form>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

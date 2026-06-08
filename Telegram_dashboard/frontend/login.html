@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — Telegram Dashboard</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="app login-page">
+    <section class="card login-card">
+      <h1>Telegram Dashboard</h1>
+      <p class="subtitle">Sign in to manage your operator inbox</p>
+      <form id="login-form" class="login-form">
+        <label>
+          Username
+          <input id="username" type="text" autocomplete="username" required />
+        </label>
+        <label>
+          Password
+          <input id="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="btn btn-primary" type="submit">Sign in</button>
+      </form>
+      <p id="login-error" class="error-text" hidden></p>
+    </section>
+  </div>
+  <script type="module">
+    const form = document.getElementById("login-form");
+    const errorEl = document.getElementById("login-error");
+
+    async function checkAuth() {
+      const token = sessionStorage.getItem("dashboard-token");
+      if (!token) return;
+      const res = await fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) window.location.href = "/";
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorEl.hidden = true;
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "Login failed");
+        sessionStorage.setItem("dashboard-token", data.token);
+        window.location.href = "/";
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.hidden = false;
+      }
+    });
+
+    checkAuth();
+  </script>
+</body>
+</html>
