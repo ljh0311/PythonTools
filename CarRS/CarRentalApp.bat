@@ -15,6 +15,6 @@ echo  - Separated duration and fuel costs in recommendations
 echo  (Even when entering new values and clicking "Get Recommendations")
 echo.
 
-python fixed_car_loader.py
+python car_rental_recommender_gui.py
 
 pause

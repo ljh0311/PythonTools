@@ -6,8 +6,9 @@ This application helps users find the best car rental option based on their trip
 
 ### Main Files (Use These)
 
-- **CarRentalApp.bat** - The main launcher for the enhanced application (RECOMMENDED)
-- **fixed_car_loader.py** - The enhanced loader script that fixes data issues and adds features
+- **CarRentalApp.bat** - The main launcher for the enhanced GUI (RECOMMENDED)
+- **run_recommendations.py** - Headless CLI for recommendations (container / agents)
+- **run_cleaning_pipeline.py** - Standalone CSV cleaning CLI
 
 ### Original Files
 
