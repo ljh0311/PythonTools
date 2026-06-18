@@ -24,8 +24,11 @@ def main():
     print("=" * 50)
 
     from app import app
+    from flask_config import get_run_kwargs
+
+    run_kwargs = get_run_kwargs(default_port=5001)
     # use_reloader=False: launcher does os.chdir(), so reloader would look for this script in cdid_car_tuning/ and fail
-    app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False)
+    app.run(**run_kwargs, use_reloader=False)
 
 if __name__ == "__main__":
     main()

@@ -33,7 +33,7 @@ async def login(body: LoginRequest) -> dict[str, str]:
             status_code=400,
             detail="Password login not configured. Set OPERATOR_PASSWORD in .env",
         )
-    if not verify_password(body.username, body.password):
+    if not verify_password(body.username.strip(), body.password):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     return create_session()
 

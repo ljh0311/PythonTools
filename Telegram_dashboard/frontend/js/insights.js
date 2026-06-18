@@ -70,7 +70,8 @@ function renderSummary(result) {
       <button type="button" class="btn btn-ghost btn-sm" id="copy-summary">Copy</button>
     </div>
     <p class="insight-text">${escapeHtml(result.summary)}</p>
-    <p class="summary-meta">${result.message_count} messages · via ${escapeHtml(result.provider)}</p>
+    <p class="summary-meta">${result.message_count} messages · via ${escapeHtml(providerLabel(result))}</p>
+    ${providerNotice(result)}
     <label class="toggle-originals">
       <input type="checkbox" id="toggle-originals" />
       View original messages
@@ -91,6 +92,27 @@ function priorityClass(priority) {
   return `priority-${priority || "medium"}`;
 }
 
+function providerLabel(result) {
+  const provider = result.provider || "unknown";
+  if (provider === "fallback") {
+    return "basic (AI unavailable)";
+  }
+  return provider;
+}
+
+function providerNotice(result) {
+  if (result.provider !== "fallback") {
+    if (result.messages_total && result.messages_analyzed && result.messages_total > result.messages_analyzed) {
+      return `<p class="summary-meta">Analyzed latest ${result.messages_analyzed} of ${result.messages_total} messages.</p>`;
+    }
+    return "";
+  }
+  const reason =
+    result.fallback_reason ||
+    "Configure GEMINI_API_KEY or run Ollama locally for AI-generated summaries and reply drafts.";
+  return `<p class="provider-warning">${escapeHtml(reason)}</p>`;
+}
+
 function statusBadge(status) {
   if (!status || status === "pending") return "";
   return `<span class="badge status-${status}">${escapeHtml(status)}</span>`;
@@ -104,8 +126,9 @@ function renderSuggestions(result, onSent) {
   panel.innerHTML = `
     <div class="insight-header">
       <strong>Suggested actions</strong>
-      <span class="summary-meta">via ${escapeHtml(result.provider)}</span>
+      <span class="summary-meta">via ${escapeHtml(providerLabel(result))}</span>
     </div>
+    ${providerNotice(result)}
     <p class="insight-text">${escapeHtml(result.summary || "")}</p>
     <div class="suggestion-cards">
       ${

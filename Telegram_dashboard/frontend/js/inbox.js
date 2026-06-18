@@ -40,6 +40,9 @@ function displayName(item) {
 }
 
 function threadTitle(thread) {
+  if (thread.chat_type === "channel") {
+    return thread.chat_title || `Channel ${thread.chat_id}`;
+  }
   if (thread.chat_type === "group") {
     return thread.chat_title || `Group chat ${thread.chat_id}`;
   }
@@ -185,7 +188,12 @@ export function renderInboxThreads(threads = [], total = 0) {
     feed.innerHTML = threads
       .map((thread, index) => {
         const chatId = thread.chat_id ?? `thread-${index}`;
-        const typeBadge = thread.chat_type === "group" ? "Group" : "Private";
+        const typeBadge =
+          thread.chat_type === "channel"
+            ? "Channel"
+            : thread.chat_type === "group"
+              ? "Group"
+              : "Private";
         return `
         <article class="thread-card" data-chat-id="${chatId}" data-thread-index="${index}">
           <header class="thread-header">

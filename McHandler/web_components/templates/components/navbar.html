@@ -1,0 +1,31 @@
+{# Shared navbar — configure via register_layout() layout dict #}
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+        <a class="navbar-brand" href="{{ url_for('index') }}">
+            <i class="fas {{ layout.brand_icon }} me-2"></i>{{ layout.brand_title }}
+        </a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                {% for item in layout.nav_items %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for(item.endpoint) }}">
+                        <i class="fas {{ item.icon }} me-1"></i>{{ item.label }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+
+            <div class="navbar-text d-flex align-items-center">
+                <span id="ollama-status" class="badge bg-secondary px-3 py-2" style="font-size: {{ layout.ollama_status_font_size }};">
+                    <i class="fas fa-circle me-1" id="ollama-status-icon" style="font-size: {{ layout.ollama_status_icon_size }};"></i>
+                    <span id="ollama-status-text">{{ layout.ollama_status_text }}</span>
+                </span>
+            </div>
+        </div>
+    </div>
+</nav>

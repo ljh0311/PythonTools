@@ -13,12 +13,6 @@ body {
     background-color: #f8f9fa;
 }
 
-/* Navigation */
-.navbar-brand {
-    font-weight: 600;
-    font-size: 1.25rem;
-}
-
 /* Cards */
 .card {
     border: none;
@@ -63,18 +57,7 @@ body {
     color: #212529;
 }
 
-/* Status Badge */
-#ollama-status {
-    transition: all 0.3s ease;
-}
-
-#ollama-status.connected {
-    background-color: var(--success-color) !important;
-}
-
-#ollama-status.disconnected {
-    background-color: var(--danger-color) !important;
-}
+/* Status Badge — app-specific overrides only */
 
 /* Loading Spinner */
 .spinner-border {
@@ -115,20 +98,10 @@ body {
     border-color: var(--primary-color);
 }
 
-/* Footer */
-footer {
-    margin-top: auto;
-}
-
-/* Responsive */
+/* Responsive — app-specific */
 @media (max-width: 768px) {
-    .navbar-brand {
-        font-size: 1rem;
-    }
-    
-    #ollama-status {
-        font-size: 0.875rem !important;
-        padding: 0.5rem 0.75rem !important;
+    .card {
+        margin-bottom: 1rem;
     }
 }
 

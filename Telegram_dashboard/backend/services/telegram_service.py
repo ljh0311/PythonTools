@@ -55,5 +55,20 @@ class TelegramService:
             response.raise_for_status()
             return response.json()
 
+    async def get_webhook_info(self) -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(self._url("getWebhookInfo"))
+            response.raise_for_status()
+            return response.json()
+
+    async def get_updates(self, offset: int = 0, timeout: int = 50) -> dict[str, Any]:
+        params: dict[str, Any] = {"timeout": timeout}
+        if offset:
+            params["offset"] = offset
+        async with httpx.AsyncClient(timeout=timeout + 15) as client:
+            response = await client.get(self._url("getUpdates"), params=params)
+            response.raise_for_status()
+            return response.json()
+
 
 telegram_service = TelegramService()

@@ -4,184 +4,266 @@ CDID Car Tuning Assistant - Flask-based web interface
 (Roblox CDID car tuning experience)
 """
 
-from flask import Flask, render_template, request, jsonify
 import os
+import sys
+from flask import Flask, render_template, request, jsonify
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+MCHANDLER_ROOT = os.path.dirname(APP_DIR)
+if MCHANDLER_ROOT not in sys.path:
+    sys.path.insert(0, MCHANDLER_ROOT)
 
 from cdid_tuner import CDIDTuner
-
-# Run from this package directory so templates/static are found
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+from settings_manager import SettingsManager
+from flask_config import get_secret_key, get_run_kwargs
+from web_components import register_layout
 
 app = Flask(
     __name__,
     template_folder=os.path.join(APP_DIR, 'templates'),
     static_folder=os.path.join(APP_DIR, 'static'),
 )
-app.secret_key = 'cdid_car_tuning_assistant_secret_key_2024'
+app.secret_key = get_secret_key('cdid-car-tuning')
+register_layout(app, 'cdid')
 
-# Initialize tuner
-tuner = CDIDTuner()
+settings_manager = SettingsManager(os.path.join(MCHANDLER_ROOT, 'config.json'))
+tuner = CDIDTuner.from_settings(settings_manager)
+
+
+def apply_ollama_settings() -> None:
+    tuner.configure(
+        url=settings_manager.get_setting('ollama.url'),
+        model=settings_manager.get_setting('ollama.model'),
+        timeout=settings_manager.get_setting('ollama.timeout', 120),
+    )
+
+
+SUSPENSION_FIELDS = (
+    'front_stiffness', 'front_ride_height', 'front_damping',
+    'rear_stiffness', 'rear_ride_height', 'rear_damping',
+)
+NON_NEGATIVE_FIELDS = (
+    'turbo_charger', 'boost_per_turbo', 'super_charger', 'super_charger_boost',
+    'front_diff_power', 'front_diff_coast', 'front_diff_preload',
+    'rear_diff_power', 'rear_diff_coast', 'rear_diff_preload',
+) + SUSPENSION_FIELDS
+
+
+def _parse_optional_number(value):
+    if value is None or value == '':
+        return None
+    try:
+        number = float(value) if not isinstance(value, (int, float)) else value
+        if number != int(number):
+            return number
+        return int(number)
+    except (TypeError, ValueError):
+        return 'invalid'
+
+
+def validate_tune_payload(data: dict):
+    """Validate tuning request fields. Returns (errors, parsed_values)."""
+    errors = []
+    parsed = {}
+
+    for field in NON_NEGATIVE_FIELDS:
+        raw = data.get(field)
+        if raw is None or raw == '':
+            parsed[field] = None
+            continue
+        number = _parse_optional_number(raw)
+        if number == 'invalid':
+            errors.append(f'{field.replace("_", " ")} must be a number')
+            continue
+        if number < 0:
+            errors.append(f'{field.replace("_", " ")} must be zero or greater')
+            continue
+        parsed[field] = number
+
+    for field in SUSPENSION_FIELDS:
+        value = parsed.get(field)
+        if value is not None and (value < 0 or value > 1500):
+            errors.append(f'{field.replace("_", " ")} must be between 0 and 1500')
+
+    ecu_available = bool(data.get('ecu_available', False))
+    ie_available = bool(data.get('internal_electronics_available', False))
+
+    ecu_stage = data.get('ecu_stage')
+    ie_stage = data.get('internal_electronics_stage')
+
+    if ecu_available:
+        if ecu_stage is None or str(ecu_stage) == '':
+            errors.append('ECU stage is required (1-3) when ECU tuning is available')
+        else:
+            try:
+                ecu_stage = int(ecu_stage)
+                if ecu_stage not in (1, 2, 3):
+                    errors.append('ECU stage must be 1, 2, or 3')
+            except (TypeError, ValueError):
+                errors.append('ECU stage must be 1, 2, or 3')
+    else:
+        ecu_stage = None
+
+    if ie_available:
+        if ie_stage is None or str(ie_stage) == '':
+            errors.append('Internal Electronics stage is required (1-3) when IE tuning is available')
+        else:
+            try:
+                ie_stage = int(ie_stage)
+                if ie_stage not in (1, 2, 3):
+                    errors.append('Internal Electronics stage must be 1, 2, or 3')
+            except (TypeError, ValueError):
+                errors.append('Internal Electronics stage must be 1, 2, or 3')
+    else:
+        ie_stage = None
+
+    parsed['ecu_stage'] = ecu_stage
+    parsed['internal_electronics_stage'] = ie_stage
+    return errors, parsed
+
 
 @app.route('/')
 def index():
-    """Main tuning interface page"""
     return render_template('index.html')
+
 
 @app.route('/help')
 def help_page():
-    """Help/documentation page"""
     return render_template('help.html')
+
 
 @app.route('/api/tune', methods=['POST'])
 def get_tuning_suggestions():
-    """Get tuning suggestions from AI"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         car_description = data.get('car_description', '')
         tuning_goals = data.get('tuning_goals', '')
-        focus_areas = data.get('focus_areas', ['engine', 'suspension'])
-        model = data.get('model')
-        ecu_available = data.get('ecu_available', False)
-        ecu_stage = data.get('ecu_stage')
-        internal_electronics_available = data.get('internal_electronics_available', False)
-        internal_electronics_stage = data.get('internal_electronics_stage')
-        
+
         if not car_description or not tuning_goals:
             return jsonify({'error': 'Car description and tuning goals are required'}), 400
-        
-        # Set model if provided
+
+        errors, parsed = validate_tune_payload(data)
+        if errors:
+            return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
+        model = data.get('model')
         if model:
             tuner.set_model(model)
-        
-        # Normalize stage to int 1-3 if provided
-        ecu_stage = int(ecu_stage) if ecu_stage is not None and str(ecu_stage).isdigit() and 1 <= int(ecu_stage) <= 3 else None
-        internal_electronics_stage = int(internal_electronics_stage) if internal_electronics_stage is not None and str(internal_electronics_stage).isdigit() and 1 <= int(internal_electronics_stage) <= 3 else None
-        
-        def _opt_num(key):
-            v = data.get(key)
-            if v is None or v == '':
-                return None
-            try:
-                n = float(v) if not isinstance(v, (int, float)) else v
-                return int(n)
-            except (TypeError, ValueError):
-                return None
-        
-        turbo_charger = _opt_num('turbo_charger')
-        boost_per_turbo = _opt_num('boost_per_turbo')
-        super_charger = _opt_num('super_charger')
-        super_charger_boost = _opt_num('super_charger_boost')
-        front_diff_power = _opt_num('front_diff_power')
-        front_diff_coast = _opt_num('front_diff_coast')
-        front_diff_preload = _opt_num('front_diff_preload')
-        rear_diff_power = _opt_num('rear_diff_power')
-        rear_diff_coast = _opt_num('rear_diff_coast')
-        rear_diff_preload = _opt_num('rear_diff_preload')
-        front_stiffness = _opt_num('front_stiffness')
-        front_ride_height = _opt_num('front_ride_height')
-        front_damping = _opt_num('front_damping')
-        rear_stiffness = _opt_num('rear_stiffness')
-        rear_ride_height = _opt_num('rear_ride_height')
-        rear_damping = _opt_num('rear_damping')
-        
-        # Get tuning suggestions
+
         result = tuner.get_tuning_suggestions(
             car_description,
             tuning_goals,
-            focus_areas,
-            ecu_available=ecu_available,
-            ecu_stage=ecu_stage,
-            internal_electronics_available=internal_electronics_available,
-            internal_electronics_stage=internal_electronics_stage,
-            turbo_charger=turbo_charger,
-            boost_per_turbo=boost_per_turbo,
-            super_charger=super_charger,
-            super_charger_boost=super_charger_boost,
-            front_diff_power=front_diff_power,
-            front_diff_coast=front_diff_coast,
-            front_diff_preload=front_diff_preload,
-            rear_diff_power=rear_diff_power,
-            rear_diff_coast=rear_diff_coast,
-            rear_diff_preload=rear_diff_preload,
-            front_stiffness=front_stiffness,
-            front_ride_height=front_ride_height,
-            front_damping=front_damping,
-            rear_stiffness=rear_stiffness,
-            rear_ride_height=rear_ride_height,
-            rear_damping=rear_damping,
+            data.get('focus_areas', ['engine', 'suspension']),
+            ecu_available=bool(data.get('ecu_available', False)),
+            ecu_stage=parsed['ecu_stage'],
+            internal_electronics_available=bool(data.get('internal_electronics_available', False)),
+            internal_electronics_stage=parsed['internal_electronics_stage'],
+            turbo_charger=parsed.get('turbo_charger'),
+            boost_per_turbo=parsed.get('boost_per_turbo'),
+            super_charger=parsed.get('super_charger'),
+            super_charger_boost=parsed.get('super_charger_boost'),
+            front_diff_power=parsed.get('front_diff_power'),
+            front_diff_coast=parsed.get('front_diff_coast'),
+            front_diff_preload=parsed.get('front_diff_preload'),
+            rear_diff_power=parsed.get('rear_diff_power'),
+            rear_diff_coast=parsed.get('rear_diff_coast'),
+            rear_diff_preload=parsed.get('rear_diff_preload'),
+            front_stiffness=parsed.get('front_stiffness'),
+            front_ride_height=parsed.get('front_ride_height'),
+            front_damping=parsed.get('front_damping'),
+            rear_stiffness=parsed.get('rear_stiffness'),
+            rear_ride_height=parsed.get('rear_ride_height'),
+            rear_damping=parsed.get('rear_damping'),
         )
-        
+
         if 'error' in result:
             return jsonify(result), 500
-        
+
         return jsonify(result)
-        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/diagnose', methods=['POST'])
 def diagnose_problem():
-    """Diagnose tuning problems"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         problem_description = data.get('problem_description', '')
         current_settings = data.get('current_settings', '')
         model = data.get('model')
-        
+
         if not problem_description:
             return jsonify({'error': 'Problem description is required'}), 400
-        
-        # Set model if provided
+
         if model:
             tuner.set_model(model)
-        
-        # Get diagnosis
+
         result = tuner.diagnose_tuning_problem(problem_description, current_settings)
-        
+
         if 'error' in result:
             return jsonify(result), 500
-        
+
         return jsonify(result)
-        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/api/ollama/status', methods=['GET'])
 def check_ollama_status():
-    """Check Ollama connection status"""
     try:
-        is_connected = tuner.check_ollama_connection()
         return jsonify({
-            'connected': is_connected,
-            'model': tuner.model
+            'connected': tuner.check_ollama_connection(),
+            'model': tuner.model,
         })
     except Exception as e:
         return jsonify({'error': str(e), 'connected': False}), 500
 
+
 @app.route('/api/ollama/models', methods=['GET'])
 def get_ollama_models():
-    """Get list of available Ollama models"""
     try:
         models = tuner.get_available_models()
         return jsonify({
             'models': models,
-            'current_model': tuner.model
+            'current_model': tuner.model,
         })
     except Exception as e:
         return jsonify({'error': str(e), 'models': []}), 500
 
+
+@app.route('/api/settings', methods=['GET', 'POST'])
+def api_settings():
+    try:
+        if request.method == 'GET':
+            return jsonify(settings_manager.settings)
+
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'error': 'JSON body required'}), 400
+
+        if 'ollama' in data and isinstance(data['ollama'], dict):
+            for key, value in data['ollama'].items():
+                settings_manager.set_setting(f'ollama.{key}', value)
+
+        if not settings_manager.save_settings():
+            return jsonify({'error': 'Failed to save settings'}), 500
+
+        apply_ollama_settings()
+        return jsonify({'success': True, 'settings': settings_manager.settings})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
-    # Create necessary directories (in app dir)
     for name in ('templates', 'static'):
-        path = os.path.join(APP_DIR, name)
-        os.makedirs(path, exist_ok=True)
-    
-    CDID_PORT = 5001  # Different from Minecraft web (5000) so both can run
+        os.makedirs(os.path.join(APP_DIR, name), exist_ok=True)
+
+    run_kwargs = get_run_kwargs(default_port=5001)
     print("CDID Car Tuning Assistant (Roblox)")
     print("=" * 50)
     print("Starting web application...")
-    print("Access at: http://localhost:{}".format(CDID_PORT))
+    print(f"Access at: http://{run_kwargs['host']}:{run_kwargs['port']}")
     print("Press Ctrl+C to stop")
     print("=" * 50)
-    
-    app.run(debug=True, host='0.0.0.0', port=CDID_PORT)
+
+    app.run(**run_kwargs)

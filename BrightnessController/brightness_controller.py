@@ -22,7 +22,7 @@ class BrightnessController:
         transition_delay: float = 0.05,
         camera_index: int = 0,
         enable_human_detection: bool = True,
-        strict_detection: bool = True,
+        strict_detection: bool = False,
         enable_distance_detection: bool = True,
     ):
         """
@@ -118,12 +118,13 @@ class BrightnessController:
         # Suppress OpenCV warnings during camera setup
         original_log_level = None
         try:
-            original_log_level = cv2.getLogLevel()
-            cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)  # Only show errors, suppress warnings
-        except (AttributeError, cv2.error):
-            # OpenCV version doesn't support log level control, continue without suppression
-            pass
-            
+            try:
+                original_log_level = cv2.getLogLevel()
+                cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)  # Only show errors, suppress warnings
+            except (AttributeError, cv2.error):
+                # OpenCV version doesn't support log level control, continue without suppression
+                pass
+
             self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
             if not self.cap.isOpened():
                 self.cap = cv2.VideoCapture(self.camera_index)
@@ -197,13 +198,13 @@ class BrightnessController:
         # If brightness is 0 (no human detected), set screen to 0 immediately
         if brightness == 0.0 and self.enable_human_detection:
             if self.current_brightness != 0:
-                print("👤 No human detected - setting brightness to 0%")
+                print("?? No human detected - setting brightness to 0%")
                 try:
                     sbc.set_brightness(0)
                     self.current_brightness = 0
                     self.last_set = 0
                 except Exception as e:
-                    print(f"❌ Error setting brightness to 0: {e}")
+                    print(f"? Error setting brightness to 0: {e}")
             return
 
         self.prev_values.append(brightness)
@@ -225,7 +226,7 @@ class BrightnessController:
 
         if abs(new_brightness - self.last_set) > 3:
             print(
-                f"🔄 Brightness: {self.current_brightness}% → {new_brightness}% "
+                f"?? Brightness: {self.current_brightness}% ? {new_brightness}% "
                 f"(Raw: {brightness:.1f}, Filtered: {filtered_brightness:.1f})"
             )
             try:
@@ -233,12 +234,12 @@ class BrightnessController:
                 self.current_brightness = new_brightness
                 self.last_set = new_brightness
             except Exception as e:
-                print(f"❌ Error setting brightness: {e}")
+                print(f"? Error setting brightness: {e}")
         else:
             # Print status every 50 iterations or so to show the system is working
             if len(self.prev_values) % 50 == 0:
                 print(
-                    f"📊 Status: {new_brightness}% (Raw: {brightness:.1f}, Filtered: {filtered_brightness:.1f})"
+                    f"?? Status: {new_brightness}% (Raw: {brightness:.1f}, Filtered: {filtered_brightness:.1f})"
                 )
 
     def cleanup(self) -> None:
@@ -303,6 +304,45 @@ class HumanDetector:
         if self.enable_human_detection:
             self._setup_face_detection()
 
+    def _prepare_gray_for_detection(self, frame):
+        """Improve contrast for Haar detection under uneven lighting."""
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        return clahe.apply(gray)
+
+    def _find_faces(self, gray):
+        """Run face cascade with presence-tuned parameters."""
+        if self.strict_detection:
+            return self.face_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=6, minSize=(40, 40)
+            )
+        return self.face_cascade.detectMultiScale(
+            gray, scaleFactor=1.08, minNeighbors=4, minSize=(24, 24)
+        )
+
+    def _resolve_presence(self, frame_human: bool) -> bool:
+        """Prefer staying present when the current frame (or grace) is positive."""
+        if frame_human:
+            return True
+
+        history = self.human_detection_history
+        if len(history) < 3:
+            return False
+
+        trailing_misses = 0
+        for seen in reversed(history):
+            if seen:
+                break
+            trailing_misses += 1
+
+        # Require sustained misses before declaring absent.
+        required_misses = 6 if self.strict_detection else 4
+        if trailing_misses >= required_misses:
+            return False
+
+        required_ratio = 0.35 if self.strict_detection else 0.25
+        return (sum(history) / len(history)) >= required_ratio
+
     def _setup_face_detection(self) -> None:
         """Initialize the face detection cascade classifier."""
         try:
@@ -326,20 +366,20 @@ class HumanDetector:
                         break
                 if self.face_cascade is None:
                     print(
-                        "⚠️ Warning: Could not load face detection model. Human detection will be disabled."
+                        "?? Warning: Could not load face detection model. Human detection will be disabled."
                     )
                     self.enable_human_detection = False
                     return
             if self.face_cascade.empty():
                 print(
-                    "⚠️ Warning: Face detection model is empty. Human detection will be disabled."
+                    "?? Warning: Face detection model is empty. Human detection will be disabled."
                 )
                 self.enable_human_detection = False
             else:
-                print("✅ Face detection model loaded successfully")
+                print("? Face detection model loaded successfully")
         except Exception as e:
             print(
-                f"⚠️ Warning: Error loading face detection model: {e}. Human detection will be disabled."
+                f"?? Warning: Error loading face detection model: {e}. Human detection will be disabled."
             )
             self.enable_human_detection = False
 
@@ -360,18 +400,8 @@ class HumanDetector:
             return True  # If detection is disabled, assume human is present
 
         try:
-            # Convert to grayscale for face detection
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            # Use more strict detection parameters to reduce false positives
-            if self.strict_detection:
-                faces = self.face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.2, minNeighbors=12, minSize=(60, 60)
-                )
-            else:
-                faces = self.face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.15, minNeighbors=8, minSize=(50, 50)
-                )
+            gray = self._prepare_gray_for_detection(frame)
+            faces = self._find_faces(gray)
 
             human_detected = False
             primary_user_detected = False
@@ -384,17 +414,16 @@ class HumanDetector:
                 face_brightness = np.mean(face_region)
                 brightness_min = 40 if self.strict_detection else 30
                 brightness_max = 200 if self.strict_detection else 220
+                aspect_ratio = w / h
+                frame_area = frame.shape[0] * frame.shape[1]
+                face_area = w * h
+                face_percentage = face_area / frame_area
 
                 if brightness_min < face_brightness < brightness_max:
-                    aspect_ratio = w / h
                     aspect_min = 0.8 if self.strict_detection else 0.7
                     aspect_max = 1.3 if self.strict_detection else 1.5
 
                     if aspect_min < aspect_ratio < aspect_max:
-                        frame_area = frame.shape[0] * frame.shape[1]
-                        face_area = w * h
-                        face_percentage = face_area / frame_area
-
                         if self.enable_distance_detection:
                             if (
                                 face_percentage
@@ -441,7 +470,7 @@ class HumanDetector:
                             else ""
                         )
                         print(
-                            f"⏰ Grace period active: {remaining_grace:.1f}s remaining{adaptive_text}"
+                            f"? Grace period active: {remaining_grace:.1f}s remaining{adaptive_text}"
                         )
                 else:
                     self.grace_period_active = False
@@ -452,34 +481,18 @@ class HumanDetector:
 
             self._check_detection_instability()
 
-            if len(self.human_detection_history) >= 5:
-                required_percentage = 0.7 if self.strict_detection else 0.6
-                final_result = (
-                    sum(self.human_detection_history)
-                    >= len(self.human_detection_history) * required_percentage
-                )
-                if len(self.human_detection_history) % 50 == 0:
-                    print(
-                        f"🔍 Detection: {len(faces)} faces found, history: {sum(self.human_detection_history)}/{len(self.human_detection_history)}, result: {final_result}"
-                    )
-                return final_result
-            elif len(self.human_detection_history) >= 3:
-                required_detections = 3 if self.strict_detection else 2
-                final_result = sum(self.human_detection_history) >= required_detections
-                if len(self.human_detection_history) % 30 == 0:
-                    print(
-                        f"🔍 Detection: {len(faces)} faces found, history: {sum(self.human_detection_history)}/{len(self.human_detection_history)}, result: {final_result}"
-                    )
-                return final_result
+            final_result = self._resolve_presence(human_detected)
 
-            if len(self.human_detection_history) % 20 == 0:
+            if len(self.human_detection_history) % 50 == 0 and len(
+                self.human_detection_history
+            ) >= 5:
                 print(
-                    f"🔍 Detection: {len(faces)} faces found, current: {human_detected}"
+                    f"?? Detection: {len(faces)} faces found, history: {sum(self.human_detection_history)}/{len(self.human_detection_history)}, result: {final_result}"
                 )
-            return human_detected
+            return final_result
 
         except Exception as e:
-            print(f"⚠️ Error in human detection: {e}")
+            print(f"?? Error in human detection: {e}")
             return True
 
     def _check_detection_instability(self):
@@ -489,10 +502,10 @@ class HumanDetector:
         for i in range(1, len(self.human_detection_history)):
             if self.human_detection_history[i] != self.human_detection_history[i - 1]:
                 changes += 1
-        if changes >= self.instability_threshold and not self.strict_detection:
-            self.strict_detection = True
+        if changes >= self.instability_threshold and self.strict_detection:
+            self.strict_detection = False
             print(
-                f"🔧 Auto-switched to Strict Detection due to instability ({changes} changes in {len(self.human_detection_history)} readings)"
+                f"?? Auto-switched to Standard Detection due to instability ({changes} changes in {len(self.human_detection_history)} readings)"
             )
             self.detection_instability_count = 0
         self.detection_instability_count = changes
@@ -520,7 +533,7 @@ class HumanDetector:
                 )
                 adaptive_duration = self._calculate_adaptive_grace_period()
                 print(
-                    f"📊 Face loss pattern: avg={avg_duration:.1f}s, adaptive grace={adaptive_duration:.1f}s"
+                    f"?? Face loss pattern: avg={avg_duration:.1f}s, adaptive grace={adaptive_duration:.1f}s"
                 )
 
     def get_detection_status(self) -> dict:
@@ -559,38 +572,38 @@ class HumanDetector:
     def update_auto_strict_setting(self, enabled: bool):
         self.auto_strict_detection = enabled
         if enabled:
-            print("🔧 Auto-strict detection enabled")
+            print("?? Auto-strict detection enabled")
         else:
-            print("🔧 Auto-strict detection disabled")
+            print("?? Auto-strict detection disabled")
 
     def update_grace_period_setting(self, enabled: bool, duration: float = None):
         self.grace_period_enabled = enabled
         if duration is not None:
             self.grace_period_duration = duration
         if enabled:
-            print(f"⏰ Grace period enabled ({self.grace_period_duration}s)")
+            print(f"? Grace period enabled ({self.grace_period_duration}s)")
         else:
-            print("⏰ Grace period disabled")
+            print("? Grace period disabled")
 
     def update_adaptive_grace_period_setting(self, enabled: bool):
         self.adaptive_grace_period = enabled
         if enabled:
-            print("🧠 Adaptive grace period enabled")
+            print("?? Adaptive grace period enabled")
         else:
-            print("🧠 Adaptive grace period disabled")
+            print("?? Adaptive grace period disabled")
 
     def start_calibration(self):
         self.calibration_mode = True
         self.calibration_samples = []
         print(
-            "🎯 Calibration mode started. Position yourself at different distances from the camera."
+            "?? Calibration mode started. Position yourself at different distances from the camera."
         )
 
     def stop_calibration(self):
         import numpy as np
 
         if len(self.calibration_samples) < 5:
-            print("⚠️ Not enough calibration samples. Need at least 5 samples.")
+            print("?? Not enough calibration samples. Need at least 5 samples.")
             return False
         face_sizes = [sample["face_percentage"] for sample in self.calibration_samples]
         face_sizes.sort()
@@ -604,7 +617,7 @@ class HumanDetector:
             "distant_person_max": max(0.015, min(0.05, primary_user_min * 0.8)),
         }
         self.calibration_mode = False
-        print(f"✅ Calibration complete! New thresholds: {self.calibrated_thresholds}")
+        print(f"? Calibration complete! New thresholds: {self.calibrated_thresholds}")
         return True
 
     def add_calibration_sample(self, face_percentage: float, distance_type: str):
@@ -619,7 +632,7 @@ class HumanDetector:
                 }
             )
             print(
-                f"📊 Calibration sample added: {face_percentage:.3f} ({distance_type})"
+                f"?? Calibration sample added: {face_percentage:.3f} ({distance_type})"
             )
 
     def get_detection_info(self, frame) -> dict:
@@ -635,15 +648,8 @@ class HumanDetector:
                 "face_details": [],
             }
         try:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if self.strict_detection:
-                faces = self.face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.2, minNeighbors=12, minSize=(60, 60)
-                )
-            else:
-                faces = self.face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.15, minNeighbors=8, minSize=(50, 50)
-                )
+            gray = self._prepare_gray_for_detection(frame)
+            faces = self._find_faces(gray)
             face_details = []
             frame_area = frame.shape[0] * frame.shape[1]
             primary_user_detected = False
@@ -692,7 +698,7 @@ class HumanDetector:
                 "thresholds": self.calibrated_thresholds,
             }
         except Exception as e:
-            print(f"⚠️ Error in detection info: {e}")
+            print(f"?? Error in detection info: {e}")
             return {
                 "faces_detected": 0,
                 "primary_user_detected": False,

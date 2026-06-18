@@ -1,3 +1,6 @@
+import random
+import time
+
 from ollama_func import Ollama_func
 
 ollama_func = Ollama_func()
@@ -77,8 +80,7 @@ think_prompt = (
 )
 thinking = ollama_func.send_prompt(think_prompt)
 
-import time
-import random
+
 
 # Step 2: Suggest the best action based on reasoning, with improved mimicry of a human collaborator
 def pretty_print_thinking(thinking):

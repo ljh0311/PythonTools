@@ -6,6 +6,8 @@ import uuid
 
 import ollama
 
+from profile_exporter import UserProfileExporter
+
 
 MEMORY_TYPES = ("fact", "event", "preference", "habit", "belief", "relationship", "voice", "topic_style", "reaction")
 DEFAULT_MEMORY_TYPE = "fact"
@@ -210,6 +212,14 @@ class SmartPersonaBrain:
         self._reflections = []  # list of reflection summary strings
         self._persist = persist
         self._thought_id_to_index = {}  # id -> index in _thoughts
+        self._profile_exporter = UserProfileExporter(_data_dir())
+        self._export_persona = None
+        self._auto_export_profile = os.getenv("SMARTPERSONA_AUTO_EXPORT_PROFILE", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
         if self._persist:
             self._load_memory()
             self._load_thoughts()
@@ -288,6 +298,49 @@ class SmartPersonaBrain:
             except (json.JSONDecodeError, OSError):
                 self._memory = []
 
+    def set_export_persona(self, persona):
+        """Optional static identity (SmartPersona / dict) included in exported profile markdown."""
+        self._export_persona = persona
+
+    def export_user_profile(self, persona=None, path=None, thoughts_limit=20):
+        """
+        Write learned memories to user_profile.md (or path) for chatbots, OpenClaw, and growth review.
+        Returns the absolute path written.
+        """
+        return self._profile_exporter.export(
+            self._memory,
+            persona=persona if persona is not None else self._export_persona,
+            thoughts=self.get_thoughts(limit=thoughts_limit),
+            people=self.list_people_in_memory(),
+            path=path,
+        )
+
+    def get_agent_context(self, persona=None, max_chars=2800):
+        """Concise bullet context for LLM system prompts without writing a file."""
+        return self._profile_exporter.agent_context_only(
+            self._memory,
+            persona=persona if persona is not None else self._export_persona,
+            people=self.list_people_in_memory(),
+            max_chars=max_chars,
+        )
+
+    def get_profile_markdown(self, persona=None, thoughts_limit=20):
+        """Build profile markdown in memory without writing to disk."""
+        return self._profile_exporter.build(
+            self._memory,
+            persona=persona if persona is not None else self._export_persona,
+            thoughts=self.get_thoughts(limit=thoughts_limit),
+            people=self.list_people_in_memory(),
+        )
+
+    def _maybe_export_profile(self):
+        if not self._auto_export_profile or not self._persist:
+            return
+        try:
+            self.export_user_profile()
+        except OSError:
+            pass
+
     def _save_memory(self):
         if not self._persist:
             return
@@ -296,7 +349,8 @@ class SmartPersonaBrain:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(self._memory, f, indent=2, ensure_ascii=False)
         except OSError:
-            pass
+            return
+        self._maybe_export_profile()
 
     def _sanitize_memory(self):
         """
@@ -1277,6 +1331,11 @@ class SmartPersonaBrain:
             )
         else:
             result["conversation_review"] = {"emotions": "", "situation": "", "meaning": ""}
+
+        try:
+            result["profile_path"] = self.export_user_profile()
+        except OSError:
+            result["profile_path"] = None
 
         return result
 

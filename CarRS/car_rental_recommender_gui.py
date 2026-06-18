@@ -24,6 +24,10 @@ from car_rental_recommender_core import (
     get_recommendations,
     get_providers_for_region,
     VALID_REGIONS,
+    TRADITIONAL_RENTAL_PROVIDER,
+    is_traditional_rental,
+    calculate_traditional_rental_cost,
+    normalize_traditional_rental_provider,
     analyze_rental_costs,
     calculate_required_mileage,
     calculate_required_duration,
@@ -166,6 +170,7 @@ class CarRentalRecommenderApp:
             "record_deposit_rm_var",
             "record_rental_fee_rm_var",
             "record_additional_fee_rm_var",
+            "record_traditional_fuel_rm_var",
         ]
         # Remove duplicates (record_kwh_used_var, record_electricity_cost_var appear twice)
         record_vars = list(dict.fromkeys(record_vars))
@@ -3495,15 +3500,46 @@ class CarRentalRecommenderApp:
         llm_btn.pack(side="left", fill="x", expand=True)
 
 
-        # Malaysia NormalRental breakdown (shown when Provider = NormalRental)
-        self.normal_rental_frame = ttk.LabelFrame(left_form_frame, text="🇲🇾 NormalRental (RM)")
-        # Pack later only when provider is NormalRental
-        ttk.Label(self.normal_rental_frame, text="Deposit (RM):").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(self.normal_rental_frame, textvariable=self.record_deposit_rm_var, width=12).grid(row=0, column=1, padx=5, pady=5, sticky="w")
-        ttk.Label(self.normal_rental_frame, text="Rental fee (RM):").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(self.normal_rental_frame, textvariable=self.record_rental_fee_rm_var, width=12).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-        ttk.Label(self.normal_rental_frame, text="Additional fee (RM):").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(self.normal_rental_frame, textvariable=self.record_additional_fee_rm_var, width=12).grid(row=2, column=1, padx=5, pady=5, sticky="w")
+        # Traditional Rental breakdown (shown when Provider = Traditional Rental)
+        self.traditional_rental_frame = ttk.LabelFrame(
+            left_form_frame, text="Traditional Rental (RM)"
+        )
+        ttk.Label(
+            self.traditional_rental_frame,
+            text="Rental duration/cost (RM):",
+        ).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(
+            self.traditional_rental_frame,
+            textvariable=self.record_rental_fee_rm_var,
+            width=12,
+        ).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(
+            self.traditional_rental_frame,
+            text="Malaysia usage add-on (RM):",
+        ).grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(
+            self.traditional_rental_frame,
+            textvariable=self.record_additional_fee_rm_var,
+            width=12,
+        ).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(self.traditional_rental_frame, text="Deposit (RM):").grid(
+            row=2, column=0, padx=5, pady=5, sticky="w"
+        )
+        ttk.Entry(
+            self.traditional_rental_frame,
+            textvariable=self.record_deposit_rm_var,
+            width=12,
+        ).grid(row=2, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(
+            self.traditional_rental_frame,
+            text="Fuel topped up (RM):",
+        ).grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(
+            self.traditional_rental_frame,
+            textvariable=self.record_traditional_fuel_rm_var,
+            width=12,
+        ).grid(row=3, column=1, padx=5, pady=5, sticky="w")
+        self.normal_rental_frame = self.traditional_rental_frame
 
         # EV Information (will be shown/hidden based on provider selection)
         self.ev_frame = ttk.LabelFrame(left_form_frame, text="⚡ EV Information")
@@ -3718,6 +3754,29 @@ class CarRentalRecommenderApp:
         except ValueError:
             messagebox.showerror("Error", "Invalid values for calculation.")
 
+    def _read_traditional_rental_form_values(self):
+        """Parse Traditional Rental RM fields from the records form."""
+        def _num(var):
+            raw = var.get().strip() if var.get() else ""
+            if not raw:
+                return 0.0
+            try:
+                return float(raw.replace("$", "").replace("RM", ""))
+            except ValueError:
+                return 0.0
+
+        fuel_rm = _num(self.record_traditional_fuel_rm_var)
+        if fuel_rm == 0:
+            pumped = _num(self.record_pumped_cost_var)
+            if pumped:
+                fuel_rm = pumped
+        return calculate_traditional_rental_cost(
+            rental_duration_cost=_num(self.record_rental_fee_rm_var),
+            malaysia_usage_addon=_num(self.record_additional_fee_rm_var),
+            deposit=_num(self.record_deposit_rm_var),
+            fuel_topped_up=fuel_rm,
+        )
+
     def auto_calculate_total_cost(self):
         """Auto-calculate total cost based on available data"""
         try:
@@ -3731,14 +3790,18 @@ class CarRentalRecommenderApp:
                 float(self.record_hours_var.get()) if self.record_hours_var.get() else 0
             )
             provider = self.record_provider_var.get()
-            fuel_pumped = (
-                float(self.record_fuel_pumped_var.get())
-                if self.record_fuel_pumped_var.get()
-                else 0
-            )
-            fuel_price = (
-                float(self.fuel_price_var.get()) if self.fuel_price_var.get() else 2.76
-            )
+
+            if is_traditional_rental(provider):
+                breakdown = self._read_traditional_rental_form_values()
+                self.record_mileage_cost_var.set("0.00")
+                self.record_duration_cost_var.set(f"{breakdown['duration_cost']:.2f}")
+                self.record_total_cost_var.set(f"{breakdown['total_cost']:.2f}")
+                messagebox.showinfo(
+                    "Auto-calculation",
+                    f"Traditional Rental total: RM{breakdown['total_cost']:.2f}\n"
+                    "(No mileage charge applied)",
+                )
+                return
 
             total_cost = 0
 
@@ -3760,6 +3823,14 @@ class CarRentalRecommenderApp:
 
                 total_cost = mileage_cost + duration_cost
             else:
+                fuel_pumped = (
+                    float(self.record_fuel_pumped_var.get())
+                    if self.record_fuel_pumped_var.get()
+                    else 0
+                )
+                fuel_price = (
+                    float(self.fuel_price_var.get()) if self.fuel_price_var.get() else 2.76
+                )
                 # Regular car calculation
                 # Mileage cost
                 mileage_cost = 0
@@ -3869,6 +3940,10 @@ class CarRentalRecommenderApp:
             fuel_price_val = float(fuel_price) if fuel_price else 2.51
             
             total_cost = 0
+
+            if is_traditional_rental(provider):
+                breakdown = self._read_traditional_rental_form_values()
+                return breakdown["total_cost"]
             
             if provider == "Getgo(EV)":
                 # EV calculation
@@ -4023,6 +4098,22 @@ class CarRentalRecommenderApp:
         # Validate required fields
         if not provider:
             messagebox.showerror("Error", "Please select a provider first.")
+            return
+
+        if is_traditional_rental(provider):
+            breakdown = self._read_traditional_rental_form_values()
+            self.record_mileage_cost_var.set("0.00")
+            self.record_duration_cost_var.set(f"{breakdown['duration_cost']:.2f}")
+            self.record_total_cost_var.set(f"{breakdown['total_cost']:.2f}")
+            messagebox.showinfo(
+                "Smart Calculation Complete",
+                f"Traditional Rental total: RM{breakdown['total_cost']:.2f}\n"
+                f"Duration/cost: RM{breakdown['duration_cost']:.2f}\n"
+                f"Malaysia add-on: RM{breakdown['malaysia_usage_addon']:.2f}\n"
+                f"Deposit: RM{breakdown['deposit']:.2f}\n"
+                f"Fuel topped up: RM{breakdown['fuel_cost']:.2f}\n"
+                "(No mileage charge)",
+            )
             return
         
         fuel_pumped = self.record_fuel_pumped_var.get()
@@ -5466,7 +5557,10 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             self.record_region_var.set("Singapore")
         if hasattr(self, "record_provider_combo") and self.record_provider_combo is not None:
             self.record_provider_combo["values"] = get_providers_for_region(self.record_region_var.get())
-        self.record_provider_var.set(row["Car Cat"] if pd.notna(row["Car Cat"]) else "")
+        provider_val = normalize_traditional_rental_provider(
+            row["Car Cat"] if pd.notna(row["Car Cat"]) else ""
+        ) or ""
+        self.record_provider_var.set(provider_val)
 
         # Populate the form fields
         self.record_date_var.set(
@@ -5525,7 +5619,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         self.record_cost_per_hr_var.set(
             f"{row['Cost/HR']}".replace("$", "") if pd.notna(row["Cost/HR"]) else ""
         )
-        # NormalRental (Malaysia) optional fields
+        # Traditional Rental (Malaysia) optional fields
         for col, var in (
             ("Deposit (RM)", self.record_deposit_rm_var),
             ("Rental fee (RM)", self.record_rental_fee_rm_var),
@@ -5538,6 +5632,10 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                     var.set("")
             else:
                 var.set("")
+        fuel_rm = ""
+        if "Pumped fuel cost" in row.index and pd.notna(row.get("Pumped fuel cost")):
+            fuel_rm = str(row["Pumped fuel cost"]).replace("$", "").replace("RM", "").strip()
+        self.record_traditional_fuel_rm_var.set(fuel_rm)
 
         # Handle EV-specific fields
         if row["Car Cat"] == "Getgo(EV)":
@@ -5595,6 +5693,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         self.record_deposit_rm_var.set("")
         self.record_rental_fee_rm_var.set("")
         self.record_additional_fee_rm_var.set("")
+        self.record_traditional_fuel_rm_var.set("")
 
         # Clear fuel economy comparison
         if hasattr(self, "fuel_economy_comparison_text"):
@@ -5602,11 +5701,11 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             self.fuel_economy_comparison_text.delete(1.0, tk.END)
             self.fuel_economy_comparison_text.config(state="disabled")
 
-        # Hide EV and NormalRental frames when clearing form
+        # Hide EV and Traditional Rental frames when clearing form
         if hasattr(self, "ev_frame"):
             self.ev_frame.pack_forget()
-        if hasattr(self, "normal_rental_frame"):
-            self.normal_rental_frame.pack_forget()
+        if hasattr(self, "traditional_rental_frame"):
+            self.traditional_rental_frame.pack_forget()
 
         # Update status bar
         self.status_var.set("Form cleared - Ready for new record entry")
@@ -5807,26 +5906,39 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                     "Electricity cost must be a valid number (0 or positive).", "Electricity Cost")
                 return None
 
-            # Optional NormalRental (Malaysia) breakdown fields
+            # Traditional Rental (Malaysia) breakdown fields — no mileage charge
+            provider = normalize_traditional_rental_provider(provider) or provider
             deposit_rm_val = None
             rental_fee_rm_val = None
             additional_fee_rm_val = None
-            if provider == "NormalRental":
+            traditional_fuel_rm_val = None
+            if is_traditional_rental(provider):
                 _, deposit_rm_val, _ = validate_numeric_input(
                     self.record_deposit_rm_var.get(), "Deposit (RM)",
                     min_value=0, allow_zero=True, allow_negative=False, required=False
                 )
                 _, rental_fee_rm_val, _ = validate_numeric_input(
-                    self.record_rental_fee_rm_var.get(), "Rental fee (RM)",
+                    self.record_rental_fee_rm_var.get(), "Rental duration/cost (RM)",
                     min_value=0, allow_zero=True, allow_negative=False, required=False
                 )
                 _, additional_fee_rm_val, _ = validate_numeric_input(
-                    self.record_additional_fee_rm_var.get(), "Additional fee (RM)",
+                    self.record_additional_fee_rm_var.get(), "Malaysia usage add-on (RM)",
                     min_value=0, allow_zero=True, allow_negative=False, required=False
                 )
-                # Auto-sum Total from breakdown if all are filled and Total not set
-                if total is None and (deposit_rm_val is not None or rental_fee_rm_val is not None or additional_fee_rm_val is not None or pumped_cost is not None):
-                    total = (deposit_rm_val or 0) + (rental_fee_rm_val or 0) + (additional_fee_rm_val or 0) + (pumped_cost or 0)
+                _, traditional_fuel_rm_val, _ = validate_numeric_input(
+                    self.record_traditional_fuel_rm_var.get(), "Fuel topped up (RM)",
+                    min_value=0, allow_zero=True, allow_negative=False, required=False
+                )
+                if traditional_fuel_rm_val is None and pumped_cost is not None:
+                    traditional_fuel_rm_val = pumped_cost
+                breakdown = calculate_traditional_rental_cost(
+                    rental_duration_cost=rental_fee_rm_val,
+                    malaysia_usage_addon=additional_fee_rm_val,
+                    deposit=deposit_rm_val,
+                    fuel_topped_up=traditional_fuel_rm_val,
+                )
+                if total is None:
+                    total = breakdown["total_cost"]
 
             weekend = self.record_weekend_var.get()
 
@@ -5853,10 +5965,13 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                 "kWh Used": kwh_used,
                 "Electricity Cost": electricity_cost,
             }
-            if provider == "NormalRental":
+            if is_traditional_rental(provider):
                 record["Deposit (RM)"] = deposit_rm_val
                 record["Rental fee (RM)"] = rental_fee_rm_val
                 record["Additional fee (RM)"] = additional_fee_rm_val
+                if traditional_fuel_rm_val is not None:
+                    record["Pumped fuel cost"] = f"RM{traditional_fuel_rm_val}"
+                record["Mileage cost ($0.39)"] = 0
 
             return record
         except Exception as e:
@@ -7391,7 +7506,13 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                 ],
                 "excess_km_rate": 0.25,
             },
-            "NormalRental": {"pricing_type": "traditional"},
+            "Traditional Rental": {
+                "pricing_type": "traditional",
+                "default_rental_cost": 300,
+                "default_malaysia_addon": 0,
+                "default_deposit": 0,
+                "default_fuel_topped_up": 0,
+            },
         }
 
         # Load saved pricing data
@@ -7463,6 +7584,29 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         self.socar_excess_var = tk.StringVar(value=str(self.pricing_data.get("SoCar", {}).get("excess_km_rate", 0.25)))
         ttk.Entry(socar_inner, textvariable=self.socar_excess_var, width=10).pack(side="left", padx=(10, 0))
         ttk.Label(socar_frame, text="Mileage packages: 10km=RM2.50, 50km=RM11, 100km=RM15 (fixed).", font=("Arial", 9)).pack(anchor="w")
+
+        # Traditional Rental defaults (no mileage charge)
+        trad_cfg = self.pricing_data.get("Traditional Rental", {})
+        trad_frame = ttk.LabelFrame(parent, text="Malaysia - Traditional Rental (RM)", padding=10)
+        trad_frame.pack(fill="x", pady=5)
+        trad_fields = [
+            ("Rental duration/cost (RM):", "traditional_rental_cost_var", "default_rental_cost", 300),
+            ("Malaysia usage add-on (RM):", "traditional_malaysia_addon_var", "default_malaysia_addon", 0),
+            ("Deposit (RM):", "traditional_deposit_var", "default_deposit", 0),
+            ("Fuel topped up (RM):", "traditional_fuel_var", "default_fuel_topped_up", 0),
+        ]
+        for row_idx, (label, attr, key, default) in enumerate(trad_fields):
+            row = ttk.Frame(trad_frame)
+            row.pack(fill="x", pady=2)
+            ttk.Label(row, text=label, width=28).pack(side="left")
+            var = tk.StringVar(value=str(trad_cfg.get(key, default)))
+            setattr(self, attr, var)
+            ttk.Entry(row, textvariable=var, width=10).pack(side="left", padx=(10, 0))
+        ttk.Label(
+            trad_frame,
+            text="Traditional Rental total = duration/cost + Malaysia add-on + deposit + fuel. No mileage charge.",
+            font=("Arial", 9),
+        ).pack(anchor="w", pady=(4, 0))
 
         # Save/Load buttons
         button_frame = ttk.Frame(parent)
@@ -7602,6 +7746,21 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                 self.pricing_data["SoCar"]["excess_km_rate"] = float(self.socar_excess_var.get())
             except (ValueError, AttributeError):
                 pass
+        if "Traditional Rental" in self.pricing_data:
+            trad_keys = [
+                ("traditional_rental_cost_var", "default_rental_cost"),
+                ("traditional_malaysia_addon_var", "default_malaysia_addon"),
+                ("traditional_deposit_var", "default_deposit"),
+                ("traditional_fuel_var", "default_fuel_topped_up"),
+            ]
+            for var_name, cfg_key in trad_keys:
+                if hasattr(self, var_name):
+                    try:
+                        self.pricing_data["Traditional Rental"][cfg_key] = float(
+                            getattr(self, var_name).get()
+                        )
+                    except (ValueError, AttributeError):
+                        pass
 
     def save_trip_data(self):
         """Save all trip calculation results to the main dataset"""
@@ -7680,7 +7839,13 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             "mileage_packages": [{"km": 10, "price": 2.5}, {"km": 50, "price": 11}, {"km": 100, "price": 15}],
             "excess_km_rate": 0.25,
         },
-        "NormalRental": {"pricing_type": "traditional"},
+        "Traditional Rental": {
+            "pricing_type": "traditional",
+            "default_rental_cost": 300,
+            "default_malaysia_addon": 0,
+            "default_deposit": 0,
+            "default_fuel_topped_up": 0,
+        },
     }
 
     def load_pricing_data(self):
@@ -7730,13 +7895,15 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                         migrated_data[provider]["pricing_type"] = "mileage"
             else:
                 migrated_data[provider] = default_config.copy()
-        # Merge SoCar and NormalRental (Malaysia) from loaded or default
-        for provider in ["SoCar", "NormalRental"]:
+        # Merge Malaysia providers from loaded or default (incl. legacy NormalRental key)
+        for provider in ["SoCar", "Traditional Rental"]:
             if provider not in migrated_data:
                 def_cfg = self.default_pricing.get(provider, {})
-                if provider in loaded_data:
+                legacy_key = "NormalRental" if provider == "Traditional Rental" else provider
+                if legacy_key in loaded_data or provider in loaded_data:
+                    src = loaded_data.get(provider, loaded_data.get(legacy_key, {}))
                     merged = def_cfg.copy()
-                    for k, v in loaded_data[provider].items():
+                    for k, v in src.items():
                         merged[k] = v
                     migrated_data[provider] = merged
                 else:
@@ -7756,8 +7923,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
     def update_pricing_input_fields(self):
         """Update all pricing input fields with current pricing data"""
         for provider in self.default_pricing:
-            if provider in ("SoCar", "NormalRental"):
-                continue  # SoCar has its own section below
+            if provider in ("SoCar", "Traditional Rental"):
+                continue  # Malaysia providers have dedicated sections
             provider_key = provider.lower().replace(" ", "_")
             if provider not in self.pricing_data:
                 continue
@@ -10752,12 +10919,12 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             else:
                 self.ev_frame.pack_forget()
 
-        # Show/hide NormalRental breakdown (Malaysia) frame
-        if hasattr(self, "normal_rental_frame"):
-            if provider == "NormalRental":
-                self.normal_rental_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        # Show/hide Traditional Rental breakdown frame
+        if hasattr(self, "traditional_rental_frame"):
+            if is_traditional_rental(provider):
+                self.traditional_rental_frame.pack(fill="both", expand=True, padx=5, pady=5)
             else:
-                self.normal_rental_frame.pack_forget()
+                self.traditional_rental_frame.pack_forget()
 
         # Update fuel economy comparison if we have the necessary data
         self.update_fuel_economy_comparison()
@@ -10977,7 +11144,21 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                 else 0.45
             )
 
-            if provider == "Getgo(EV)":
+            if is_traditional_rental(provider):
+                breakdown = self._read_traditional_rental_form_values()
+                self.record_mileage_cost_var.set("0.00")
+                self.record_pumped_cost_var.set(
+                    f"{breakdown['fuel_cost']:.2f}" if breakdown["fuel_cost"] else ""
+                )
+                self.record_duration_cost_var.set(f"{breakdown['duration_cost']:.2f}")
+                self.record_total_cost_var.set(f"{breakdown['total_cost']:.2f}")
+                if distance > 0:
+                    self.record_cost_per_km_var.set(
+                        f"{breakdown['total_cost'] / distance:.2f}"
+                    )
+                self.update_fuel_economy_comparison()
+                return
+            elif provider == "Getgo(EV)":
                 # For EVs, calculate electricity cost and set fuel fields to N/A
                 electricity_cost = (
                     kwh_used * cost_per_kwh if kwh_used and cost_per_kwh else 0

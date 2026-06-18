@@ -1,0 +1,13 @@
+{# Shared footer — configure via register_layout() layout dict #}
+<footer class="bg-dark text-center text-light py-3 mt-5 border-top shadow-sm">
+    <div class="container">
+        <div>
+            <span class="fw-semibold">&copy; {{ layout.footer_year }} {{ layout.footer_copyright }}</span>
+            <span class="text-muted ms-2">| {% if layout.footer_tagline %}{{ layout.footer_tagline }} | {% endif %}Built with
+                <a href="https://flask.palletsprojects.com/" target="_blank" rel="noopener" class="text-decoration-none text-primary">Flask</a>
+                &amp;
+                <a href="https://ollama.com/" target="_blank" rel="noopener" class="text-decoration-none text-success">Ollama AI</a>
+            </span>
+        </div>
+    </div>
+</footer>

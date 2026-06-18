@@ -1,0 +1,13 @@
+// Example OpenClaw config when CarRS runs in Docker on openclaw-net
+{
+  skills: {
+    entries: {
+      "car-rental-recommender": {
+        enabled: true,
+        env: {
+          CARRS_WORKDIR: "/app",
+        },
+      },
+    },
+  },
+}

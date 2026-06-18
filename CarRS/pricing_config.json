@@ -15,5 +15,11 @@
     ],
     "excess_km_rate": 0.25
   },
-  "NormalRental": {"pricing_type": "traditional"}
+  "Traditional Rental": {
+    "pricing_type": "traditional",
+    "default_rental_cost": 300,
+    "default_malaysia_addon": 0,
+    "default_deposit": 0,
+    "default_fuel_topped_up": 0
+  }
 }

@@ -1,117 +1,96 @@
 # Car Rental Recommendation System
 
-This application helps users find the best car rental option based on their trip details such as distance and duration.
+Personalized car rental recommendations from your historical trip CSV. Supports Singapore car-sharing providers and Malaysia providers (SoCar, **Traditional Rental**).
 
-## Files Overview
+## Quick start (Windows)
 
-### Main Files (Use These)
+```bat
+CarRentalApp.bat
+```
 
-- **CarRentalApp.bat** - The main launcher for the enhanced GUI (RECOMMENDED)
-- **run_recommendations.py** - Headless CLI for recommendations (container / agents)
-- **run_cleaning_pipeline.py** - Standalone CSV cleaning CLI
+Or manually:
 
-### Original Files
+```bash
+pip install -r requirements.txt
+python car_rental_recommender_gui.py
+```
 
-- **car_rental_recommender_gui.py** - The original GUI application
-- **car_rental_recommender.py** - The original CLI application
-- **22 - Sheet1.csv** - The data file with rental records
+## Headless CLI (containers / agents)
 
-### Support Files (For Developers)
+```bash
+python run_recommendations.py --distance 50 --duration 3
+python run_recommendations.py --distance 80 --duration 24 --region Malaysia --json
+```
 
-- **run_cleaning_pipeline.py** - Standalone CLI to run the data cleaning pipeline on a CSV (see Data management / cleaning pipeline below)
-- **requirements.txt** - Lists all required Python packages
+## Project layout
 
-### Backup/Testing Files (Not Needed for Normal Use)
+| Path | Purpose |
+|------|---------|
+| `car_rental_recommender_gui.py` | Main tkinter GUI |
+| `car_rental_recommender_core.py` | Core logic (pricing, ML, cleaning) |
+| `run_recommendations.py` | Headless recommendation CLI |
+| `run_cleaning_pipeline.py` | Standalone CSV cleaning |
+| `22 - Sheet1.csv` | Default rental history data |
+| `pricing_config.json` | Provider pricing (incl. Traditional Rental) |
+| `components/` | GUI helpers (Ollama, loading dialog, matplotlib) |
+| `requirements.txt` | Local Python deps (Windows-friendly pins) |
+| `requirements-container.txt` | Python 3.11+ pins for Docker |
+| `openclaw/skills/car-rental-recommender/` | OpenClaw agent skill |
 
-- **load_and_run.py** - Older script that attempted to load data
-- **direct_load.py** - Older script that attempted to directly load data
-- **run_gui.bat** - Original GUI launcher
-- **run_recommender.bat** - Original CLI launcher
-- **run_with_data.bat** - Testing launcher
-- **run_fixed_app.bat** - Testing launcher
-- **run_direct_load.bat** - Testing launcher
+Feature docs: `ML_RECOMMENDATIONS_README.md`, `OLLAMA_INTEGRATION_README.md`.
 
-## How to Use
+## Traditional Rental (Malaysia)
 
-1. Double-click on **CarRentalApp.bat** to start the application
-2. Use the different tabs to access various features:
+Category **Traditional Rental** uses a flat fee model — **no mileage charge**:
 
-### Recommendations Tab
+- Rental duration/cost (e.g. RM300 weekend)
+- Malaysia usage add-on (optional)
+- Deposit
+- Fuel topped up
 
-- Enter your trip details (distance, duration, weekend trip)
-- Get personalized rental recommendations
-- View cost comparisons and charts
+Total = duration/cost + Malaysia add-on + deposit + fuel.
 
-### Data Analysis Tab
+Configure defaults in **Calculator → Pricing Configuration → Traditional Rental**, or enter values per record in **Records Management** when provider is Traditional Rental.
 
-- View rental statistics and trends
-- Analyze provider performance
-- Export analysis results
+Legacy CSV rows labeled `NormalRental` are normalized to Traditional Rental on load.
 
-### Records Management Tab
+## Android (Samsung Galaxy S23 Ultra / Termux)
 
-- Add, edit, or delete rental records
-- Search and filter your rental history
-- Export your rental data
+The phone install uses the **headless CLI** only (no tkinter GUI). See [android/INSTALL.md](android/INSTALL.md).
 
-### Cost Planning Tab (NEW!)
+```powershell
+# On Windows PC — build transfer zip
+powershell -ExecutionPolicy Bypass -File android\package.ps1
+```
 
-- Set a target monthly cost (e.g., $2000)
-- Choose calculation type:
-  - **Duration-based**: Calculate required mileage for your target cost and duration
-  - **Mileage-based**: Calculate required duration for your target cost and mileage
-- View booking scenarios to optimize your rental strategy
-- See detailed cost breakdowns
+On the phone in Termux: unzip → `bash android/install.sh` → `carrs recommend --distance 50 --duration 3`.
 
-## Data management / cleaning pipeline
+## Docker / OpenClaw
 
-Loading a data file runs an **automated data cleaning pipeline** so your data is validated and normalized before use:
+The container runs the **headless CLI** only (no tkinter display). See [DOCKER.md](DOCKER.md).
 
-1. **Schema validation** — Checks for required columns (e.g. Date) and warns about missing recommended columns (Car model, Car Cat, Distance, etc.).
-2. **Load and normalize** — Reads the CSV, ensures a Region column exists and normalizes Singapore/Malaysia values.
-3. **Enhance** — Converts dates to datetime, adds Month/Year, coerces numeric columns (strips `$`, `L`), and fills missing values with sensible defaults.
-4. **Deduplicate** — Removes duplicate rows by key columns (Date, Car model, Car Cat, Distance, Rental hour).
-5. **Quality report** — After each load you get a summary (rows in/out, duplicates removed, schema messages). Use the **Data quality report** button to view the full report.
+```bash
+docker compose build
+docker compose run --rm carrs recommend --distance 50 --duration 3 --json
+```
 
-The same pipeline can be run **standalone** (e.g. to clean a file without opening the GUI):
+Mount the OpenClaw skill:
+
+```yaml
+volumes:
+  - /path/to/CarRS/openclaw/skills/car-rental-recommender:/home/node/.openclaw/workspace/skills/car-rental-recommender:ro
+```
+
+## Data cleaning pipeline
 
 ```bash
 python run_cleaning_pipeline.py "22 - Sheet1.csv" --out cleaned.csv
-python run_cleaning_pipeline.py input.csv --out cleaned.csv --report report.json --outliers
 ```
 
-- `--out` / `-o`: Write cleaned data to this CSV.
-- `--report` / `-r`: Write a JSON quality report (rows in/out, duplicates removed, schema messages).
-- `--outliers`: Apply IQR-based capping to numeric columns (Distance, Total, Rental hour) to limit extreme values.
-
-## Features
-
-- **Rental Recommendations**: Get personalized rental recommendations based on trip details
-- **Cost Analysis**: Compare costs between different providers and car models
-- **Records Management**: Track and manage your rental history
-- **Data Analysis**: View charts and statistics of your rental patterns
-- **Cost Planning**: Plan your rentals to reach target monthly costs (NEW!)
-  - Calculate required mileage for target cost and duration
-  - Calculate required duration for target cost and mileage
-  - Generate booking scenarios to optimize your rental strategy
-  - View detailed cost breakdowns
+Loading CSV in the GUI runs the same pipeline automatically (schema check, normalize, dedupe, quality report).
 
 ## Troubleshooting
 
-If you encounter any issues:
-
-1. Make sure **22 - Sheet1.csv** is in the same folder as the application
-2. Check that all required Python packages are installed
-3. Ensure you have Python 3.6 or newer installed
-
-## Cleaning Up (Optional)
-
-If you want to clean up unused files, you can safely delete these files:
-
-- load_and_run.py
-- direct_load.py
-- run_gui.bat
-- run_recommender.bat
-- run_with_data.bat
-- run_fixed_app.bat
-- run_direct_load.bat
+1. Ensure `22 - Sheet1.csv` is in the CarRS folder (or use **Settings** to pick another file).
+2. Python 3.8+ for GUI; Python 3.11+ recommended for Docker.
+3. Ollama features are optional — the app falls back to historical/ML methods.

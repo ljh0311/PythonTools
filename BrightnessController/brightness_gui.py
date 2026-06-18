@@ -3,23 +3,35 @@ GUI application for controlling screen brightness based on camera or screen cont
 Includes eye health monitoring for safe brightness levels.
 """
 
-import tkinter as tk
-from tkinter import ttk, messagebox
 import os
+import threading
+import time
+import tkinter as tk
+from tkinter import messagebox, ttk
+from typing import Dict, List, Optional, Tuple
+
+from PIL import Image, ImageGrab, ImageTk
+import cv2
+import numpy as np
+import screen_brightness_control as sbc
+
+from brightness_controller import BrightnessController
+from brightness_policy import BatteryBrightnessPolicyConfig
+from gui_components import (
+    ActionBar,
+    CollapsibleSection,
+    ContextHint,
+    ScrollablePanel,
+    StatusBanner,
+    WindowAutoSizer,
+)
+from gui_theme import APP_COLORS, apply_app_theme
+from power_management_system import PowerManagementSystem
 
 # Reduce noisy OpenCV backend logs (best-effort).
 os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
-import screen_brightness_control as sbc
-from PIL import ImageGrab, Image, ImageTk
-import numpy as np
-import threading
-import time
-from typing import Optional, List, Tuple, Dict
-from brightness_controller import BrightnessController
-from brightness_policy import BatteryBrightnessPolicyConfig
-from power_management_system import PowerManagementSystem
-import cv2
+
 
 
 class BrightnessGUI:
@@ -33,8 +45,9 @@ class BrightnessGUI:
             pass
         self.root = tk.Tk()
         self.root.title("Brightness Control - Eye Health Monitor")
-        self.root.geometry("450x550")
+        self.root.minsize(480, 520)
         self.root.resizable(True, True)
+        apply_app_theme(self.root)
 
         # Initialize controllers and state
         self.controller = BrightnessController()
@@ -65,7 +78,7 @@ class BrightnessGUI:
 
         # Human detection tracking
         self.human_detection_enabled = tk.BooleanVar(value=True)
-        self.strict_detection_enabled = tk.BooleanVar(value=True)
+        self.strict_detection_enabled = tk.BooleanVar(value=False)
         self.auto_strict_enabled = tk.BooleanVar(value=True)
         self.grace_period_enabled = tk.BooleanVar(value=True)
         self.adaptive_grace_enabled = tk.BooleanVar(value=True)
@@ -135,6 +148,38 @@ class BrightnessGUI:
         self._setup_gui()
         self._start_camera_enumeration()
         self._update_current_brightness()
+
+    def _schedule_window_fit(self) -> None:
+        if hasattr(self, "window_auto_sizer"):
+            self.window_auto_sizer.schedule_fit()
+
+    def _on_root_configure(self, event=None) -> None:
+        if event is not None and event.widget is not self.root:
+            return
+        wrap = max(self.root.winfo_width() - 56, 280)
+        for attr in ("control_hint", "detection_hint", "health_label", "camera_warning_label"):
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                try:
+                    widget.configure(wraplength=wrap)
+                except tk.TclError:
+                    pass
+
+    def _set_runtime_banner(self, state: str, detail: str = "") -> None:
+        if hasattr(self, "status_banner"):
+            self._schedule_gui_update(lambda: self.status_banner.set_state(state, detail))
+            self._schedule_window_fit()
+
+    def _update_detection_hint(self, text: str, level: str = "info") -> None:
+        if hasattr(self, "detection_hint"):
+            def apply_hint():
+                previous = getattr(self, "_last_detection_hint_text", "")
+                self.detection_hint.show_hint(text, level)
+                if text != previous:
+                    self._last_detection_hint_text = text
+                    self._schedule_window_fit()
+
+            self._schedule_gui_update(apply_hint)
 
     def _schedule_gui_update(self, func, *args, **kwargs):
         """Schedule a GUI update to run on the main thread."""
@@ -295,6 +340,8 @@ class BrightnessGUI:
             label.pack(side="left", fill="x", expand=True)
             
             self.display_brightness_labels[display] = label
+
+        self._schedule_window_fit()
 
     def _get_camera_name(self, index: int) -> str:
         """
@@ -510,6 +557,7 @@ class BrightnessGUI:
         else:
             # Show camera selection frame for camera-based mode
             self.camera_selection_frame.pack(fill="x", padx=10, pady=3)
+        self._schedule_window_fit()
 
     def _start_camera_enumeration(self):
         """Start camera enumeration in a background thread."""
@@ -550,6 +598,7 @@ class BrightnessGUI:
             self.camera_warning_label.config(text=warning_text)
         else:
             self.camera_warning_label.config(text="")
+        self._schedule_window_fit()
 
     def _refresh_camera_list(self):
         """Refresh the list of available cameras."""
@@ -707,6 +756,7 @@ class BrightnessGUI:
             self.camera_preview_label.config(image=photo, text="")
             # Keep a reference to prevent garbage collection
             self.camera_preview_label.image = photo
+            self._schedule_window_fit()
 
     def _setup_gui(self):
         """Set up the GUI components."""
@@ -729,15 +779,27 @@ class BrightnessGUI:
             return frame
 
         # Create notebook (tabbed interface)
+        self.status_banner = StatusBanner(self.root)
+        self.status_banner.pack(fill="x", padx=8, pady=(8, 0))
+
         notebook = ttk.Notebook(self.root)
-        notebook.pack(fill="both", expand=True, padx=5, pady=5)
+        notebook.pack(fill="both", expand=True, padx=8, pady=8)
 
         # Control Tab (merged with Statistics)
         control_tab = ttk.Frame(notebook)
         notebook.add(control_tab, text="Control")
+        control_scroll = ScrollablePanel(control_tab)
+        control_scroll.pack(fill="both", expand=True)
+        control_content = control_scroll.content
+
+        self.control_hint = ContextHint(
+            control_content,
+            text="Tip: Use Camera mode for ambient-light and presence detection. Screen mode adjusts from display content.",
+        )
+        self.control_hint.pack(fill="x", padx=12, pady=(8, 4))
 
         # Mode selection
-        mode_frame = create_frame(control_tab, "Mode")
+        mode_frame = create_frame(control_content, "Mode")
         self.mode_var = tk.StringVar(value="camera")
         for text, value in [("Camera-based", "camera"), ("Screen Content-based", "screen")]:
             ttk.Radiobutton(mode_frame, text=text, variable=self.mode_var, value=value).pack(anchor="w")
@@ -746,7 +808,7 @@ class BrightnessGUI:
         self.mode_var.trace_add("write", lambda *args: self._on_mode_changed())
 
         # Camera selection
-        self.camera_selection_frame = create_frame(control_tab, "Camera")
+        self.camera_selection_frame = create_frame(control_content, "Camera")
         camera_label = create_label(self.camera_selection_frame, "Select Camera:")
         self.camera_var = tk.StringVar()
         self.camera_dropdown = ttk.Combobox(
@@ -784,7 +846,7 @@ class BrightnessGUI:
         self._on_mode_changed()
 
         # Display brightness section
-        brightness_frame = create_frame(control_tab, "Display Brightness")
+        brightness_frame = create_frame(control_content, "Display Brightness")
         
         # Create scrollable frame for display list
         canvas = tk.Canvas(brightness_frame, height=100)
@@ -813,7 +875,7 @@ class BrightnessGUI:
         self.diagnostics_mode = False  # Enable detailed diagnostics
 
         # Session stats frame
-        self.stats_frame = create_frame(control_tab, "Statistics")
+        self.stats_frame = create_frame(control_content, "Statistics")
 
         self.session_avg_label = create_label(self.stats_frame, "Avg: N/A")
         self.session_time_label = create_label(self.stats_frame, "Time: 00:00")
@@ -858,21 +920,24 @@ class BrightnessGUI:
         self.category_selector.place(x=0, y=-10)  # Will be positioned dynamically
 
         # Control buttons
-        button_frame = ttk.Frame(control_tab, padding=5)
-        button_frame.pack(fill="x", padx=10, pady=3)
+        button_frame = ActionBar(control_content)
+        button_frame.pack(fill="x", padx=4, pady=3)
 
-        self.start_button = create_button(button_frame, "Start", self.start_control)
-        self.stop_button = create_button(button_frame, "Stop", self.stop_control, state="disabled")
-        self.test_button = create_button(button_frame, "Test (5s)", self.start_test_control)
-        self.help_button = create_button(button_frame, "Health Info", self.show_health_info)
-        self.human_info_button = create_button(button_frame, "Detection Info", self.show_human_detection_info)
+        self.start_button = button_frame.add_button("Start", self.start_control, primary=True)
+        self.stop_button = button_frame.add_button("Stop", self.stop_control, state="disabled")
+        self.test_button = button_frame.add_button("Test (5s)", self.start_test_control)
+        self.help_button = button_frame.add_button("Health Info", self.show_health_info)
+        self.human_info_button = button_frame.add_button("Detection Info", self.show_human_detection_info)
 
         # Settings Tab
         settings_tab = ttk.Frame(notebook)
         notebook.add(settings_tab, text="Settings")
+        settings_scroll = ScrollablePanel(settings_tab)
+        settings_scroll.pack(fill="both", expand=True)
+        settings_content = settings_scroll.content
 
         # Human detection frame
-        human_detection_frame = create_frame(settings_tab, "Detection")
+        human_detection_frame = create_frame(settings_content, "Detection")
 
         # Main toggle
         main_toggle_frame = ttk.Frame(human_detection_frame)
@@ -891,21 +956,30 @@ class BrightnessGUI:
 
         self.distance_detection_checkbox = ttk.Checkbutton(
             modes_frame,
-            text="Distance Detection",
+            text="Distance Detection (ignore background faces)",
             variable=self.distance_detection_enabled,
         )
         self.distance_detection_checkbox.pack(anchor="w", pady=1)
 
+        advanced_section = CollapsibleSection(
+            human_detection_frame,
+            "Advanced detection options",
+            expanded=False,
+            on_layout_change=self._schedule_window_fit,
+        )
+        advanced_section.pack(fill="x", pady=(0, 5))
+        advanced_body = advanced_section.body
+
         self.strict_detection_checkbox = ttk.Checkbutton(
-            modes_frame,
-            text="Strict Detection",
+            advanced_body,
+            text="Strict Detection (fewer false positives, needs clearer face)",
             variable=self.strict_detection_enabled,
         )
         self.strict_detection_checkbox.pack(anchor="w", pady=1)
 
         self.auto_strict_checkbox = ttk.Checkbutton(
-            modes_frame,
-            text="Auto-Strict",
+            advanced_body,
+            text="Auto-relax on instability",
             variable=self.auto_strict_enabled,
         )
         self.auto_strict_checkbox.pack(anchor="w", pady=1)
@@ -916,14 +990,14 @@ class BrightnessGUI:
 
         self.grace_period_checkbox = ttk.Checkbutton(
             grace_frame,
-            text="Grace Period",
+            text="Grace Period (keep presence briefly when you look away)",
             variable=self.grace_period_enabled,
         )
         self.grace_period_checkbox.pack(anchor="w", pady=1)
 
         self.adaptive_grace_checkbox = ttk.Checkbutton(
-            grace_frame,
-            text="Adaptive Timing",
+            advanced_body,
+            text="Adaptive grace timing",
             variable=self.adaptive_grace_enabled,
         )
         self.adaptive_grace_checkbox.pack(anchor="w", pady=1)
@@ -932,11 +1006,16 @@ class BrightnessGUI:
         status_frame = ttk.LabelFrame(human_detection_frame, text="Status", padding="5")
         status_frame.pack(fill="x")
 
-        self.human_present_label = create_label(status_frame, "Present: N/A")
+        self.human_present_label = create_label(status_frame, "Present: Waiting to start")
         self.detection_status_label = create_label(status_frame, "Status: Standard Mode")
+        self.detection_hint = ContextHint(
+            status_frame,
+            text="When running, tips appear here if your face is not detected.",
+        )
+        self.detection_hint.pack(anchor="w", pady=(4, 0))
 
         # Power-aware battery frame
-        power_frame = create_frame(settings_tab, "Power Saver")
+        power_frame = create_frame(settings_content, "Power Saver")
 
         self.power_aware_checkbox = ttk.Checkbutton(
             power_frame,
@@ -1014,7 +1093,7 @@ class BrightnessGUI:
         )
 
         # Diagnostics section
-        diagnostics_frame = create_frame(settings_tab, "Diagnostics")
+        diagnostics_frame = create_frame(settings_content, "Diagnostics")
         
         self.diagnostics_mode_var = tk.BooleanVar(value=False)
         self.diagnostics_checkbox = ttk.Checkbutton(
@@ -1033,7 +1112,7 @@ class BrightnessGUI:
         )
 
         # Camera Test/Preview section
-        camera_preview_frame = create_frame(settings_tab, "Camera Test")
+        camera_preview_frame = create_frame(settings_content, "Camera Test")
         
         # Preview button
         preview_button_frame = ttk.Frame(camera_preview_frame)
@@ -1056,6 +1135,18 @@ class BrightnessGUI:
             anchor="center"
         )
         self.camera_preview_label.pack(pady=5, padx=5)
+
+        self.notebook = notebook
+        self.window_auto_sizer = WindowAutoSizer(
+            self.root,
+            chrome_height=self.status_banner.winfo_reqheight() + 88,
+        )
+        self.window_auto_sizer.register(control_content)
+        self.window_auto_sizer.register(settings_content)
+        self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self._schedule_window_fit())
+        self.root.bind("<Configure>", self._on_root_configure, add="+")
+        self._schedule_window_fit()
+
     def show_health_info(self):
         """Show information about brightness and eye health."""
         info_message = """
@@ -1092,10 +1183,7 @@ Detection Modes:
   - Requires better lighting and clearer face positioning
   - More conservative detection parameters
   - Better for environments with many objects
-• Auto-Strict Detection: Automatically switches to strict mode when instability is detected
-  - Monitors detection stability in real-time
-  - Switches to strict mode if too many rapid changes occur
-  - Helps maintain consistent detection without manual intervention
+• Auto-relax on instability: Switches to standard detection when results flicker
 • Grace Period: Maintains human detection for 3 seconds when face is temporarily blocked
   - Prevents flickering when you look away briefly
   - Handles temporary face blocking or turning
@@ -1511,14 +1599,32 @@ Note: This feature requires a working webcam and may not work perfectly in all l
                 self.last_human_detection_time = time.time()
                 
                 # Update GUI label (thread-safe)
-                status_text = "✅ Present" if self.human_present else "❌ Not Detected"
+                status_text = "Present" if self.human_present else "Not detected"
+                status_color = APP_COLORS["success"] if self.human_present else APP_COLORS["danger"]
                 self._schedule_gui_update(
-                    lambda: self.human_present_label.config(
-                        text=f"Present: {status_text}",
-                        foreground="green" if self.human_present else "red"
+                    lambda t=status_text, c=status_color: self.human_present_label.config(
+                        text=f"Present: {t}",
+                        foreground=c,
                     )
                 )
-                
+                if self.human_present:
+                    self._update_detection_hint(
+                        "Face detected — brightness follows ambient light.",
+                        "success",
+                    )
+                else:
+                    detection_status = self.controller.human_detector.get_detection_status()
+                    if detection_status.get("grace_period_active"):
+                        self._update_detection_hint(
+                            "Grace period active — presence held briefly while face is lost.",
+                            "info",
+                        )
+                    else:
+                        self._update_detection_hint(
+                            "No face detected. Face the camera, add light, or disable Strict Detection in Advanced options.",
+                            "warning",
+                        )
+
                 # Update auto-strict setting if changed
                 if hasattr(self.controller, 'auto_strict_detection'):
                     if self.controller.auto_strict_detection != self.auto_strict_enabled.get():
@@ -1536,8 +1642,8 @@ Note: This feature requires a working webcam and may not work perfectly in all l
                 
                 # Update distance detection setting if changed
                 if hasattr(self.controller, 'enable_distance_detection'):
-                    if self.controller.enable_distance_detection != self.distance_detection_enabled.get():
-                        self.controller.enable_distance_detection = self.distance_detection_enabled.get()
+                    if self.controller.human_detector.enable_distance_detection != self.distance_detection_enabled.get():
+                        self.controller.human_detector.enable_distance_detection = self.distance_detection_enabled.get()
                 
                 # Update detection status (thread-safe)
                 detection_status = self.controller.human_detector.get_detection_status()
@@ -1593,6 +1699,16 @@ Note: This feature requires a working webcam and may not work perfectly in all l
         # Disable start button immediately
         self.start_button.config(state="disabled")
         self.stop_button.config(state="normal")
+
+        mode_label = "Camera" if self.active_mode == "camera" else "Screen"
+        self._set_runtime_banner(
+            "running",
+            f"{mode_label} mode — brightness control is active.",
+        )
+        self._update_detection_hint(
+            "Monitoring for your presence. Tips will appear if detection struggles.",
+            "info",
+        )
 
         if self.active_mode == "camera":
             # Show loading indicator
@@ -1772,6 +1888,17 @@ Note: This feature requires a working webcam and may not work perfectly in all l
         self.stop_button.config(state="disabled")
         self.test_button.config(state="normal")  # Enable test button
         self.active_mode = None
+        self._set_runtime_banner("idle")
+        self._update_detection_hint(
+            "When running, tips appear here if your face is not detected.",
+            "info",
+        )
+        self._schedule_gui_update(
+            lambda: self.human_present_label.config(
+                text="Present: Waiting to start",
+                foreground=APP_COLORS["text_muted"],
+            )
+        )
 
     def run(self):
         """Start the GUI application."""

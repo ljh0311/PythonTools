@@ -1,98 +1,91 @@
-{% extends "base.html" %} {% block title %}Crash Analysis - Minecraft Mod
-Handler{% endblock %} {% block content %}
+{% extends "base.html" %}
+
+{% block title %}Crash Analysis - Minecraft Mod Handler{% endblock %}
+
+{% block content %}
 <div class="row">
   <div class="col-12">
     <h1 class="mb-4"><i class="fas fa-bug me-2"></i>Crash Log Analysis</h1>
   </div>
 </div>
 
-<!-- File Upload -->
 <div class="row mb-4">
   <div class="col-12">
     <div class="card">
       <div class="card-header">
-        <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Upload Crash Log</h5>
+        <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Analyze a Crash Log</h5>
       </div>
       <div class="card-body">
-        <div class="row">
-          <div class="col-md-8">
+        <ul class="nav nav-tabs mb-3" id="crash-input-tabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="paste-tab" data-bs-toggle="tab" data-bs-target="#paste-panel" type="button" role="tab">
+              <i class="fas fa-paste me-1"></i>Paste Log
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-panel" type="button" role="tab">
+              <i class="fas fa-file-upload me-1"></i>Upload File
+            </button>
+          </li>
+        </ul>
+
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="paste-panel" role="tabpanel">
             <div class="mb-3">
-              <label for="crash-file" class="form-label"
-                >Select crash log file</label
-              >
-              <div class="input-group">
-                <input
-                  type="text"
-                  class="form-control"
-                  id="crash-file-display"
-                  placeholder="No file selected"
-                  readonly
-                />
-                <button
-                  class="btn btn-outline-secondary"
-                  type="button"
-                  onclick="showFilePicker('crash-file-display', ['.log', '.txt'])"
-                >
-                  <i class="fas fa-file-upload"></i>
-                </button>
-              </div>
+              <label for="crash-log-paste" class="form-label">Paste log text</label>
+              <textarea class="form-control font-monospace" id="crash-log-paste" rows="12"
+                placeholder="Paste latest.log, a crash-report .txt, or any Minecraft log output here..."></textarea>
               <div class="form-text text-readable">
-                Supported formats: .log, .txt (Max size: 16MB)
-                <br />
-                <strong>Note:</strong> File will be uploaded and analyzed with
-                AI
+                Tip: From your instance folder, open <strong>logs/latest.log</strong> or
+                <strong>crash-reports/crash-*.txt</strong> and paste the contents here.
               </div>
             </div>
           </div>
-          <div class="col-md-4">
-            <div class="d-grid">
-              <button
-                class="btn btn-primary btn-lg"
-                onclick="analyzeCrashLog()"
-                id="analyze-btn"
-                disabled
-              >
-                <i class="fas fa-search me-2"></i>Analyze with AI
-              </button>
+
+          <div class="tab-pane fade" id="upload-panel" role="tabpanel">
+            <div class="mb-3">
+              <label for="crash-file-display" class="form-label">Select log file</label>
+              <div class="input-group">
+                <input type="text" class="form-control" id="crash-file-display" placeholder="No file selected" readonly />
+                <button class="btn btn-outline-secondary" type="button" onclick="showFilePicker('crash-file-display', ['.log', '.txt'])">
+                  <i class="fas fa-file-upload"></i> Browse
+                </button>
+              </div>
+              <div class="form-text text-readable">
+                Supported: <strong>latest.log</strong>, crash-report <strong>.txt</strong>, or any <strong>.log</strong> / <strong>.txt</strong> (max 16MB).
+                Typical paths: <code>logs/latest.log</code>, <code>crash-reports/crash-YYYY-MM-DD_HH.MM.SS-client.txt</code>
+              </div>
+            </div>
+            <div id="file-info" class="mt-2" style="display: none">
+              <div class="alert alert-info mb-0">
+                <i class="fas fa-file-alt me-2"></i>
+                <strong>Selected file:</strong> <span id="file-name"></span><br />
+                <strong>Size:</strong> <span id="file-size"></span>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- File Info -->
-        <div id="file-info" class="mt-3" style="display: none">
-          <div class="alert alert-info">
-            <i class="fas fa-file-alt me-2"></i>
-            <strong>Selected file:</strong> <span id="file-name"></span>
-            <br />
-            <strong>Size:</strong> <span id="file-size"></span>
-          </div>
+        <div class="d-grid d-md-flex justify-content-md-end mt-3">
+          <button class="btn btn-primary btn-lg" onclick="analyzeCrashLog()" id="analyze-btn">
+            <i class="fas fa-search me-2"></i>Analyze with AI
+          </button>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Analysis Results -->
 <div class="row">
   <div class="col-12">
     <div class="card">
-      <div
-        class="card-header d-flex justify-content-between align-items-center"
-      >
-        <h5 class="mb-0">
-          <i class="fas fa-chart-line me-2"></i>Analysis Results
-        </h5>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Analysis Results</h5>
         <div>
-          <button
-            class="btn btn-sm btn-outline-secondary"
-            onclick="clearResults()"
-          >
+          <button class="btn btn-sm btn-outline-secondary" onclick="clearResults()">
             <i class="fas fa-trash me-1"></i>Clear
           </button>
-          <button
-            class="btn btn-sm btn-outline-primary"
-            onclick="copyResults()"
-          >
+          <button class="btn btn-sm btn-outline-primary" onclick="copyResults()">
             <i class="fas fa-copy me-1"></i>Copy
           </button>
         </div>
@@ -100,11 +93,10 @@ Handler{% endblock %} {% block content %}
       <div class="card-body">
         <div id="analysis-results">
           <div class="text-center text-muted py-5">
-            <i class="fas fa-upload fa-3x mb-3"></i>
-            <h5>Upload a crash log to get started</h5>
-            <p>
-              Our AI will analyze your crash log and provide detailed insights
-              and solutions.
+            <i class="fas fa-paste fa-3x mb-3"></i>
+            <h5>Paste or upload a log to get started</h5>
+            <p class="text-readable">
+              Paste <strong>latest.log</strong> or upload a crash report. AI will summarize the cause and suggest fixes.
             </p>
           </div>
         </div>
@@ -112,38 +104,31 @@ Handler{% endblock %} {% block content %}
     </div>
   </div>
 </div>
+{% endblock %}
 
-{% endblock %} {% block extra_scripts %}
+{% block extra_scripts %}
 <script>
   let selectedFile = null;
 
   document.addEventListener("DOMContentLoaded", function () {
     checkOllamaStatus();
+    document.getElementById("crash-log-paste").addEventListener("input", updateAnalyzeButtonState);
   });
 
-  function handleFileSelect() {
-    const fileDisplay = document.getElementById("crash-file-display");
-    const fileName = fileDisplay.value;
-
-    if (fileName) {
-      // Show file info
-      document.getElementById("file-name").textContent = fileName;
-      const fileSize = fileDisplay.dataset.fileSize;
-      document.getElementById("file-size").textContent = fileSize
-        ? formatFileSize(parseInt(fileSize))
-        : "Unknown";
-      document.getElementById("file-info").style.display = "block";
-
-      // Enable analyze button
-      document.getElementById("analyze-btn").disabled = false;
-    } else {
-      selectedFile = null;
-      document.getElementById("file-info").style.display = "none";
-      document.getElementById("analyze-btn").disabled = true;
-    }
+  function isPasteModeActive() {
+    return document.getElementById("paste-tab").classList.contains("active");
   }
 
-  // Override the showFilePicker function for crash analysis
+  function updateAnalyzeButtonState() {
+    const pasteText = document.getElementById("crash-log-paste").value.trim();
+    const hasPaste = pasteText.length > 0;
+    const hasFile = !!selectedFile;
+    document.getElementById("analyze-btn").disabled = isPasteModeActive() ? !hasPaste : !hasFile;
+  }
+
+  document.getElementById("paste-tab").addEventListener("shown.bs.tab", updateAnalyzeButtonState);
+  document.getElementById("upload-tab").addEventListener("shown.bs.tab", updateAnalyzeButtonState);
+
   function showFilePicker(targetInputId, acceptedTypes = [".log", ".txt"]) {
     const input = document.createElement("input");
     input.type = "file";
@@ -153,22 +138,14 @@ Handler{% endblock %} {% block content %}
     input.onchange = function (e) {
       const file = e.target.files[0];
       if (file) {
-        selectedFile = file; // Store the actual file object
+        selectedFile = file;
         const targetInput = document.getElementById(targetInputId);
         if (targetInput) {
           targetInput.value = file.name;
-          targetInput.dataset.file = file.name;
-          targetInput.dataset.fileSize = file.size;
-
-          // Show file info
           document.getElementById("file-name").textContent = file.name;
-          document.getElementById("file-size").textContent = formatFileSize(
-            file.size
-          );
+          document.getElementById("file-size").textContent = formatFileSize(file.size);
           document.getElementById("file-info").style.display = "block";
-
-          // Enable analyze button
-          document.getElementById("analyze-btn").disabled = false;
+          updateAnalyzeButtonState();
         }
       }
     };
@@ -179,149 +156,128 @@ Handler{% endblock %} {% block content %}
   }
 
   function analyzeCrashLog() {
-    console.log("analyzeCrashLog called, selectedFile:", selectedFile);
-    
-    if (!selectedFile) {
+    const pasteText = document.getElementById("crash-log-paste").value.trim();
+    const usePaste = isPasteModeActive();
+
+    if (usePaste && !pasteText) {
+      showAlert("Please paste log text first", "warning");
+      return;
+    }
+    if (!usePaste && !selectedFile) {
       showAlert("Please select a crash log file first", "warning");
       return;
     }
 
-    // Check Ollama status first
-    checkOllamaStatus().then((isConnected) => {
-      console.log("Ollama connection status:", isConnected);
-      
-      if (!isConnected) {
-        showAlert(
-          "Ollama is not connected. Please start Ollama first.",
-          "danger"
-        );
-        return;
-      }
-
-      performAnalysis();
-    }).catch((error) => {
-      console.error("Error checking Ollama status:", error);
-      showAlert("Error checking AI connection status", "danger");
-    });
+    checkOllamaStatus()
+      .then((isConnected) => {
+        if (!isConnected) {
+          showAlert("Ollama is not connected. Please start Ollama first.", "danger");
+          return;
+        }
+        performAnalysis(usePaste ? pasteText : null);
+      })
+      .catch(() => showAlert("Error checking AI connection status", "danger"));
   }
 
-  function performAnalysis() {
-    console.log("performAnalysis called with file:", selectedFile);
-    
-    const formData = new FormData();
-    formData.append("file", selectedFile);
+  function performAnalysis(pasteText) {
+    const analyzeBtn = document.getElementById("analyze-btn");
+    analyzeBtn.disabled = true;
+    analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Analyzing...';
 
-    // Show loading state
-    document.getElementById("analyze-btn").disabled = true;
-    document.getElementById("analyze-btn").innerHTML =
-      '<i class="fas fa-spinner fa-spin me-2"></i>Analyzing...';
-
-    // Show analysis results area
     document.getElementById("analysis-results").innerHTML = `
-        <div class="text-center py-4">
-            <div class="spinner-border text-primary mb-3" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <h5>Analyzing crash log with AI...</h5>
-            <p class="text-readable">This may take a few moments depending on the log size.</p>
-        </div>
+      <div class="text-center py-4">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <h5>Analyzing crash log with AI...</h5>
+        <p class="text-readable">This may take a few moments depending on the log size.</p>
+      </div>
     `;
 
-    console.log("Sending request to /api/crash/analyze");
-    fetch("/api/crash/analyze", {
-      method: "POST",
-      body: formData,
-    })
+    const options = pasteText
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ log_content: pasteText }),
+        }
+      : (() => {
+          const formData = new FormData();
+          formData.append("file", selectedFile);
+          return { method: "POST", body: formData };
+        })();
+
+    fetch("/api/crash/analyze", options)
       .then((response) => {
-        console.log("Response received:", response.status, response.statusText);
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          return response.json().then((data) => {
+            throw new Error(data.error || `HTTP ${response.status}`);
+          });
         }
         return response.json();
       })
       .then((data) => {
-        console.log("Analysis data received:", data);
-        
-        // Reset button
-        document.getElementById("analyze-btn").disabled = false;
-        document.getElementById("analyze-btn").innerHTML =
-          '<i class="fas fa-search me-2"></i>Analyze with AI';
+        analyzeBtn.disabled = false;
+        analyzeBtn.innerHTML = '<i class="fas fa-search me-2"></i>Analyze with AI';
+        updateAnalyzeButtonState();
 
         if (data.error) {
-          console.error("Analysis error:", data.error);
           document.getElementById("analysis-results").innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>Analysis Error:</strong> ${data.error}
-                </div>
-            `;
+            <div class="alert alert-danger">
+              <i class="fas fa-exclamation-triangle me-2"></i>
+              <strong>Analysis Error:</strong> ${data.error}
+            </div>`;
           return;
         }
 
-        // Display results
-        const timestamp = new Date(data.timestamp).toLocaleString();
+        const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString() : "just now";
         document.getElementById("analysis-results").innerHTML = `
-            <div class="mb-3">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">
-                        <i class="fas fa-robot me-2"></i>AI Analysis Results
-                    </h6>
-                    <small class="text-readable">Model: ${data.model_used} | ${timestamp}</small>
-                </div>
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <h6 class="mb-0"><i class="fas fa-robot me-2"></i>AI Analysis Results</h6>
+              <small class="text-readable">Model: ${data.model_used} | ${timestamp}</small>
             </div>
-            <div class="analysis-text">
-                ${data.analysis}
-            </div>
-        `;
+          </div>
+          <div class="analysis-text">${escapeHtml(data.analysis).replace(/\n/g, "<br>")}</div>`;
 
         showAlert("Crash log analysis completed successfully!", "success");
       })
       .catch((error) => {
-        console.error("Fetch error:", error);
-        
-        // Reset button
-        document.getElementById("analyze-btn").disabled = false;
-        document.getElementById("analyze-btn").innerHTML =
-          '<i class="fas fa-search me-2"></i>Analyze with AI';
-
+        analyzeBtn.disabled = false;
+        analyzeBtn.innerHTML = '<i class="fas fa-search me-2"></i>Analyze with AI';
+        updateAnalyzeButtonState();
         document.getElementById("analysis-results").innerHTML = `
-            <div class="alert alert-danger">
-                <i class="fas fa-exclamation-triangle me-2"></i>
-                <strong>Error:</strong> ${error.message}
-            </div>
-        `;
+          <div class="alert alert-danger">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Error:</strong> ${error.message}
+          </div>`;
       });
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text || "";
+    return div.innerHTML;
   }
 
   function clearResults() {
     document.getElementById("analysis-results").innerHTML = `
-        <div class="text-center text-muted py-5">
-            <i class="fas fa-upload fa-3x mb-3"></i>
-            <h5>Upload a crash log to get started</h5>
-            <p>Our AI will analyze your crash log and provide detailed insights and solutions.</p>
-        </div>
-    `;
-
-    // Clear file selection
+      <div class="text-center text-muted py-5">
+        <i class="fas fa-paste fa-3x mb-3"></i>
+        <h5>Paste or upload a log to get started</h5>
+        <p class="text-readable">Paste <strong>latest.log</strong> or upload a crash report.</p>
+      </div>`;
+    document.getElementById("crash-log-paste").value = "";
     document.getElementById("crash-file-display").value = "";
     selectedFile = null;
     document.getElementById("file-info").style.display = "none";
-    document.getElementById("analyze-btn").disabled = true;
+    updateAnalyzeButtonState();
   }
 
   function copyResults() {
     const resultsDiv = document.getElementById("analysis-results");
     const textContent = resultsDiv.textContent || resultsDiv.innerText;
-
     if (textContent.trim()) {
-      navigator.clipboard
-        .writeText(textContent)
-        .then(() => {
-          showAlert("Results copied to clipboard!", "success");
-        })
-        .catch(() => {
-          showAlert("Failed to copy results", "danger");
-        });
+      navigator.clipboard.writeText(textContent)
+        .then(() => showAlert("Results copied to clipboard!", "success"))
+        .catch(() => showAlert("Failed to copy results", "danger"));
     } else {
       showAlert("No results to copy", "warning");
     }
@@ -334,6 +290,7 @@ Handler{% endblock %} {% block content %}
         const statusElement = document.getElementById("ollama-status");
         const statusIcon = document.getElementById("ollama-status-icon");
         const statusText = document.getElementById("ollama-status-text");
+        if (!statusElement) return data.connected;
 
         if (data.connected) {
           statusElement.className = "badge bg-success px-3 py-2";
@@ -344,30 +301,19 @@ Handler{% endblock %} {% block content %}
           statusIcon.className = "fas fa-circle me-1";
           statusText.textContent = "AI Not Available";
         }
-
         return data.connected;
       })
-      .catch((error) => {
-        console.error("Error checking Ollama status:", error);
-        const statusElement = document.getElementById("ollama-status");
-        const statusIcon = document.getElementById("ollama-status-icon");
-        const statusText = document.getElementById("ollama-status-text");
-        
-        statusElement.className = "badge bg-danger px-3 py-2";
-        statusIcon.className = "fas fa-circle me-1";
-        statusText.textContent = "AI Error";
-        return false;
-      });
+      .catch(() => false);
   }
 
   function formatFileSize(bytes) {
     if (bytes === 0) return "0 Bytes";
-
     const k = 1024;
     const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
+
+  updateAnalyzeButtonState();
 </script>
 {% endblock %}

@@ -61,6 +61,11 @@
                                 <option value="">Select a model...</option>
                             </select>
                         </div>
+
+                        <div class="mb-3">
+                            <label for="ollama-timeout" class="form-label">Request Timeout (seconds)</label>
+                            <input type="number" class="form-control" id="ollama-timeout" min="10" max="600" value="60">
+                        </div>
                     </div>
                 </div>
                 
@@ -188,34 +193,67 @@
 {% block extra_scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Load saved settings
     loadSettings();
-    
-    // Check Ollama status
     checkOllamaStatus();
 });
 
-function loadSettings() {
-    // Load from localStorage
-    const defaultDir = localStorage.getItem('defaultMinecraftDirectory');
-    const autoBackup = localStorage.getItem('autoBackup') !== 'false';
-    const darkMode = localStorage.getItem('darkMode') === 'true';
-    const ollamaUrl = localStorage.getItem('ollamaUrl') || 'http://localhost:11434';
-    
-    if (defaultDir) document.getElementById('default-minecraft-dir').value = defaultDir;
-    document.getElementById('auto-backup').checked = autoBackup;
-    document.getElementById('dark-mode').checked = darkMode;
-    document.getElementById('ollama-url').value = ollamaUrl;
+async function loadSettings() {
+    try {
+        const response = await fetch('/api/settings');
+        const settings = await response.json();
+
+        const ollama = settings.ollama || {};
+        const application = settings.application || {};
+
+        document.getElementById('ollama-url').value = ollama.url || 'http://localhost:11434';
+        document.getElementById('ollama-timeout').value = ollama.timeout || 60;
+        document.getElementById('default-minecraft-dir').value = application.default_minecraft_dir || '';
+        document.getElementById('auto-backup').checked = application.auto_backup !== false;
+        document.getElementById('dark-mode').checked = application.dark_mode === true;
+
+        if (ollama.model) {
+            localStorage.setItem('selectedModel', ollama.model);
+        }
+    } catch (error) {
+        console.error('Failed to load settings from server:', error);
+    }
 }
 
-function saveSettings() {
-    // Save to localStorage
-    localStorage.setItem('defaultMinecraftDirectory', document.getElementById('default-minecraft-dir').value);
-    localStorage.setItem('autoBackup', document.getElementById('auto-backup').checked);
-    localStorage.setItem('darkMode', document.getElementById('dark-mode').checked);
-    localStorage.setItem('ollamaUrl', document.getElementById('ollama-url').value);
-    
-    showAlert('Settings saved successfully!', 'success');
+async function saveSettings() {
+    const selectedModel = document.getElementById('selected-model').value;
+    const payload = {
+        ollama: {
+            url: document.getElementById('ollama-url').value.trim(),
+            model: selectedModel || localStorage.getItem('selectedModel') || 'llama3.2',
+            timeout: parseInt(document.getElementById('ollama-timeout').value, 10) || 60,
+        },
+        application: {
+            default_minecraft_dir: document.getElementById('default-minecraft-dir').value.trim(),
+            auto_backup: document.getElementById('auto-backup').checked,
+            dark_mode: document.getElementById('dark-mode').checked,
+        },
+    };
+
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) {
+            throw new Error(data.error || 'Save failed');
+        }
+
+        if (selectedModel) {
+            localStorage.setItem('selectedModel', selectedModel);
+        }
+        localStorage.setItem('defaultMinecraftDirectory', payload.application.default_minecraft_dir);
+
+        showAlert('Settings saved to config.json', 'success');
+    } catch (error) {
+        showAlert('Failed to save settings: ' + error.message, 'danger');
+    }
 }
 
 function checkOllamaStatus() {
@@ -267,9 +305,21 @@ function checkOllamaStatus() {
                 
                 // Select saved model if available
                 const savedModel = localStorage.getItem('selectedModel');
-                if (savedModel && data.models.includes(savedModel)) {
-                    modelSelect.value = savedModel;
-                }
+                fetch('/api/settings')
+                    .then(r => r.json())
+                    .then(settings => settings.ollama?.model || savedModel)
+                    .then(modelToSelect => {
+                        if (modelToSelect && data.models.includes(modelToSelect)) {
+                            modelSelect.value = modelToSelect;
+                        } else if (savedModel && data.models.includes(savedModel)) {
+                            modelSelect.value = savedModel;
+                        }
+                    })
+                    .catch(() => {
+                        if (savedModel && data.models.includes(savedModel)) {
+                            modelSelect.value = savedModel;
+                        }
+                    });
             } else {
                 modelsList.innerHTML = '<span class="text-warning">No models available</span>';
                 modelSelect.innerHTML = '<option value="">No models available</option>';

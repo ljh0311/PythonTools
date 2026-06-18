@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Any
@@ -35,12 +36,17 @@ TOPIC_SYSTEM = (
 
 SUGGEST_SYSTEM = (
     "You are an assistant for a Telegram operator dashboard. "
-    "Analyze conversations and return ONLY valid JSON with no markdown fences. "
+    "Respond with a single JSON object only — no prose, no markdown fences. "
     "Write summary and drafts in English. "
+    "Focus on the latest unanswered incoming messages and concrete next steps. "
+    "Use chat_id from each transcript line. "
     "Schema: {\"summary\": string, \"suggestions\": [{\"type\": \"reply\"|\"next_action\", "
     "\"chat_id\": number|null, \"user\": string, \"draft\": string, \"action\": string, "
     "\"priority\": \"high\"|\"medium\"|\"low\", \"confidence\": number, \"due_hint\": string}]}"
 )
+
+AI_ANALYSIS_MESSAGE_LIMIT = 50
+logger = logging.getLogger(__name__)
 
 
 class AIService:
@@ -73,8 +79,19 @@ class AIService:
             name = msg.get("username") or f"User {msg.get('user_id')}"
             text = msg.get("text_redacted") if use_redacted and msg.get("text_redacted") else msg.get("text", "")
             chat = msg.get("chat_title") or msg.get("chat_type") or "chat"
-            lines.append(f"[{chat}] {name}: {text}")
+            chat_id = msg.get("chat_id")
+            chat_prefix = f"chat_id={chat_id} " if chat_id is not None else ""
+            direction = msg.get("direction", "incoming")
+            lines.append(f"[{chat_prefix}{chat} · {direction}] {name}: {text}")
         return "\n".join(lines)
+
+    def _messages_for_ai_analysis(
+        self, messages: list[dict], *, limit: int = AI_ANALYSIS_MESSAGE_LIMIT
+    ) -> tuple[list[dict], int]:
+        sorted_msgs = sorted(messages, key=lambda m: m.get("created_at", ""))
+        if len(sorted_msgs) <= limit:
+            return sorted_msgs, len(sorted_msgs)
+        return sorted_msgs[-limit:], len(sorted_msgs)
 
     def _prepare_messages(self, messages: list[dict]) -> tuple[list[dict], int, bool]:
         redacted, count, applied = redaction_service.redact_messages(messages)
@@ -90,12 +107,75 @@ class AIService:
             return await self.ollama.generate_text(prompt, system=system), "ollama"
         raise RuntimeError("No AI provider available")
 
+    def _extract_json_object(self, raw: str) -> str:
+        text = raw.strip()
+        fence = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+        if fence:
+            return fence.group(1).strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text).strip()
+            if text.startswith("{"):
+                return text
+        start = text.find("{")
+        if start == -1:
+            return text
+        depth = 0
+        for index in range(start, len(text)):
+            char = text[index]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : index + 1]
+        return text[start:]
+
     def _parse_json_response(self, raw: str) -> dict[str, Any]:
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
+        cleaned = self._extract_json_object(raw)
         return json.loads(cleaned)
+
+    def _chat_context_from_messages(self, messages: list[dict]) -> dict[str, int]:
+        context: dict[str, int] = {}
+        for msg in sorted(messages, key=lambda m: m.get("created_at", "")):
+            if msg.get("direction") != "incoming":
+                continue
+            chat_id = msg.get("chat_id")
+            if chat_id is None:
+                continue
+            name = (msg.get("username") or str(msg.get("user_id") or "")).strip().lower()
+            if name:
+                context[name] = chat_id
+        return context
+
+    def _normalize_suggestions(
+        self, suggestions: list[Any], messages: list[dict]
+    ) -> list[dict[str, Any]]:
+        chat_context = self._chat_context_from_messages(messages)
+        default_chat_id = next(iter(chat_context.values()), None) if len(chat_context) == 1 else None
+        normalized: list[dict[str, Any]] = []
+
+        for item in suggestions:
+            if not isinstance(item, dict):
+                continue
+            suggestion = dict(item)
+            suggestion["type"] = suggestion.get("type") or "reply"
+            suggestion["priority"] = suggestion.get("priority") or "medium"
+            user = str(suggestion.get("user") or "").strip()
+            chat_id = suggestion.get("chat_id")
+            if chat_id is None and user:
+                chat_id = chat_context.get(user.lower())
+            if chat_id is None:
+                chat_id = default_chat_id
+            suggestion["chat_id"] = chat_id
+            suggestion["draft"] = str(suggestion.get("draft") or "").strip()
+            suggestion["action"] = str(suggestion.get("action") or "").strip()
+            if suggestion["type"] == "reply" and not suggestion["draft"]:
+                continue
+            if suggestion["type"] == "next_action" and not suggestion["action"]:
+                continue
+            normalized.append(suggestion)
+        return normalized
 
     async def summarize_messages(
         self,
@@ -203,6 +283,13 @@ class AIService:
     def _fallback_relationship(
         self, messages: list[dict], chat_type: str | None, chat_title: str | None
     ) -> str:
+        if chat_type == "channel":
+            label = chat_title or "this channel"
+            return (
+                f"Telegram channel ({label}). "
+                "Posts are broadcast content; replies should match the channel tone."
+            )
+
         if chat_type == "group":
             label = chat_title or "this group"
             participants = sorted(
@@ -316,6 +403,7 @@ class AIService:
             "summary": self._fallback_thread_summary(messages),
             "suggestions": suggestions,
             "provider": "fallback",
+            "fallback_reason": "No AI provider configured. Set GEMINI_API_KEY or run Ollama.",
         }
 
     async def suggest_actions(
@@ -332,37 +420,57 @@ class AIService:
                 "redaction_count": 0,
             }
 
-        redacted, redaction_count, redaction_applied = self._prepare_messages(messages)
+        analysis_messages, total_count = self._messages_for_ai_analysis(messages)
+        redacted, redaction_count, redaction_applied = self._prepare_messages(analysis_messages)
         transcript = self._format_transcript(redacted)
         context_block = self._relationship_context_block(relationship_map)
+        scope_note = ""
+        if total_count > len(analysis_messages):
+            scope_note = (
+                f"Showing the {len(analysis_messages)} most recent of {total_count} messages. "
+                "Prioritize the latest thread and any open questions.\n\n"
+            )
         prompt = (
             "Analyze these Telegram messages. Suggest reply drafts for chats needing a response "
             "and next actions for the operator. "
             "Use the relationship context to tailor tone and content to who the receiving party is.\n\n"
-            f"{context_block}{transcript}"
+            f"{scope_note}{context_block}{transcript}"
         )
 
         if not self.configured:
             result = self._fallback_suggestions(messages, relationship_map)
             result["redaction_applied"] = redaction_applied
             result["redaction_count"] = redaction_count
+            result["messages_analyzed"] = len(analysis_messages)
+            result["messages_total"] = total_count
             return result
 
         try:
             raw, provider = await self._generate_text(prompt, SUGGEST_SYSTEM)
             parsed = self._parse_json_response(raw)
-            suggestions = parsed.get("suggestions", [])
+            suggestions = self._normalize_suggestions(parsed.get("suggestions", []), messages)
+            summary = str(parsed.get("summary", "")).strip() or self._fallback_thread_summary(messages)
+            if not suggestions:
+                raise ValueError("AI returned no usable suggestions")
             return {
-                "summary": parsed.get("summary", ""),
+                "summary": summary,
                 "suggestions": suggestions,
                 "provider": provider,
                 "redaction_applied": redaction_applied,
                 "redaction_count": redaction_count,
+                "messages_analyzed": len(analysis_messages),
+                "messages_total": total_count,
             }
-        except Exception:
+        except Exception as exc:
+            logger.warning("AI suggest_actions failed, using fallback: %s", exc)
             result = self._fallback_suggestions(messages, relationship_map)
             result["redaction_applied"] = redaction_applied
             result["redaction_count"] = redaction_count
+            result["messages_analyzed"] = len(analysis_messages)
+            result["messages_total"] = total_count
+            result["fallback_reason"] = (
+                "AI response could not be used. Check GEMINI_API_KEY or Ollama, then try again."
+            )
             return result
 
     async def assign_topics(self, text: str) -> list[str]:
@@ -418,16 +526,32 @@ class AIService:
 
         return self._fallback_response(user_text, store)
 
-    def _fallback_thread_summary(self, messages: list[dict]) -> str:
-        if len(messages) == 1:
-            m = messages[0]
+    def _fallback_thread_summary(self, messages: list[dict], *, max_snippets: int = 3) -> str:
+        sorted_msgs = sorted(messages, key=lambda m: m.get("created_at", ""))
+        if not sorted_msgs:
+            return "No messages to summarize."
+        if len(sorted_msgs) == 1:
+            m = sorted_msgs[0]
             name = m.get("username") or f"User {m.get('user_id')}"
-            return f"{name} sent a message: {m.get('text', '')}"
-        parts = []
-        for msg in sorted(messages, key=lambda m: m.get("created_at", "")):
-            name = msg.get("username") or f"User {msg.get('user_id')}"
-            parts.append(f"{name} said \"{msg.get('text', '')}\"")
-        return "Conversation summary: " + " Then, ".join(parts)
+            return f"{name} sent: \"{(m.get('text') or '')[:160]}\""
+        recent = sorted_msgs[-max_snippets:]
+        participants = sorted(
+            {
+                m.get("username") or f"User {m.get('user_id')}"
+                for m in sorted_msgs
+                if m.get("user_id")
+            }
+        )
+        names = ", ".join(participants[:4]) if participants else "contacts"
+        latest = recent[-1]
+        latest_name = latest.get("username") or f"User {latest.get('user_id')}"
+        latest_text = (latest.get("text") or "")[:120]
+        prefix = (
+            f"{len(sorted_msgs)} messages between {names}. "
+            if len(sorted_msgs) > max_snippets
+            else f"Conversation with {names}. "
+        )
+        return f"{prefix}Latest from {latest_name}: \"{latest_text}\""
 
     def _fallback_response(self, user_text: str, store) -> str:
         lowered = user_text.lower().strip()

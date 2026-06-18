@@ -1,0 +1,18 @@
+# Local settings (copy from config.example.json)
+config.json
+
+# Runtime / uploads
+uploads/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp

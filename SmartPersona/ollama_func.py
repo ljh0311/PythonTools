@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -8,7 +9,7 @@ logger = logging.getLogger(__name__)
 OLLAMA_AVAILABLE = True
 
 
-import asyncio
+
 
 
 class Ollama_func:

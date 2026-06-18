@@ -17,9 +17,16 @@ from datetime import datetime
 from mod_manager import ModManager
 from crash_analyzer import CrashLogAnalyzer
 from compatibility_checker import CompatibilityChecker
+from settings_manager import SettingsManager
+from flask_config import get_secret_key, get_run_kwargs
+from web_components import register_layout
+
+APP_ROOT = Path(__file__).resolve().parent
+CONFIG_PATH = APP_ROOT / "config.json"
 
 app = Flask(__name__)
-app.secret_key = 'minecraft_mod_handler_secret_key_2024'
+app.secret_key = get_secret_key("minecraft-mod-handler")
+register_layout(app, "minecraft")
 
 # Configuration
 UPLOAD_FOLDER = 'uploads'
@@ -31,9 +38,23 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Initialize managers
+settings_manager = SettingsManager(str(CONFIG_PATH))
 mod_manager = ModManager()
-crash_analyzer = CrashLogAnalyzer()
+crash_analyzer = CrashLogAnalyzer(
+    url=settings_manager.get_setting("ollama.url", "http://localhost:11434"),
+    model=settings_manager.get_setting("ollama.model", "llama3.2"),
+    timeout=settings_manager.get_setting("ollama.timeout", 60),
+)
 compatibility_checker = CompatibilityChecker(mod_manager)
+
+
+def apply_ollama_settings() -> None:
+    """Apply Ollama settings from config to the shared analyzer."""
+    crash_analyzer.configure(
+        url=settings_manager.get_setting("ollama.url"),
+        model=settings_manager.get_setting("ollama.model"),
+        timeout=settings_manager.get_setting("ollama.timeout", 60),
+    )
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -150,34 +171,39 @@ def crash_analysis():
 
 @app.route('/api/crash/analyze', methods=['POST'])
 def analyze_crash():
-    """Analyze uploaded crash log"""
+    """Analyze uploaded crash log or pasted log text"""
     try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file uploaded'}), 400
-        
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        if file and allowed_file(file.filename):
-            # Save uploaded file
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            
-            # Read file content
-            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                log_content = f.read()
-            
-            # Analyze with AI
-            result = crash_analyzer.analyze_crash_log(log_content)
-            
-            # Clean up uploaded file
-            os.remove(filepath)
-            
-            return jsonify(result)
-        else:
-            return jsonify({'error': 'Invalid file type'}), 400
+        log_content = None
+
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            log_content = data.get('log_content') or data.get('log_text')
+            if log_content is not None and not str(log_content).strip():
+                return jsonify({'error': 'Log content is empty'}), 400
+        elif 'file' in request.files:
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'error': 'No file selected'}), 400
+
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(filepath)
+
+                with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                    log_content = f.read()
+
+                os.remove(filepath)
+            else:
+                return jsonify({'error': 'Invalid file type'}), 400
+        elif 'log_content' in request.form:
+            log_content = request.form.get('log_content')
+
+        if log_content is None:
+            return jsonify({'error': 'No crash log provided. Upload a file or paste log text.'}), 400
+
+        result = crash_analyzer.analyze_crash_log(log_content)
+        return jsonify(result)
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1107,8 +1133,34 @@ def settings():
     """Settings page"""
     return render_template('settings.html')
 
+
+@app.route('/api/settings', methods=['GET', 'POST'])
+def api_settings():
+    """Get or update application settings persisted in config.json"""
+    try:
+        if request.method == 'GET':
+            return jsonify(settings_manager.settings)
+
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'error': 'JSON body required'}), 400
+
+        for section in ('ollama', 'application', 'directories', 'ui'):
+            if section in data and isinstance(data[section], dict):
+                for key, value in data[section].items():
+                    settings_manager.set_setting(f"{section}.{key}", value)
+
+        if not settings_manager.save_settings():
+            return jsonify({'error': 'Failed to save settings'}), 500
+
+        apply_ollama_settings()
+        return jsonify({'success': True, 'settings': settings_manager.settings})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
+    run_kwargs = get_run_kwargs(default_port=5000)
     print("Starting Minecraft Mod Handler Web Application...")
     print("Make sure Ollama is running for AI features!")
-    print("Access the application at: http://localhost:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print(f"Access the application at: http://{run_kwargs['host']}:{run_kwargs['port']}")
+    app.run(**run_kwargs)

@@ -24,6 +24,7 @@ function chatLabel(chat) {
   if (chat.participants?.length) {
     return chat.participants.map((p) => `@${p}`).join(", ");
   }
+  if (chat.chat_type === "channel") return chat.chat_title || `Channel ${chat.chat_id}`;
   if (chat.chat_type === "group") return `Group ${chat.chat_id}`;
   return `Chat ${chat.chat_id}`;
 }
@@ -88,7 +89,8 @@ function renderReplyMode() {
     .map((chat) => {
       const expanded = workflowState.expandedChatId === chat.chat_id;
       const relSource = chat.relationship_source === "manual" ? "Edited by you" : "AI generated";
-      const typeLabel = chat.chat_type === "group" ? "Group" : "Private";
+      const typeLabel =
+        chat.chat_type === "channel" ? "Channel" : chat.chat_type === "group" ? "Group" : "Private";
       return `
       <article class="chat-card ${chat.auto_reply_enabled ? "auto-on" : ""} ${expanded ? "expanded" : ""}" data-chat-id="${chat.chat_id}">
         <header class="chat-card-header">

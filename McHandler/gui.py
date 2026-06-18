@@ -14,6 +14,8 @@ from compatibility_checker import CompatibilityChecker
 from shaderpack_manager import ShaderpackManager
 from settings_manager import SettingsManager
 
+CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
+
 
 class McHandlerGUI:
     """Main GUI application"""
@@ -25,10 +27,14 @@ class McHandlerGUI:
         self.root.minsize(1000, 600)
 
         self.mod_manager = ModManager()
-        self.crash_analyzer = CrashLogAnalyzer()
+        self.settings_manager = SettingsManager(str(CONFIG_PATH))
+        self.crash_analyzer = CrashLogAnalyzer(
+            url=self.settings_manager.get_setting("ollama.url", "http://localhost:11434"),
+            model=self.settings_manager.get_setting("ollama.model", "llama3.2"),
+            timeout=self.settings_manager.get_setting("ollama.timeout", 60),
+        )
         self.compatibility_checker = CompatibilityChecker(self.mod_manager)
         self.shaderpack_manager = ShaderpackManager()
-        self.settings_manager = SettingsManager()
 
         # Store current mods and shaderpacks
         self.current_mods = []
@@ -46,15 +52,18 @@ class McHandlerGUI:
         # Load crash analysis in background
         self.load_crash_summary()
 
-    def _get_all_crash_logs_content(self):
-        """
-        Helper to concatenate all crash log contents from crash-reports directories.
-        Returns a single string with all logs, separated by headers.
-        """
-        # Try multiple possible crash log locations
-        possible_dirs = [
-            r"C:/Users/user/AppData/Roaming/ATLauncher/instances/yippie/crash-reports/",
-            r"C:/Users/user/AppData/Roaming/.minecraft/crash-reports/",
+    def _crash_report_dirs(self):
+        """Candidate crash-reports directories from config and common locations."""
+        dirs = []
+        if hasattr(self, "dir_var") and self.dir_var.get():
+            dirs.append(os.path.join(self.dir_var.get(), "crash-reports"))
+
+        default_mc = self.settings_manager.get_setting("application.default_minecraft_dir", "")
+        mc_dir = self.settings_manager.get_setting("directories.minecraft_dir", "") or default_mc
+        if mc_dir:
+            dirs.append(os.path.join(mc_dir, "crash-reports"))
+
+        dirs.extend([
             os.path.join(
                 os.path.expanduser("~"),
                 "AppData",
@@ -63,12 +72,22 @@ class McHandlerGUI:
                 "crash-reports",
             ),
             os.path.join(os.path.expanduser("~"), ".minecraft", "crash-reports"),
-        ]
+        ])
 
-        # Also check if we have a Minecraft directory set
-        if hasattr(self, "dir_var") and self.dir_var.get():
-            minecraft_dir = self.dir_var.get()
-            possible_dirs.insert(0, os.path.join(minecraft_dir, "crash-reports"))
+        seen = set()
+        unique_dirs = []
+        for directory in dirs:
+            if directory and directory not in seen:
+                seen.add(directory)
+                unique_dirs.append(directory)
+        return unique_dirs
+
+    def _get_all_crash_logs_content(self):
+        """
+        Helper to concatenate all crash log contents from crash-reports directories.
+        Returns a single string with all logs, separated by headers.
+        """
+        possible_dirs = self._crash_report_dirs()
 
         crash_files = []
         crash_dir = None
@@ -365,24 +384,7 @@ Format your response as a concise player profile with emojis and clear sections.
 
             # Count crash files
             crash_files = []
-            possible_dirs = [
-                r"C:/Users/user/AppData/Roaming/ATLauncher/instances/yippie/crash-reports/",
-                r"C:/Users/user/AppData/Roaming/.minecraft/crash-reports/",
-                os.path.join(
-                    os.path.expanduser("~"),
-                    "AppData",
-                    "Roaming",
-                    ".minecraft",
-                    "crash-reports",
-                ),
-                os.path.join(os.path.expanduser("~"), ".minecraft", "crash-reports"),
-            ]
-
-            if hasattr(self, "dir_var") and self.dir_var.get():
-                minecraft_dir = self.dir_var.get()
-                possible_dirs.insert(0, os.path.join(minecraft_dir, "crash-reports"))
-
-            for directory in possible_dirs:
+            for directory in self._crash_report_dirs():
                 if os.path.exists(directory):
                     files = [
                         f for f in os.listdir(directory) if f.endswith((".txt", ".log"))
@@ -1273,19 +1275,29 @@ If you encounter issues, make sure Ollama is running and you have at least one m
         about_text.config(state=tk.DISABLED)
 
     def browse_minecraft_dir(self):
-        """Browse for Minecraft directory (default provided)"""
-        default_dir = r"C:\Users\user\AppData\Roaming\ATLauncher\instances\yippie"
-        directory = filedialog.askdirectory(
-            title="Select Minecraft Directory", initialdir=default_dir
+        """Browse for Minecraft directory"""
+        initial = (
+            self.settings_manager.get_setting("directories.minecraft_dir", "")
+            or self.settings_manager.get_setting("application.default_minecraft_dir", "")
         )
+        kwargs = {"title": "Select Minecraft Directory"}
+        if initial and os.path.isdir(initial):
+            kwargs["initialdir"] = initial
+        directory = filedialog.askdirectory(**kwargs)
         if directory:
             self.dir_var.set(directory)
             self.mod_manager.set_minecraft_directory(directory)
 
     def browse_crash_log(self):
         """Browse for crash log file"""
-        default_dir = r"C:\Users\user\AppData\Roaming\ATLauncher\instances\yippie"
-        initialdir = default_dir
+        initial = (
+            self.settings_manager.get_setting("directories.minecraft_dir", "")
+            or self.settings_manager.get_setting("application.default_minecraft_dir", "")
+        )
+        crash_dir = os.path.join(initial, "logs") if initial else ""
+        if not crash_dir or not os.path.isdir(crash_dir):
+            crash_dir = initial if initial and os.path.isdir(initial) else os.path.expanduser("~")
+
         filename = filedialog.askopenfilename(
             title="Select Crash Log File",
             filetypes=[
@@ -1293,7 +1305,7 @@ If you encounter issues, make sure Ollama is running and you have at least one m
                 ("Text files", "*.txt"),
                 ("All files", "*.*"),
             ],
-            initialdir=initialdir,
+            initialdir=crash_dir,
         )
         if filename:
             self.crash_file_var.set(filename)
@@ -2286,6 +2298,12 @@ If you encounter issues, make sure Ollama is running and you have at least one m
             self.settings_manager.set_setting("ollama.url", self.ollama_url_var.get())
             self.settings_manager.set_setting("ollama.model", self.model_var.get())
 
+            self.crash_analyzer.configure(
+                url=self.ollama_url_var.get(),
+                model=self.model_var.get(),
+                timeout=self.settings_manager.get_setting("ollama.timeout", 60),
+            )
+
             # Save application settings
             self.settings_manager.set_setting(
                 "application.default_minecraft_dir", self.default_mc_dir_var.get()
@@ -2330,6 +2348,12 @@ If you encounter issues, make sure Ollama is running and you have at least one m
                 self.ollama_url_var.set(ollama_url)
             if hasattr(self, "model_var"):
                 self.model_var.set(ollama_model)
+
+            self.crash_analyzer.configure(
+                url=ollama_url,
+                model=ollama_model,
+                timeout=self.settings_manager.get_setting("ollama.timeout", 60),
+            )
 
             # Load application settings
             default_mc_dir = self.settings_manager.get_setting(

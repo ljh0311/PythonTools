@@ -14,4 +14,5 @@ __pycache__/
 # Brain data files
 memory.json
 thoughts.json
+user_profile.md
 .firecrawl/

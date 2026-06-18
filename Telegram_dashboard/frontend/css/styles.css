@@ -612,6 +612,17 @@ h2 {
   color: var(--text-muted);
 }
 
+.provider-warning {
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  background: rgba(240, 180, 41, 0.12);
+  border: 1px solid var(--warning, #f0b429);
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .redaction-notice {
   margin: 0 0 0.5rem;
   padding: 0.45rem 0.6rem;

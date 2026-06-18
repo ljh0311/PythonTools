@@ -173,6 +173,24 @@ async function loadOllamaModels() {
     }
 }
 
+/** Optional number input by id; null if missing or empty. */
+function parseOptionalNum(id) {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    const v = String(el.value).trim();
+    if (v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
+/** Checked radio in a group (turbo/super charger use name, not a single id). */
+function parseRadioNum(name) {
+    const el = document.querySelector(`input[name="${name}"]:checked`);
+    if (!el) return null;
+    const n = Number(el.value);
+    return Number.isFinite(n) ? n : null;
+}
+
 // Submit tuning request
 async function submitTuningRequest() {
     const carDescription = document.getElementById('car-description').value.trim();
@@ -195,28 +213,22 @@ async function submitTuningRequest() {
     const internalElectronicsStage = internalElectronicsAvailable ? parseInt(document.getElementById('internal-electronics-stage').value, 10) : null;
     
     // Current setup (optional): turbo, supercharger, differential
-    const parseNum = (id) => {
-        const v = document.getElementById(id).value.trim();
-        if (v === '') return null;
-        const n = Number(v);
-        return Number.isFinite(n) ? n : null;
-    };
-    const turboCharger = parseNum('turbo-charger');
-    const boostPerTurbo = parseNum('boost-per-turbo');
-    const superCharger = parseNum('super-charger');
-    const superChargerBoost = parseNum('super-charger-boost');
-    const frontDiffPower = parseNum('front-diff-power');
-    const frontDiffCoast = parseNum('front-diff-coast');
-    const frontDiffPreload = parseNum('front-diff-preload');
-    const rearDiffPower = parseNum('rear-diff-power');
-    const rearDiffCoast = parseNum('rear-diff-coast');
-    const rearDiffPreload = parseNum('rear-diff-preload');
-    const frontStiffness = parseNum('front-stiffness');
-    const frontRideHeight = parseNum('front-ride-height');
-    const frontDamping = parseNum('front-damping');
-    const rearStiffness = parseNum('rear-stiffness');
-    const rearRideHeight = parseNum('rear-ride-height');
-    const rearDamping = parseNum('rear-damping');
+    const turboCharger = parseRadioNum('turbo-charger');
+    const boostPerTurbo = parseOptionalNum('boost-per-turbo');
+    const superCharger = parseRadioNum('super-charger');
+    const superChargerBoost = parseOptionalNum('super-charger-boost');
+    const frontDiffPower = parseOptionalNum('front-diff-power');
+    const frontDiffCoast = parseOptionalNum('front-diff-coast');
+    const frontDiffPreload = parseOptionalNum('front-diff-preload');
+    const rearDiffPower = parseOptionalNum('rear-diff-power');
+    const rearDiffCoast = parseOptionalNum('rear-diff-coast');
+    const rearDiffPreload = parseOptionalNum('rear-diff-preload');
+    const frontStiffness = parseOptionalNum('front-stiffness');
+    const frontRideHeight = parseOptionalNum('front-ride-height');
+    const frontDamping = parseOptionalNum('front-damping');
+    const rearStiffness = parseOptionalNum('rear-stiffness');
+    const rearRideHeight = parseOptionalNum('rear-ride-height');
+    const rearDamping = parseOptionalNum('rear-damping');
     
     if (!carDescription || !tuningGoals) {
         showError('Please fill in all required fields');
@@ -286,8 +298,9 @@ async function submitTuningRequest() {
         submitBtn.disabled = false;
         submitBtn.innerHTML = '<i class="fas fa-magic me-2"></i>Get Tuning Suggestions';
         
-        if (data.error) {
-            showError(data.error);
+        if (!response.ok || data.error) {
+            const message = data.details ? data.details.join('; ') : data.error;
+            showError(message || 'Request failed');
             return;
         }
         
@@ -364,12 +377,76 @@ async function submitDiagnosisRequest() {
     }
 }
 
-// Display results
+// Display results with per-section copy buttons
 function displayResults(content, title) {
     const resultsSection = document.getElementById('results-section');
     const resultsContent = document.getElementById('results-content');
-    
-    // Format the content (convert markdown-like formatting)
+    const sections = splitIntoSections(content);
+
+    let html = `
+        <div class="result-section mb-3 border rounded p-3">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="mb-0">${escapeHtml(title)}</h6>
+                <button type="button" class="btn btn-sm btn-outline-secondary copy-section-btn" data-copy-text="${encodeCopyText(content)}">
+                    <i class="fas fa-copy me-1"></i>Copy all
+                </button>
+            </div>
+            <div class="section-content">${formatContent(content)}</div>
+        </div>`;
+
+    sections.forEach((section, index) => {
+        html += `
+            <div class="result-section mb-3 border rounded p-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h6 class="mb-0">${escapeHtml(section.title)}</h6>
+                    <button type="button" class="btn btn-sm btn-outline-secondary copy-section-btn" data-copy-text="${encodeCopyText(section.raw)}">
+                        <i class="fas fa-copy me-1"></i>Copy section
+                    </button>
+                </div>
+                <div class="section-content" id="result-section-${index}">${formatContent(section.body)}</div>
+            </div>`;
+    });
+
+    resultsContent.innerHTML = html;
+    resultsContent.querySelectorAll('.copy-section-btn').forEach((button) => {
+        button.addEventListener('click', () => copyText(decodeCopyText(button.dataset.copyText), button));
+    });
+
+    resultsSection.classList.remove('d-none');
+    resultsSection.classList.add('fade-in');
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function splitIntoSections(content) {
+    const sections = [];
+    const lines = content.split('\n');
+    let current = null;
+
+    for (const line of lines) {
+        const headerMatch = line.match(/^\*\*(.+?)\*\*:?\s*$/);
+        if (headerMatch) {
+            if (current && current.body.trim()) {
+                sections.push(current);
+            }
+            current = {
+                title: headerMatch[1],
+                body: '',
+                raw: `**${headerMatch[1]}**`,
+            };
+        } else if (current) {
+            current.body += (current.body ? '\n' : '') + line;
+            current.raw += '\n' + line;
+        }
+    }
+
+    if (current && current.body.trim()) {
+        sections.push(current);
+    }
+
+    return sections;
+}
+
+function formatContent(content) {
     let formattedContent = content
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
@@ -379,18 +456,44 @@ function displayResults(content, title) {
         .replace(/^- (.*$)/gim, '<li>$1</li>')
         .replace(/^(\d+)\. (.*$)/gim, '<li>$2</li>')
         .replace(/\n/g, '<br>');
-    
-    // Wrap list items in ul tags
-    formattedContent = formattedContent.replace(/(<li>.*?<\/li>(?:<br>)?)+/g, function(match) {
+
+    return formattedContent.replace(/(<li>.*?<\/li>(?:<br>)?)+/g, function(match) {
         return '<ul>' + match.replace(/<br>/g, '') + '</ul>';
     });
-    
-    resultsContent.innerHTML = formattedContent;
-    resultsSection.classList.remove('d-none');
-    resultsSection.classList.add('fade-in');
-    
-    // Scroll to results
-    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+function encodeCopyText(text) {
+    return encodeURIComponent(text || '');
+}
+
+function decodeCopyText(encoded) {
+    return decodeURIComponent(encoded || '');
+}
+
+async function copyText(text, button) {
+    try {
+        await navigator.clipboard.writeText(text);
+        if (button) {
+            const originalHTML = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+            button.classList.add('btn-success');
+            button.classList.remove('btn-outline-secondary');
+            setTimeout(() => {
+                button.innerHTML = originalHTML;
+                button.classList.remove('btn-success');
+                button.classList.add('btn-outline-secondary');
+            }, 2000);
+        }
+    } catch (error) {
+        console.error('Failed to copy:', error);
+        showError('Failed to copy results to clipboard');
+    }
 }
 
 // Show error
@@ -406,30 +509,11 @@ function showError(message) {
     errorAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-// Copy results to clipboard
+// Copy results to clipboard (header button — whole visible text)
 async function copyResults() {
     const resultsContent = document.getElementById('results-content');
     const text = resultsContent.textContent || resultsContent.innerText;
-    
-    try {
-        await navigator.clipboard.writeText(text);
-        
-        // Show temporary success message
-        const copyBtn = document.getElementById('copy-results-btn');
-        const originalHTML = copyBtn.innerHTML;
-        copyBtn.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
-        copyBtn.classList.add('btn-success');
-        copyBtn.classList.remove('btn-outline-secondary');
-        
-        setTimeout(() => {
-            copyBtn.innerHTML = originalHTML;
-            copyBtn.classList.remove('btn-success');
-            copyBtn.classList.add('btn-outline-secondary');
-        }, 2000);
-    } catch (error) {
-        console.error('Failed to copy:', error);
-        showError('Failed to copy results to clipboard');
-    }
+    await copyText(text.trim(), document.getElementById('copy-results-btn'));
 }
 
 // Cleanup on page unload

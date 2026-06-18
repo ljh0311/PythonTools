@@ -1,0 +1,23 @@
+{
+  "ollama": {
+    "url": "http://localhost:11434",
+    "model": "llama3.2",
+    "timeout": 60
+  },
+  "application": {
+    "default_minecraft_dir": "",
+    "auto_backup": true,
+    "dark_mode": false,
+    "window_geometry": "1200x800"
+  },
+  "directories": {
+    "minecraft_dir": "",
+    "shaderpack_dir": "",
+    "compatibility_dir": ""
+  },
+  "ui": {
+    "theme": "default",
+    "font_size": 10,
+    "show_tooltips": true
+  }
+}

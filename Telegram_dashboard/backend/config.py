@@ -5,8 +5,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "change-me")
+
+def is_env_placeholder(value: str) -> bool:
+    """True when .env still has a template value, not a real secret."""
+    normalized = (value or "").strip().lower()
+    if not normalized:
+        return True
+    if normalized.startswith("your-") or normalized.startswith("choose-a-"):
+        return True
+    return normalized in {"change-me", "change-me-to-a-random-secret"}
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "change-me").strip()
+TELEGRAM_POLLING = os.getenv("TELEGRAM_POLLING", "false").lower() in ("1", "true", "yes")
 TELEGRAM_API_BASE = "https://api.telegram.org/bot{token}"
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -16,8 +27,8 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
 
 DASHBOARD_API_KEY = os.getenv("DASHBOARD_API_KEY", "dev-dashboard-key")
-OPERATOR_USERNAME = os.getenv("OPERATOR_USERNAME", "admin")
-OPERATOR_PASSWORD = os.getenv("OPERATOR_PASSWORD", "")
+OPERATOR_USERNAME = os.getenv("OPERATOR_USERNAME", "admin").strip()
+OPERATOR_PASSWORD = os.getenv("OPERATOR_PASSWORD", "").strip()
 SESSION_TTL_HOURS = int(os.getenv("SESSION_TTL_HOURS", "24"))
 OPENCLAW_ENABLED = os.getenv("OPENCLAW_ENABLED", "false").lower() in ("1", "true", "yes")
 OPENCLAW_GATEWAY_URL = os.getenv("OPENCLAW_GATEWAY_URL", "http://127.0.0.1:18789")

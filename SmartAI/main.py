@@ -4,29 +4,30 @@ Smart Robot System - Main Application
 Autonomous house navigation robot with comprehensive control interface
 """
 
-import sys
 import os
-import yaml
 import signal
+import socket
+import sys
 import threading
 import time
-from loguru import logger
 import traceback
-
-# Flask imports for web server
-from flask import Flask, render_template, request, jsonify, send_from_directory
 import webbrowser
-import socket
+
+from flask import Flask, jsonify, render_template, request, send_from_directory
+import yaml
+
+from loguru import logger
+from src.core.robot_state import RobotMode, RobotState
+from src.gui.robot_gui import RobotGUI
+from src.hardware.motor_controller import MotorController
+from src.hardware.sensor_manager import SensorManager
+from src.navigation.autonomous_controller import AutonomousController
+from src.navigation.pathfinder import Pathfinder
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.core.robot_state import RobotState, RobotMode
-from src.hardware.motor_controller import MotorController
-from src.hardware.sensor_manager import SensorManager
-from src.navigation.pathfinder import Pathfinder
-from src.navigation.autonomous_controller import AutonomousController
-from src.gui.robot_gui import RobotGUI
+
 
 # Add a global exception hook to log uncaught exceptions
 def global_exception_hook(exc_type, exc_value, exc_traceback):

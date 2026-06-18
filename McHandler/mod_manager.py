@@ -50,21 +50,39 @@ class ModManager:
         """Get list of installed mods with metadata"""
         if not self.mods_dir or not self.mods_dir.exists():
             return []
-            
+
         mods = []
+        seen_names = set()
+
         for mod_file in self.mods_dir.glob("*.jar"):
-            mod_info = {
-                'name': mod_file.name,
-                'path': str(mod_file),
-                'size': mod_file.stat().st_size,
-                'modified': datetime.fromtimestamp(mod_file.stat().st_mtime),
-                'enabled': True
-            }
-            
-            # Try to extract mod info from jar
+            if mod_file.name.endswith(".jar.disabled"):
+                continue
+            mods.append(self._build_mod_info(mod_file, enabled=True))
+            seen_names.add(mod_file.name)
+
+        for mod_file in self.mods_dir.glob("*.jar.disabled"):
+            logical_name = mod_file.name[: -len(".disabled")]
+            if logical_name in seen_names:
+                continue
+            mods.append(self._build_mod_info(mod_file, enabled=False, logical_name=logical_name))
+            seen_names.add(logical_name)
+
+        return sorted(mods, key=lambda x: x['name'])
+
+    def _build_mod_info(self, mod_file: Path, enabled: bool, logical_name: Optional[str] = None) -> Dict:
+        """Build mod metadata dict for an enabled or disabled jar."""
+        mod_info = {
+            'name': logical_name or mod_file.name,
+            'filename': mod_file.name,
+            'path': str(mod_file),
+            'size': mod_file.stat().st_size,
+            'modified': datetime.fromtimestamp(mod_file.stat().st_mtime),
+            'enabled': enabled,
+        }
+
+        if enabled or mod_file.name.endswith(".jar.disabled"):
             try:
                 with zipfile.ZipFile(mod_file, 'r') as jar:
-                    # Look for mod metadata files
                     for info_file in ['mcmod.info', 'mods.toml', 'fabric.mod.json']:
                         if info_file in jar.namelist():
                             with jar.open(info_file) as f:
@@ -73,10 +91,8 @@ class ModManager:
                                 break
             except Exception as e:
                 mod_info['error'] = str(e)
-                
-            mods.append(mod_info)
-            
-        return sorted(mods, key=lambda x: x['name'])
+
+        return mod_info
     
     def _parse_mod_info(self, content: str, file_type: str) -> Dict:
         """Parse mod information from various metadata files"""
@@ -202,19 +218,33 @@ class ModManager:
             
         shutil.copytree(backup_path, self.mods_dir)
     
+    def _mod_paths(self, mod_name: str):
+        """Resolve active/disabled paths and logical jar name."""
+        logical_name = mod_name
+        if logical_name.endswith(".jar.disabled"):
+            logical_name = logical_name[: -len(".disabled")]
+        elif logical_name.endswith(".disabled"):
+            logical_name = logical_name[: -len(".disabled")]
+
+        active_path = self.mods_dir / logical_name
+        disabled_path = self.mods_dir / f"{logical_name}.disabled"
+        return active_path, disabled_path, logical_name
+
     def disable_mod(self, mod_name: str):
         """Disable a mod by renaming it"""
-        mod_path = self.mods_dir / mod_name
-        if mod_path.exists():
-            disabled_path = mod_path.with_suffix('.jar.disabled')
-            mod_path.rename(disabled_path)
-    
+        active_path, disabled_path, _ = self._mod_paths(mod_name)
+        if active_path.exists():
+            active_path.rename(disabled_path)
+        elif not disabled_path.exists():
+            raise FileNotFoundError(f"Mod not found: {mod_name}")
+
     def enable_mod(self, mod_name: str):
         """Enable a disabled mod"""
-        disabled_path = self.mods_dir / f"{mod_name}.disabled"
+        active_path, disabled_path, _ = self._mod_paths(mod_name)
         if disabled_path.exists():
-            mod_path = disabled_path.with_suffix('.jar')
-            disabled_path.rename(mod_path)
+            disabled_path.rename(active_path)
+        elif not active_path.exists():
+            raise FileNotFoundError(f"Disabled mod not found: {mod_name}")
     
     def upload_mods(self, mod_files: List[str]) -> Dict:
         """Upload mod files to the mods directory"""
@@ -264,10 +294,14 @@ class ModManager:
         
         for mod_name in mod_names:
             try:
-                mod_path = self.mods_dir / mod_name
-                if mod_path.exists():
-                    mod_path.unlink()
-                    results['successful'].append(mod_name)
+                active_path, disabled_path, logical_name = self._mod_paths(mod_name)
+                removed = False
+                for mod_path in (active_path, disabled_path):
+                    if mod_path.exists():
+                        mod_path.unlink()
+                        removed = True
+                if removed:
+                    results['successful'].append(logical_name)
                 else:
                     results['failed'].append({
                         'mod': mod_name,

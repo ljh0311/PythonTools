@@ -85,38 +85,66 @@
               </div>
 
               <div id="advanced-filters" class="advanced-filters" hidden>
-                <select id="inbox-users" multiple size="3" aria-label="Filter by users"></select>
-                <p class="filter-hint">Hold Ctrl/Cmd for multiple users</p>
-                <div class="filter-row">
-                  <select id="inbox-view" aria-label="Inbox view">
-                    <option value="threads">Thread view</option>
-                    <option value="flat">Flat list</option>
-                  </select>
-                  <select id="inbox-chat-type" aria-label="Chat type">
-                    <option value="">All types</option>
-                    <option value="private">Private</option>
-                    <option value="group">Group</option>
-                  </select>
-                  <select id="inbox-direction" aria-label="Direction">
-                    <option value="">All directions</option>
-                    <option value="incoming">Incoming</option>
-                    <option value="outgoing">Outgoing</option>
-                  </select>
+                <div class="filter-section">
+                  <label for="inbox-users" class="filter-label">Users</label>
+                  <select id="inbox-users" multiple size="4" aria-label="Filter by users"></select>
+                  <p class="filter-hint">Hold Ctrl/Cmd for multiple users</p>
                 </div>
-                <div class="filter-row">
-                  <input id="inbox-date-from" type="date" aria-label="From date" />
-                  <input id="inbox-date-to" type="date" aria-label="To date" />
+                <div class="filter-section">
+                  <div class="filter-row filter-row-spaced">
+                    <div class="filter-group">
+                      <label for="inbox-view" class="filter-label">View</label>
+                      <select id="inbox-view" aria-label="Inbox view">
+                        <option value="threads">Thread view</option>
+                        <option value="flat">Flat list</option>
+                      </select>
+                    </div>
+                    <div class="filter-group">
+                      <label for="inbox-chat-type" class="filter-label">Chat type</label>
+                      <select id="inbox-chat-type" aria-label="Chat type">
+                        <option value="">All types</option>
+                        <option value="private">Private</option>
+                        <option value="group">Group</option>
+                        <option value="channel">Channel</option>
+                      </select>
+                    </div>
+                    <div class="filter-group">
+                      <label for="inbox-direction" class="filter-label">Direction</label>
+                      <select id="inbox-direction" aria-label="Direction">
+                        <option value="">All directions</option>
+                        <option value="incoming">Incoming</option>
+                        <option value="outgoing">Outgoing</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div class="filter-row preset-row">
-                  <select id="inbox-presets" aria-label="Saved presets">
-                    <option value="">Load preset…</option>
-                  </select>
-                  <button id="inbox-save-preset" class="btn btn-ghost btn-sm" type="button">Save</button>
-                  <button id="inbox-delete-preset" class="btn btn-ghost btn-sm" type="button">Delete</button>
+                <div class="filter-section">
+                  <div class="filter-row filter-row-spaced">
+                    <div class="filter-group">
+                      <label for="inbox-date-from" class="filter-label">From</label>
+                      <input id="inbox-date-from" type="date" aria-label="From date" />
+                    </div>
+                    <div class="filter-group">
+                      <label for="inbox-date-to" class="filter-label">To</label>
+                      <input id="inbox-date-to" type="date" aria-label="To date" />
+                    </div>
+                  </div>
                 </div>
-                <div class="filter-actions">
-                  <button id="inbox-clear" class="btn btn-ghost btn-sm" type="button">Clear all</button>
-                  <button id="inbox-export" class="btn btn-ghost btn-sm" type="button">Export CSV</button>
+                <div class="filter-section">
+                  <div class="filter-row preset-row filter-row-spaced">
+                    <div class="filter-group filter-group-wide">
+                      <label for="inbox-presets" class="filter-label">Preset</label>
+                      <select id="inbox-presets" aria-label="Saved presets">
+                        <option value="">Load preset…</option>
+                      </select>
+                    </div>
+                    <div class="filter-group filter-action-buttons">
+                      <button id="inbox-save-preset" class="btn btn-ghost btn-sm" type="button" title="Save current filter as preset">Save</button>
+                      <button id="inbox-delete-preset" class="btn btn-ghost btn-sm" type="button" title="Delete selected preset">Delete</button>
+                      <button id="inbox-clear" class="btn btn-ghost btn-sm" type="button">Clear all</button>
+                      <button id="inbox-export" class="btn btn-ghost btn-sm" type="button">Export CSV</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 

@@ -84,8 +84,15 @@ def main():
     try:
         # Import and run the Flask app
         from app import app
-        print("🔄 Auto-reload enabled - server will restart automatically on file changes")
-        app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=True)
+        from flask_config import get_run_kwargs
+
+        run_kwargs = get_run_kwargs(default_port=5000)
+        host = run_kwargs['host']
+        port = run_kwargs['port']
+        print(f"🌐 Manual access: http://{host}:{port}")
+        if run_kwargs['debug']:
+            print("🔄 Auto-reload enabled - server will restart automatically on file changes")
+        app.run(**run_kwargs, use_reloader=run_kwargs['debug'])
     except KeyboardInterrupt:
         print("\n👋 Shutting down web application...")
     except Exception as e:

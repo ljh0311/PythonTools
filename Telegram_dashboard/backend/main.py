@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -9,17 +11,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import FRONTEND_DIR, HOST, PORT
+from backend.config import FRONTEND_DIR, HOST, PORT, TELEGRAM_POLLING
 from backend.routes.agent import router as agent_router
-from backend.routes.api import router as api_router
+from backend.routes.api import router as api_router, ws_manager
 from backend.routes.auth import router as auth_router
 from backend.routes.webhook import router as webhook_router
+from backend.services.telegram_poller import run_telegram_poller
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    polling_task = None
+    if TELEGRAM_POLLING:
+        polling_task = asyncio.create_task(run_telegram_poller(ws_manager.broadcast))
+    yield
+    if polling_task:
+        polling_task.cancel()
+        try:
+            await polling_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
     title="Telegram Dashboard API",
     description="Backend for Telegram bot integration and dashboard UI",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

@@ -1,0 +1,82 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# CarRS mobile CLI entry point for Termux (Android arm64).
+# Usage: carrs recommend --distance 50 --duration 3
+#        carrs clean "22 - Sheet1.csv" --out cleaned.csv
+#        carrs providers --region Singapore
+
+set -euo pipefail
+
+CARRS_HOME="${CARRS_HOME:-${HOME}/carrs}"
+export CARRS_HOME
+
+if [[ ! -d "${CARRS_HOME}" ]]; then
+  echo "Error: CarRS not found at ${CARRS_HOME}" >&2
+  echo "Run android/install.sh first, or set CARRS_HOME to your CarRS folder." >&2
+  exit 1
+fi
+
+cd "${CARRS_HOME}"
+export PYTHONPATH="${CARRS_HOME}${PYTHONPATH:+:${PYTHONPATH}}"
+
+cmd="${1:-recommend}"
+shift || true
+
+case "${cmd}" in
+  recommend)
+    exec python run_recommendations.py "$@"
+    ;;
+  clean)
+    exec python run_cleaning_pipeline.py "$@"
+    ;;
+  providers)
+    exec python -c "
+import json, os, sys
+sys.path.insert(0, os.environ.get('CARRS_HOME', '.'))
+from car_rental_recommender_core import get_providers_for_region
+region = 'Singapore'
+as_json = False
+args = sys.argv[1:]
+i = 0
+while i < len(args):
+    a = args[i]
+    if a == '--region' and i + 1 < len(args):
+        region = args[i + 1]; i += 2
+    elif a == '--json':
+        as_json = True; i += 1
+    else:
+        i += 1
+providers = get_providers_for_region(region)
+if as_json:
+    print(json.dumps({'region': region, 'providers': providers}, indent=2))
+else:
+    print(f'Providers ({region}): ' + ', '.join(providers))
+" "$@"
+    ;;
+  help|-h|--help)
+    cat <<'EOF'
+CarRS — car rental recommendations (Termux CLI)
+
+Commands:
+  recommend   Get rental recommendations (default)
+  clean       Run CSV cleaning pipeline
+  providers   List providers for a region
+  help        Show this message
+
+Examples:
+  carrs recommend --distance 50 --duration 3
+  carrs recommend --distance 80 --duration 24 --region Malaysia --json
+  carrs clean "22 - Sheet1.csv" --out cleaned.csv
+  carrs providers --region Singapore
+
+Environment:
+  CARRS_HOME   App folder (default: ~/carrs)
+
+Note: tkinter GUI is not available on Android. Use this CLI instead.
+EOF
+    ;;
+  *)
+    echo "Unknown command: ${cmd}" >&2
+    echo "Run: carrs help" >&2
+    exit 1
+    ;;
+esac

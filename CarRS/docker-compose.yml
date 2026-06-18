@@ -1,0 +1,21 @@
+services:
+  carrs:
+    build: .
+    image: carrs-recommender:latest
+    container_name: carrs-recommender
+    volumes:
+      - ./22 - Sheet1.csv:/app/22 - Sheet1.csv:ro
+      - ./pricing_config.json:/app/pricing_config.json:ro
+      - carrs-data:/app/data
+    environment:
+      - CARRS_CSV=22 - Sheet1.csv
+      - CARRS_REGION=
+    networks:
+      - carrs-net
+
+networks:
+  carrs-net:
+    driver: bridge
+
+volumes:
+  carrs-data:

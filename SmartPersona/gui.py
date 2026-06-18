@@ -268,6 +268,7 @@ class SmartPersonaGUI(QWidget):
             persist=True,
             model=saved_model if saved_model.strip() else None,
         )
+        self.brain.set_export_persona(self.persona)
         # Thread-handling/working state
         self.model_ping_thread = None
         self.teaching_thread = None
@@ -626,9 +627,13 @@ class SmartPersonaGUI(QWidget):
             parts.append(f"Situation: {review.get('situation')}")
         if review.get("meaning"):
             parts.append(f"Meaning: {review.get('meaning')}")
+        profile_path = result.get("profile_path")
+        if profile_path:
+            parts.append(f"Profile saved: {profile_path}")
         self.results_display.setPlainText("\n\n".join(parts))
         self.teach_status_label.setText("Done")
         self._update_identity_strip()
+        self._refresh_memories_display()
 
     def _on_teach_error(self, error):
         self._set_busy(self.teach_btn, False)
@@ -842,6 +847,11 @@ class SmartPersonaGUI(QWidget):
         self.add_memory_result_display.setPlainText(
             "Saved this memory successfully." + (f"\n\nValidator note:\n{feedback}" if feedback else "")
         )
+        try:
+            profile_path = self.brain.export_user_profile(persona=self.persona)
+            self.add_memory_result_display.append(f"\n\nProfile updated: {profile_path}")
+        except OSError as exc:
+            self.add_memory_result_display.append(f"\n\nProfile export failed: {exc}")
         self._update_identity_strip()
         self._refresh_memories_display()
 
@@ -1171,6 +1181,7 @@ class SmartPersonaGUI(QWidget):
         label = QLabel(
             "📚 <b>Your Memories</b><br>"
             "See everything I've remembered from your lessons, chats, and direct memory additions.<br>"
+            "Export <b>user_profile.md</b> for OpenClaw, chatbots, or personal growth review.<br>"
             "<span style='color:#577;'>Having no memories? Go to the Teach tab or Add Memory to get started!</span>"
         )
         label.setWordWrap(True)
@@ -1187,9 +1198,60 @@ class SmartPersonaGUI(QWidget):
         self.memories_refresh_btn = QPushButton("🔄 Refresh Memories")
         self.memories_refresh_btn.setToolTip("Fetch the latest memories from AI storage.")
         btnrow.addWidget(self.memories_refresh_btn)
+        self.profile_export_btn = QPushButton("📄 Export profile (.md)")
+        self.profile_export_btn.setToolTip(
+            "Save user_profile.md — agent context for OpenClaw/chatbots plus a growth-oriented profile card."
+        )
+        self.profile_export_btn.clicked.connect(self._on_export_profile_clicked)
+        btnrow.addWidget(self.profile_export_btn)
+        self.profile_preview_btn = QPushButton("👁 Preview profile")
+        self.profile_preview_btn.setToolTip("Preview the markdown profile without saving to a new path.")
+        self.profile_preview_btn.clicked.connect(self._on_preview_profile_clicked)
+        btnrow.addWidget(self.profile_preview_btn)
         btnrow.addStretch()
         layout.addLayout(btnrow)
         return widget
+
+    def _on_export_profile_clicked(self):
+        default_name = "user_profile.md"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export user profile",
+            default_name,
+            "Markdown (*.md);;All files (*.*)",
+        )
+        if not path:
+            return
+        try:
+            out = self.brain.export_user_profile(persona=self.persona, path=path)
+            QMessageBox.information(
+                self,
+                "Profile exported",
+                f"Saved profile to:\n{out}\n\nUse the Agent context section for chatbots and OpenClaw.",
+            )
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+
+    def _on_preview_profile_clicked(self):
+        try:
+            md = self.brain.get_profile_markdown(persona=self.persona)
+        except Exception as exc:
+            QMessageBox.warning(self, "Preview failed", str(exc))
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Profile preview")
+        dlg.resize(720, 520)
+        v = QVBoxLayout(dlg)
+        editor = QPlainTextEdit()
+        editor.setReadOnly(True)
+        editor.setPlainText(md)
+        editor.setFont(QFont("Consolas", 10))
+        v.addWidget(editor)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dlg.reject)
+        buttons.accepted.connect(dlg.accept)
+        v.addWidget(buttons)
+        dlg.exec_()
 
     def create_thoughts_tab(self):
         widget = QWidget()

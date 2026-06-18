@@ -33,7 +33,7 @@ class HotSpot:
     hotspot_id: str
     name: str
     hotspot_type: HotSpotType
-    location: Tuple[float, float]  # (x, y) coordinates
+    location: Tuple[float, float]  # (latitude, longitude)
     description: str
     procedures: List[str] = field(default_factory=list)
     restrictions: List[str] = field(default_factory=list)
@@ -70,8 +70,8 @@ class Taxiway:
     """Represents a taxiway"""
     taxiway_id: str
     name: str
-    start_point: Tuple[float, float]
-    end_point: Tuple[float, float]
+    start_point: Tuple[float, float] # (lat, lon)
+    end_point: Tuple[float, float]   # (lat, lon)
     width: float = 25.0  # meters
     restrictions: List[str] = field(default_factory=list)
     connects_to: List[str] = field(default_factory=list)  # Other taxiway/runway IDs
@@ -108,8 +108,8 @@ class Runway:
     """Represents a runway"""
     runway_id: str
     designation: str  # e.g., "02L", "27R"
-    start_point: Tuple[float, float]
-    end_point: Tuple[float, float]
+    start_point: Tuple[float, float] # (lat, lon)
+    end_point: Tuple[float, float]   # (lat, lon)
     length: float  # meters
     width: float = 45.0  # meters
     surface: str = "concrete"
@@ -155,7 +155,7 @@ class Gate:
     """Represents an aircraft gate"""
     gate_id: str
     gate_number: str
-    location: Tuple[float, float]
+    location: Tuple[float, float] # (lat, lon)
     aircraft_types: List[str] = field(default_factory=list)
     taxiway_access: List[str] = field(default_factory=list)
     
@@ -230,7 +230,8 @@ class AirportLayout:
     gates: List[Gate] = field(default_factory=list)
     hotspots: List[HotSpot] = field(default_factory=list)
     procedures: List[AirportProcedure] = field(default_factory=list)
-    chart_path: Optional[str] = None  # Path to airport chart image/PDF
+    chart_path: Optional[str] = None
+    current_metar: Optional[str] = None # Added for real-time weather integration
     metadata: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -244,6 +245,7 @@ class AirportLayout:
             "hotspots": [h.to_dict() for h in self.hotspots],
             "procedures": [p.to_dict() for p in self.procedures],
             "chart_path": self.chart_path,
+            "current_metar": self.current_metar,
             "metadata": self.metadata
         }
     
@@ -260,6 +262,7 @@ class AirportLayout:
             hotspots=[HotSpot.from_dict(h) for h in data.get("hotspots", [])],
             procedures=[AirportProcedure.from_dict(p) for p in data.get("procedures", [])],
             chart_path=data.get("chart_path"),
+            current_metar=data.get("current_metar"),
             metadata=data.get("metadata", {})
         )
     
@@ -277,8 +280,8 @@ class AirportLayout:
                 return runway
         return None
     
-    def get_hotspots_near_location(self, location: Tuple[float, float], radius: float = 50.0) -> List[HotSpot]:
-        """Get hotspots near a location"""
+    def get_hotspots_near_location(self, location: Tuple[float, float], radius: float = 0.0005) -> List[HotSpot]:
+        """Get hotspots near a location using coordinate distance approximation"""
         nearby = []
         for hotspot in self.hotspots:
             dx = hotspot.location[0] - location[0]
@@ -395,4 +398,3 @@ class AirportDatabase:
     def get_all_airports(self) -> List[str]:
         """Get list of all airport ICAO codes"""
         return list(self.airports.keys())
-

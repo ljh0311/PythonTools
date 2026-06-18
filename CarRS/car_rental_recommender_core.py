@@ -11,7 +11,64 @@ from datetime import datetime, timedelta
 # Region and provider constants: Singapore vs Malaysia categories kept separate
 VALID_REGIONS = ("Singapore", "Malaysia")
 SINGAPORE_PROVIDERS = ["Getgo", "Car Club", "Econ", "Stand", "Getgo(EV)"]
-MALAYSIA_PROVIDERS = ["SoCar", "NormalRental"]
+TRADITIONAL_RENTAL_PROVIDER = "Traditional Rental"
+TRADITIONAL_RENTAL_ALIASES = frozenset({"Traditional Rental", "NormalRental"})
+MALAYSIA_PROVIDERS = ["SoCar", TRADITIONAL_RENTAL_PROVIDER]
+
+
+def is_traditional_rental(provider: Optional[str]) -> bool:
+    """Return True when provider uses Traditional Rental pricing (no mileage charge)."""
+    if not provider:
+        return False
+    name = str(provider).strip()
+    return name in TRADITIONAL_RENTAL_ALIASES or name == TRADITIONAL_RENTAL_PROVIDER
+
+
+def normalize_traditional_rental_provider(provider: Optional[str]) -> Optional[str]:
+    """Map legacy NormalRental labels to Traditional Rental."""
+    if provider is None or (isinstance(provider, float) and pd.isna(provider)):
+        return provider
+    name = str(provider).strip()
+    if name in TRADITIONAL_RENTAL_ALIASES:
+        return TRADITIONAL_RENTAL_PROVIDER
+    return name
+
+
+def calculate_traditional_rental_cost(
+    rental_duration_cost=0,
+    malaysia_usage_addon=0,
+    deposit=0,
+    fuel_topped_up=0,
+):
+    """
+    Traditional Rental total: duration/cost + Malaysia usage add-on + deposit + fuel topped up.
+    Mileage is never charged for this category.
+    """
+    rental_duration_cost = float(rental_duration_cost or 0)
+    malaysia_usage_addon = float(malaysia_usage_addon or 0)
+    deposit = float(deposit or 0)
+    fuel_topped_up = float(fuel_topped_up or 0)
+    total_cost = rental_duration_cost + malaysia_usage_addon + deposit + fuel_topped_up
+    return {
+        "total_cost": total_cost,
+        "duration_cost": rental_duration_cost,
+        "malaysia_usage_addon": malaysia_usage_addon,
+        "deposit": deposit,
+        "fuel_cost": fuel_topped_up,
+        "mileage_cost": 0,
+    }
+
+
+def _traditional_rates_from_config(config: dict) -> dict:
+    """Extract Traditional Rental rate defaults from pricing config."""
+    return {
+        "rental_duration_cost": config.get(
+            "default_rental_cost", config.get("weekend_rental_cost", 300)
+        ),
+        "malaysia_usage_addon": config.get("default_malaysia_addon", 0),
+        "deposit": config.get("default_deposit", 0),
+        "fuel_topped_up": config.get("default_fuel_topped_up", 0),
+    }
 
 # Data cleaning pipeline: schema and deduplication
 REQUIRED_COLUMNS = ["Date"]  # Minimum required for pipeline to run
@@ -175,7 +232,8 @@ def enhance_dataframe(df):
     # Make a copy to avoid SettingWithCopyWarning
     df = df.copy()
 
-    # Convert Date column to datetime
+    if "Car Cat" in df.columns:
+        df["Car Cat"] = df["Car Cat"].apply(normalize_traditional_rental_provider)
     if "Date" in df.columns:
         try:
             df["Date"] = pd.to_datetime(df["Date"])
@@ -468,9 +526,10 @@ def calculate_estimated_cost(
         config = pricing_config[provider]
         pricing_type = config.get("pricing_type", "mileage")
 
-        # NormalRental (Malaysia): traditional daily rental, no formula-based estimate
+        # Traditional Rental (Malaysia): flat duration/cost + add-ons, no mileage
         if pricing_type == "traditional":
-            return None
+            rates = _traditional_rates_from_config(config)
+            return calculate_traditional_rental_cost(**rates)
 
         # SoCar (Malaysia): hour rate + mileage package (10/50/100 km add-ons) + excess RM/km
         if pricing_type == "socar":
@@ -1508,6 +1567,10 @@ def normalize_provider_name(provider_text, df=None):
     provider_text = str(provider_text).strip()
     if not provider_text:
         return None
+
+    alias = normalize_traditional_rental_provider(provider_text)
+    if alias != provider_text:
+        return alias
     
     # If dataset is available, try to match against actual provider names
     if df is not None and not df.empty and "Car Cat" in df.columns:
@@ -2392,7 +2455,18 @@ def calculate_provider_prices(distance, duration, pricing_data, day_type="weekda
         pricing_type = pricing.get("pricing_type", "mileage")
 
         if pricing_type == "traditional":
-            continue  # NormalRental: no formula-based estimate in calculator
+            rates = _traditional_rates_from_config(pricing)
+            breakdown = calculate_traditional_rental_cost(**rates)
+            results.append({
+                "provider": provider_name,
+                "base_cost": breakdown["deposit"],
+                "distance_cost": 0,
+                "fuel_cost": breakdown["fuel_cost"] + breakdown["malaysia_usage_addon"],
+                "duration_cost": breakdown["duration_cost"],
+                "weekend_surcharge": 0,
+                "total_cost": breakdown["total_cost"],
+            })
+            continue
 
         if pricing_type == "socar":
             hour_rate = pricing.get("hour_rate", 8.0)
@@ -2664,7 +2738,8 @@ def create_trip_record(
         "Econ": "Econ",
         "Stand": "Stand",
         "SoCar": "SoCar",
-        "NormalRental": "NormalRental",
+        TRADITIONAL_RENTAL_PROVIDER: TRADITIONAL_RENTAL_PROVIDER,
+        "NormalRental": TRADITIONAL_RENTAL_PROVIDER,
     }
     mapped_provider = provider_mapping.get(provider, provider)
 
@@ -2688,7 +2763,7 @@ def create_trip_record(
         "Est original fuel savings": 0,
         "Cost/HR": total_cost / duration if duration and duration > 0 else 0,
     }
-    if region == "Malaysia" and mapped_provider == "NormalRental":
+    if region == "Malaysia" and is_traditional_rental(mapped_provider):
         record["Deposit (RM)"] = deposit_rm if deposit_rm is not None else np.nan
         record["Rental fee (RM)"] = rental_fee_rm if rental_fee_rm is not None else np.nan
         record["Additional fee (RM)"] = additional_fee_rm if additional_fee_rm is not None else np.nan

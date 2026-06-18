@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+venv
+.git
+*.md
+!DOCKER.md
+test_*.py
+car_rental_recommender_gui.py
+archive
+openclaw

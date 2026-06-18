@@ -1,0 +1,39 @@
+/* Shared layout styles for McHandler web apps (navbar + footer) */
+
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+#ollama-status {
+    transition: all 0.3s ease;
+}
+
+#ollama-status.connected {
+    background-color: var(--success-color, #198754) !important;
+}
+
+#ollama-status.disconnected {
+    background-color: var(--danger-color, #dc3545) !important;
+}
+
+footer {
+    margin-top: auto;
+}
+
+footer .text-muted.ms-2 {
+    display: flex;
+    width: 100%;
+    height: fit-content;
+}
+
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 1rem;
+    }
+
+    #ollama-status {
+        font-size: 0.875rem !important;
+        padding: 0.5rem 0.75rem !important;
+    }
+}

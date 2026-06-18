@@ -3,37 +3,59 @@ CDID Car Tuning Assistant - AI-powered car tuning using Ollama
 (Roblox CDID car tuning experience)
 """
 
-import requests
+import os
+import sys
 from datetime import datetime
 from typing import Dict, List, Optional
+
+MCHANDLER_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if MCHANDLER_ROOT not in sys.path:
+    sys.path.insert(0, MCHANDLER_ROOT)
+
+from ollama_client import OllamaClient
 
 
 class CDIDTuner:
     """CDID car tuning assistant with Ollama integration"""
-    
-    def __init__(self):
-        self.ollama_url = "http://localhost:11434"
-        self.model = "llama3.2"  # Default model, can be changed
-        
+
+    def __init__(
+        self,
+        url: str = "http://localhost:11434",
+        model: str = "llama3.2",
+        timeout: int = 120,
+    ):
+        self.client = OllamaClient(url=url, model=model, timeout=timeout)
+
+    @classmethod
+    def from_settings(cls, settings_manager) -> "CDIDTuner":
+        return cls(
+            url=settings_manager.get_setting("ollama.url", "http://localhost:11434"),
+            model=settings_manager.get_setting("ollama.model", "llama3.2"),
+            timeout=settings_manager.get_setting("ollama.timeout", 120),
+        )
+
+    @property
+    def ollama_url(self) -> str:
+        return self.client.ollama_url
+
+    @property
+    def model(self) -> str:
+        return self.client.model
+
+    def configure(
+        self,
+        url: Optional[str] = None,
+        model: Optional[str] = None,
+        timeout: Optional[int] = None,
+    ) -> None:
+        self.client.configure(url=url, model=model, timeout=timeout)
+
     def check_ollama_connection(self) -> bool:
-        """Check if Ollama is running and accessible"""
-        try:
-            response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
-            return response.status_code == 200
-        except:
-            return False
-    
+        return self.client.check_connection()
+
     def get_available_models(self) -> List[str]:
-        """Get list of available Ollama models"""
-        try:
-            response = requests.get(f"{self.ollama_url}/api/tags")
-            if response.status_code == 200:
-                models = response.json().get('models', [])
-                return [model['name'] for model in models]
-        except:
-            pass
-        return []
-    
+        return self.client.get_available_models()
+
     def get_tuning_suggestions(
         self,
         car_description: str,
@@ -60,19 +82,15 @@ class CDIDTuner:
         rear_ride_height: Optional[int] = None,
         rear_damping: Optional[int] = None,
     ) -> Dict:
-        """Generate tuning suggestions using Ollama AI.
-        ecu_stage / internal_electronics_stage: 1, 2, or 3 when respective tuning is available.
-        Optional turbo, supercharger, differential and front/rear suspension values are included in the prompt when provided.
-        """
+        """Generate tuning suggestions using Ollama AI."""
         if not self.check_ollama_connection():
             return {"error": "Ollama is not running or not accessible"}
-        
+
         if focus_areas is None:
             focus_areas = ["engine", "suspension"]
-        
+
         focus_text = ", ".join(focus_areas)
-        
-        # Build optional "Current setup" block for turbo, supercharger, differential
+
         current_setup_lines = []
         if turbo_charger is not None:
             current_setup_lines.append(f"Turbo Charger: {turbo_charger}")
@@ -108,24 +126,41 @@ class CDIDTuner:
             current_setup_lines.append(f"Rear Damping: {rear_damping}")
         current_setup_text = ""
         if current_setup_lines:
-            current_setup_text = "\n\nCurrent setup (use these values as context and suggest concrete adjustments where relevant):\n" + "\n".join(current_setup_lines)
-        has_turbo_super = any(x is not None for x in (turbo_charger, boost_per_turbo, super_charger, super_charger_boost))
-        has_diff = any(x is not None for x in (front_diff_power, front_diff_coast, front_diff_preload, rear_diff_power, rear_diff_coast, rear_diff_preload))
-        
-        # Build availability and stage context for ECU / Internal Electronics
+            current_setup_text = (
+                "\n\nCurrent setup (use these values as context and suggest concrete adjustments where relevant):\n"
+                + "\n".join(current_setup_lines)
+            )
+        has_turbo_super = any(
+            x is not None
+            for x in (turbo_charger, boost_per_turbo, super_charger, super_charger_boost)
+        )
+        has_diff = any(
+            x is not None
+            for x in (
+                front_diff_power,
+                front_diff_coast,
+                front_diff_preload,
+                rear_diff_power,
+                rear_diff_coast,
+                rear_diff_preload,
+            )
+        )
+
         ecu_context = ""
         if ecu_available and ecu_stage in (1, 2, 3):
             ecu_context = f"\nECU tuning is AVAILABLE for this car. User has Stage {ecu_stage} ECU. Include ECU tuning suggestions."
         else:
             ecu_context = "\nECU tuning is NOT available for this car. Do not recommend or suggest ECU tuning."
-        
+
         ie_context = ""
         if internal_electronics_available and internal_electronics_stage in (1, 2, 3):
-            ie_context = f"\nInternal Electronics tuning is AVAILABLE. User has Stage {internal_electronics_stage} Internal Electronics. Include Internal Electronics tuning suggestions."
+            ie_context = (
+                f"\nInternal Electronics tuning is AVAILABLE. User has Stage {internal_electronics_stage} "
+                "Internal Electronics. Include Internal Electronics tuning suggestions."
+            )
         else:
             ie_context = "\nInternal Electronics tuning is NOT available. Do not recommend or suggest Internal Electronics tuning."
-        
-        # Optional prompt sections for ECU and Internal Electronics when available
+
         ecu_section = ""
         if ecu_available and ecu_stage in (1, 2, 3):
             ecu_section = f"""
@@ -142,7 +177,7 @@ class CDIDTuner:
 - Electronic systems and response: [specific recommendations]
 - Other internal electronics parameters: [any other relevant settings]
 """
-        
+
         turbo_diff_section = ""
         if has_turbo_super:
             turbo_diff_section += """
@@ -156,9 +191,8 @@ class CDIDTuner:
 - Front diff Power/Coast/Preload: [specific recommendations for handling]
 - Rear diff Power/Coast/Preload: [specific recommendations]
 """
-        
-        # Prepare the prompt for tuning suggestions
-        prompt = f"""You are an expert car tuning advisor for CDID (a Roblox car tuning experience). 
+
+        prompt = f"""You are an expert car tuning advisor for CDID (a Roblox car tuning experience).
 A user wants help tuning their car. Provide specific, actionable tuning recommendations.
 
 Important note: In CDID, users cannot change how much air is in their tyre. Do not recommend changing tyre air pressure.
@@ -199,40 +233,23 @@ In CDID, stiffness, ride height and damping go from 0 to 1500 and are set separa
 
 Be specific with numbers and values where applicable. Explain why each recommendation helps achieve their tuning goals.
 """
-        
-        try:
-            response = requests.post(
-                f"{self.ollama_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False
-                },
-                timeout=120  # Longer timeout for complex analysis
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return {
-                    "suggestions": result.get("response", ""),
-                    "model_used": self.model,
-                    "timestamp": datetime.now().isoformat(),
-                    "type": "tuning_suggestions"
-                }
-            else:
-                return {"error": f"Ollama API error: {response.status_code}"}
-                
-        except Exception as e:
-            return {"error": f"Tuning suggestions failed: {str(e)}"}
-    
+
+        result = self.client.generate(prompt, timeout=max(self.client.timeout, 120))
+        if "error" in result:
+            return result
+        return {
+            "suggestions": result.get("response", ""),
+            "model_used": result.get("model_used", self.model),
+            "timestamp": result.get("timestamp", ""),
+            "type": "tuning_suggestions",
+        }
+
     def diagnose_tuning_problem(self, problem_description: str, current_settings: str = "") -> Dict:
-        """Diagnose tuning problems using Ollama AI"""
         if not self.check_ollama_connection():
             return {"error": "Ollama is not running or not accessible"}
-        
-        # Prepare the prompt for problem diagnosis
+
         settings_context = f"\nCurrent Settings:\n{current_settings}" if current_settings else ""
-        
+
         prompt = f"""You are an expert car tuning advisor for CDID (a Roblox car tuning experience).
 A user is experiencing a problem with their car tuning. Diagnose the issue and provide solutions.
 
@@ -265,61 +282,29 @@ Please provide a diagnosis in the following format:
 
 Be specific and actionable. Provide concrete tuning values where possible. Do not mention changing tyre air pressure.
 """
-        
-        try:
-            response = requests.post(
-                f"{self.ollama_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False
-                },
-                timeout=120  # Longer timeout for complex analysis
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return {
-                    "diagnosis": result.get("response", ""),
-                    "model_used": self.model,
-                    "timestamp": datetime.now().isoformat(),
-                    "type": "problem_diagnosis"
-                }
-            else:
-                return {"error": f"Ollama API error: {response.status_code}"}
-                
-        except Exception as e:
-            return {"error": f"Diagnosis failed: {str(e)}"}
-    
+
+        result = self.client.generate(prompt, timeout=max(self.client.timeout, 120))
+        if "error" in result:
+            return result
+        return {
+            "diagnosis": result.get("response", ""),
+            "model_used": result.get("model_used", self.model),
+            "timestamp": result.get("timestamp", ""),
+            "type": "problem_diagnosis",
+        }
+
     def analyze_with_ollama(self, prompt: str) -> Dict:
-        """General AI analysis using Ollama"""
         if not self.check_ollama_connection():
             return {"error": "Ollama is not running or not accessible"}
-        
-        try:
-            response = requests.post(
-                f"{self.ollama_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False
-                },
-                timeout=120  # Longer timeout for complex analysis
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return {
-                    "analysis": result.get("response", ""),
-                    "model_used": self.model,
-                    "timestamp": datetime.now().isoformat()
-                }
-            else:
-                return {"error": f"Ollama API error: {response.status_code}"}
-                
-        except Exception as e:
-            return {"error": f"Analysis failed: {str(e)}"}
-    
+
+        result = self.client.generate(prompt, timeout=max(self.client.timeout, 120))
+        if "error" in result:
+            return result
+        return {
+            "analysis": result.get("response", ""),
+            "model_used": result.get("model_used", self.model),
+            "timestamp": result.get("timestamp", ""),
+        }
+
     def set_model(self, model_name: str):
-        """Set the Ollama model to use"""
-        self.model = model_name
+        self.client.configure(model=model_name)

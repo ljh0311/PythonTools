@@ -588,6 +588,14 @@ class DashboardStore:
                 ),
             )
 
+    def has_telegram_message(self, chat_id: int, telegram_message_id: int) -> bool:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM messages WHERE chat_id = ? AND message_id = ? LIMIT 1",
+                (chat_id, telegram_message_id),
+            ).fetchone()
+        return row is not None
+
     def add_message(
         self,
         user_id: int,

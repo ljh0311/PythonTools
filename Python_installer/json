@@ -1,0 +1,19 @@
+pip's requirements.txt best practice - Stack Overflow
+  URL: https://stackoverflow.com/questions/61536466/pips-requirements-txt-best-practice
+  I believe using pip-compile from pip-tools is a good practice when constructing your requirements.txt. This will make sure that builds are predictable and ...
+
+pip-tools - PyPI
+  URL: https://pypi.org/project/pip-tools/
+  A set of command line tools to help you keep your pip-based packages fresh, even when you've pinned them.
+
+How to Install Requirements.txt in Python ( Beginner Friendly) (2024)
+  URL: https://www.youtube.com/watch?v=wPu9H-xhWQs
+  In this video I am going to show you how to install Python libraries using a Requirements.txt file.
+
+Install Python Packages with requirements.txt | by Renee LIN - Medium
+  URL: https://reneelin2019.medium.com/building-good-coding-habits-install-python-packages-with-requirements-txt-e7fd247bd3df
+  I also learned that if you didn't create the requirement.txt of your old projects, you could use the below command to output the information.
+
+Installing Packages - Python Packaging User Guide
+  URL: https://packaging.python.org/tutorials/installing-packages/
+  Install a list of requirements specified in a Requirements File. Unix/macOS. python3 -m pip install -r requirements.txt. Windows. py -m pip install -r ...

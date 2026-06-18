@@ -145,7 +145,7 @@ async function submitSend(chatId, text, clearFields = []) {
 }
 
 async function refreshDashboard() {
-  const [metrics, users, inbox, events, analytics, quickActions, botStatus] =
+  const [metrics, users, , , events, analytics, quickActions, botStatus] =
     await Promise.all([
       api.getMetrics(),
       api.getUsers(),

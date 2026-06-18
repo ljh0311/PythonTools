@@ -13,12 +13,6 @@ body {
     background-color: #f8f9fa;
 }
 
-/* Navigation */
-.navbar-brand {
-    font-weight: 600;
-    font-size: 1.25rem;
-}
-
 /* Cards */
 .card {
     border: none;
@@ -40,7 +34,13 @@ body {
 }
 
 /* Results Display */
-.tuning-results {
+.tuning-results,
+#results-content {
+    display: flex;
+    flex-direction: column;
+    width: fit-content;
+    height: fit-content;
+    transform: rotate(360deg);
     white-space: pre-wrap;
     font-family: 'Courier New', monospace;
     background-color: #f8f9fa;
@@ -48,6 +48,24 @@ body {
     border-radius: 0.25rem;
     border: 1px solid #dee2e6;
     line-height: 1.6;
+}
+
+.result-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.result-section > .d-flex {
+    width: fit-content;
+    height: fit-content;
+    flex-wrap: wrap;
+    text-align: center;
+    vertical-align: bottom;
+}
+
+.result-section .copy-section-btn {
+    width: fit-content;
+    height: fit-content;
 }
 
 .tuning-results h3,
@@ -61,19 +79,6 @@ body {
 
 .tuning-results strong {
     color: #212529;
-}
-
-/* Status Badge */
-#ollama-status {
-    transition: all 0.3s ease;
-}
-
-#ollama-status.connected {
-    background-color: var(--success-color) !important;
-}
-
-#ollama-status.disconnected {
-    background-color: var(--danger-color) !important;
 }
 
 /* Loading Spinner */
@@ -115,21 +120,25 @@ body {
     border-color: var(--primary-color);
 }
 
-/* Footer */
-footer {
-    margin-top: auto;
+/* Form layout tweaks */
+.col-md-6:has(#front-diff-power),
+.col-md-6:has(#rear-diff-power) {
+    display: flex;
+    flex-wrap: wrap;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-    .navbar-brand {
-        font-size: 1rem;
-    }
-    
-    #ollama-status {
-        font-size: 0.875rem !important;
-        padding: 0.5rem 0.75rem !important;
-    }
+.mb-3:has(#model-select) {
+    display: flex;
+    flex-direction: column;
+}
+
+#model-select {
+    width: fit-content;
+}
+
+#rear-stiffness {
+    display: flex;
+    flex-wrap: wrap;
 }
 
 /* Animations */
