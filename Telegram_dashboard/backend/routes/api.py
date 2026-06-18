@@ -12,6 +12,7 @@ from backend.routes.deps import verify_operator
 from backend.services.ai_service import ai_service
 from backend.services.auth_service import validate_token
 from backend.services.telegram_service import telegram_service
+from backend.services.ws_manager import ws_manager
 
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
@@ -49,6 +50,7 @@ class FilteredAiRequest(BaseModel):
     user_ids: str = ""
     chat_type: str | None = None
     direction: str | None = None
+    ingestion_source: str | None = None
     q: str | None = None
     topics: str | None = None
     date_from: str | None = None
@@ -82,13 +84,21 @@ class FilterPresetRequest(BaseModel):
 
 
 def _fetch_filtered_messages(body: FilteredAiRequest, limit: int = 500) -> tuple[list[dict], dict]:
-    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
-        body.user_ids, body.chat_type, body.direction, body.date_from, body.date_to
+    parsed_user_ids, chat_type, direction, date_from, date_to, ingestion_source = (
+        _parse_message_filters(
+            body.user_ids,
+            body.chat_type,
+            body.direction,
+            body.date_from,
+            body.date_to,
+            body.ingestion_source,
+        )
     )
     filters = {
         "user_ids": body.user_ids,
         "chat_type": body.chat_type,
         "direction": body.direction,
+        "ingestion_source": body.ingestion_source,
         "q": body.q,
         "topics": body.topics,
         "date_from": body.date_from,
@@ -98,6 +108,7 @@ def _fetch_filtered_messages(body: FilteredAiRequest, limit: int = 500) -> tuple
         user_ids=parsed_user_ids,
         chat_type=chat_type,
         direction=direction,
+        ingestion_source=ingestion_source,
         q=body.q,
         topics=body.topics,
         date_from=date_from,
@@ -106,32 +117,6 @@ def _fetch_filtered_messages(body: FilteredAiRequest, limit: int = 500) -> tuple
         offset=0,
     )
     return result["items"], filters
-
-
-class WebSocketManager:
-    def __init__(self):
-        self.connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
-        self.connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket) -> None:
-        if websocket in self.connections:
-            self.connections.remove(websocket)
-
-    async def broadcast(self, event: str, data: dict[str, Any]) -> None:
-        dead: list[WebSocket] = []
-        for connection in self.connections:
-            try:
-                await connection.send_json({"event": event, "data": data})
-            except Exception:
-                dead.append(connection)
-        for connection in dead:
-            self.disconnect(connection)
-
-
-ws_manager = WebSocketManager()
 
 
 @router.get("/health")
@@ -155,23 +140,31 @@ def _parse_message_filters(
     direction: str | None,
     date_from: str | None,
     date_to: str | None,
-) -> tuple[list[int] | None, str | None, str | None, str | None, str | None]:
+    ingestion_source: str | None = None,
+) -> tuple[list[int] | None, str | None, str | None, str | None, str | None, str | None]:
     parsed_user_ids: list[int] | None = None
     if user_ids.strip():
         parsed_user_ids = [int(uid) for uid in user_ids.split(",") if uid.strip()]
 
-    if chat_type and chat_type not in ("private", "group"):
-        raise HTTPException(status_code=400, detail="chat_type must be private or group")
+    if chat_type and chat_type not in ("private", "group", "channel"):
+        raise HTTPException(
+            status_code=400, detail="chat_type must be private, group, or channel"
+        )
 
     if direction and direction not in ("incoming", "outgoing"):
         raise HTTPException(status_code=400, detail="direction must be incoming or outgoing")
+
+    if ingestion_source and ingestion_source not in ("bot", "user_account"):
+        raise HTTPException(
+            status_code=400, detail="ingestion_source must be bot or user_account"
+        )
 
     if date_from and len(date_from) == 10:
         date_from = f"{date_from}T00:00:00"
     if date_to and len(date_to) == 10:
         date_to = f"{date_to}T23:59:59"
 
-    return parsed_user_ids, chat_type, direction, date_from, date_to
+    return parsed_user_ids, chat_type, direction, date_from, date_to, ingestion_source
 
 
 @router.get("/messages", dependencies=[Depends(verify_operator)])
@@ -179,6 +172,7 @@ async def messages(
     user_ids: str = "",
     chat_type: str | None = None,
     direction: str | None = None,
+    ingestion_source: str | None = None,
     q: str | None = None,
     topics: str | None = None,
     date_from: str | None = None,
@@ -186,13 +180,16 @@ async def messages(
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, Any]:
-    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
-        user_ids, chat_type, direction, date_from, date_to
+    parsed_user_ids, chat_type, direction, date_from, date_to, ingestion_source = (
+        _parse_message_filters(
+            user_ids, chat_type, direction, date_from, date_to, ingestion_source
+        )
     )
     return store.query_messages(
         user_ids=parsed_user_ids,
         chat_type=chat_type,
         direction=direction,
+        ingestion_source=ingestion_source,
         q=q,
         topics=topics,
         date_from=date_from,
@@ -207,6 +204,7 @@ async def inbox_threads(
     user_ids: str = "",
     chat_type: str | None = None,
     direction: str | None = None,
+    ingestion_source: str | None = None,
     q: str | None = None,
     topics: str | None = None,
     date_from: str | None = None,
@@ -214,13 +212,16 @@ async def inbox_threads(
     limit: int = 20,
     offset: int = 0,
 ) -> dict[str, Any]:
-    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
-        user_ids, chat_type, direction, date_from, date_to
+    parsed_user_ids, chat_type, direction, date_from, date_to, ingestion_source = (
+        _parse_message_filters(
+            user_ids, chat_type, direction, date_from, date_to, ingestion_source
+        )
     )
     return store.query_threads(
         user_ids=parsed_user_ids,
         chat_type=chat_type,
         direction=direction,
+        ingestion_source=ingestion_source,
         q=q,
         topics=topics,
         date_from=date_from,
@@ -454,6 +455,7 @@ async def send_message(body: SendMessageRequest) -> dict[str, Any]:
         body.text,
         chat_id=chat_id_int,
         chat_type="private",
+        ingestion_source="bot",
     )
     await ws_manager.broadcast(
         "message_sent", {"chat_id": body.chat_id, "text": body.text}
@@ -482,19 +484,23 @@ async def export_messages(
     user_ids: str = "",
     chat_type: str | None = None,
     direction: str | None = None,
+    ingestion_source: str | None = None,
     q: str | None = None,
     topics: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     limit: int = 1000,
 ) -> StreamingResponse:
-    parsed_user_ids, chat_type, direction, date_from, date_to = _parse_message_filters(
-        user_ids, chat_type, direction, date_from, date_to
+    parsed_user_ids, chat_type, direction, date_from, date_to, ingestion_source = (
+        _parse_message_filters(
+            user_ids, chat_type, direction, date_from, date_to, ingestion_source
+        )
     )
     result = store.query_messages(
         user_ids=parsed_user_ids,
         chat_type=chat_type,
         direction=direction,
+        ingestion_source=ingestion_source,
         q=q,
         topics=topics,
         date_from=date_from,
@@ -515,6 +521,7 @@ async def export_messages(
             "chat_type",
             "chat_title",
             "created_at",
+            "ingestion_source",
             "topics",
         ]
     )
@@ -531,6 +538,7 @@ async def export_messages(
                 item.get("chat_type"),
                 item.get("chat_title"),
                 item.get("created_at"),
+                item.get("ingestion_source", "bot"),
                 topics_str,
             ]
         )

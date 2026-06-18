@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -13,13 +14,23 @@ from backend.config import FRONTEND_DIR, HOST, PORT
 from backend.routes.agent import router as agent_router
 from backend.routes.api import router as api_router
 from backend.routes.auth import router as auth_router
+from backend.routes.user_account import router as user_account_router
 from backend.routes.webhook import router as webhook_router
+from backend.services.mtproto_service import mtproto_service
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await mtproto_service.start_listening()
+    yield
+    await mtproto_service.disconnect()
 
 
 app = FastAPI(
     title="Telegram Dashboard API",
-    description="Backend for Telegram bot integration and dashboard UI",
-    version="1.0.0",
+    description="Backend for Telegram bot (v0.1) and user inbox (v0.2)",
+    version="0.2.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -33,6 +44,7 @@ app.add_middleware(
 app.include_router(api_router)
 app.include_router(auth_router)
 app.include_router(agent_router)
+app.include_router(user_account_router)
 app.include_router(webhook_router)
 
 frontend_path = Path(FRONTEND_DIR)

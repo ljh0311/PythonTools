@@ -5,7 +5,7 @@
 ```bash
 git clone https://github.com/ljh0311/PythonTools.git
 cd PythonTools
-git checkout cursor/telegram-dashboard-98e1
+git checkout cursor/user-inbox-mtproto-98e1
 cd Telegram_dashboard
 ```
 
@@ -59,11 +59,16 @@ python3 scripts/seed_demo_data.py
 
 Refresh the browser — you will see sample chats.
 
+## 7. Full personal inbox (v0.2, optional)
+
+See [docs/user-inbox.md](docs/user-inbox.md) — needs `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` and one-time `python3 scripts/mtproto_login.py`.
+
 ## More help
 
 | What you want | Read this file |
 |---------------|----------------|
 | Full local setup | [local_mode.md](local_mode.md) |
 | Docker | [docker_mode.md](docker_mode.md) |
+| My Telegram inbox (v0.2) | [docs/user-inbox.md](docs/user-inbox.md) |
 | OpenClaw on same laptop | [docs/openclaw-docker-laptop.md](docs/openclaw-docker-laptop.md) |
 | All docs | [docs/README.md](docs/README.md) |

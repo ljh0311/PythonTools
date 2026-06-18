@@ -145,7 +145,7 @@ async function submitSend(chatId, text, clearFields = []) {
 }
 
 async function refreshDashboard() {
-  const [metrics, users, inbox, events, analytics, quickActions, botStatus] =
+  const [metrics, users, , events, analytics, quickActions, botStatus, userAccountStatus] =
     await Promise.all([
       api.getMetrics(),
       api.getUsers(),
@@ -155,6 +155,7 @@ async function refreshDashboard() {
       api.getAnalytics(),
       api.getQuickActions(),
       api.getBotStatus(),
+      api.getUserAccountStatus(),
     ]);
 
   renderMetrics(metrics);
@@ -164,12 +165,24 @@ async function refreshDashboard() {
   renderQuickActions(quickActions);
 
   const status = document.getElementById("bot-status");
-  if (botStatus.configured && botStatus.bot) {
-    status.textContent = `Connected as @${botStatus.bot.username}`;
-  } else if (botStatus.configured) {
-    status.textContent = "Bot token configured, unable to verify bot.";
-  } else {
-    status.textContent = "Telegram bot token not configured.";
+  const botLine =
+    botStatus.configured && botStatus.bot
+      ? `Bot v0.1: @${botStatus.bot.username}`
+      : botStatus.configured
+        ? "Bot v0.1: token set, not verified"
+        : "Bot v0.1: not configured";
+  const userLine = userAccountStatus.listening
+    ? `My account v0.2: @${userAccountStatus.user?.username || "connected"}`
+    : userAccountStatus.authorized
+      ? "My account v0.2: logged in, listening off"
+      : userAccountStatus.configured
+        ? "My account v0.2: not logged in (run scripts/mtproto_login.py)"
+        : "My account v0.2: set TELEGRAM_API_ID + TELEGRAM_API_HASH";
+  status.textContent = `${botLine} · ${userLine}`;
+
+  const userStatusEl = document.getElementById("user-account-status");
+  if (userStatusEl) {
+    userStatusEl.textContent = userLine;
   }
 }
 
@@ -199,6 +212,20 @@ function bindForms() {
     try {
       await submitSend(chatId, text, ["message-text-tools"]);
       document.getElementById("chat-id").value = chatId;
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  document.getElementById("send-form-user")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const chatId = document.getElementById("chat-id-user").value.trim();
+    const text = document.getElementById("message-text-user").value.trim();
+    try {
+      await api.sendUserMessage(chatId, text);
+      document.getElementById("message-text-user").value = "";
+      showToast("Sent from your personal account.");
+      await refreshDashboard();
     } catch (error) {
       showToast(error.message);
     }

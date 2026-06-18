@@ -42,7 +42,7 @@
       <header class="topbar">
         <div class="topbar-left">
           <h1>Telegram Dashboard</h1>
-          <p id="bot-status" class="subtitle">Checking bot connection…</p>
+          <p id="bot-status" class="subtitle">Checking connections…</p>
         </div>
         <div class="topbar-actions">
           <button id="theme-toggle" class="btn btn-ghost btn-sm" type="button">Toggle theme</button>
@@ -96,11 +96,17 @@
                     <option value="">All types</option>
                     <option value="private">Private</option>
                     <option value="group">Group</option>
+                    <option value="channel">Channel</option>
                   </select>
                   <select id="inbox-direction" aria-label="Direction">
                     <option value="">All directions</option>
                     <option value="incoming">Incoming</option>
                     <option value="outgoing">Outgoing</option>
+                  </select>
+                  <select id="inbox-source" aria-label="Message source">
+                    <option value="">All sources</option>
+                    <option value="bot">Bot (v0.1)</option>
+                    <option value="user_account">My account (v0.2)</option>
                   </select>
                 </div>
                 <div class="filter-row">
@@ -243,6 +249,18 @@
             <p>Send messages and manage bot command shortcuts.</p>
           </div>
           <div class="tools-grid">
+            <section class="card" aria-labelledby="user-account-title">
+              <div class="card-header">
+                <h2 id="user-account-title">My Telegram account (v0.2)</h2>
+              </div>
+              <p id="user-account-status" class="filter-hint">Checking…</p>
+              <p class="filter-hint">Log in once with the CLI script <code>scripts/mtproto_login.py</code>. See <code>docs/user-inbox.md</code>.</p>
+              <form id="send-form-user" class="send-form">
+                <input id="chat-id-user" type="text" placeholder="Chat ID" />
+                <textarea id="message-text-user" rows="3" placeholder="Reply as your personal account"></textarea>
+                <button class="btn btn-primary" type="submit">Send as me</button>
+              </form>
+            </section>
             <section class="card" aria-labelledby="send-title">
               <div class="card-header">
                 <h2 id="send-title">Send message</h2>
@@ -250,7 +268,7 @@
               <form id="send-form-tools" class="send-form">
                 <input id="chat-id-tools" type="text" placeholder="Chat ID" required />
                 <textarea id="message-text-tools" rows="4" placeholder="Message text" required></textarea>
-                <button class="btn btn-primary" type="submit">Send via Telegram</button>
+                <button class="btn btn-primary" type="submit">Send via bot (v0.1)</button>
               </form>
             </section>
             <section class="card" aria-labelledby="quick-actions-title">

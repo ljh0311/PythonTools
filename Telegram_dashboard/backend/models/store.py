@@ -21,6 +21,8 @@ MESSAGE_COLUMNS = (
     "chat_type",
     "chat_title",
     "reply_to_message_id",
+    "ingestion_source",
+    "telegram_date",
 )
 
 
@@ -48,10 +50,20 @@ class DashboardStore:
             "chat_type": "TEXT",
             "chat_title": "TEXT",
             "reply_to_message_id": "INTEGER",
+            "ingestion_source": "TEXT DEFAULT 'bot'",
+            "telegram_date": "TEXT",
         }
         for column, col_type in additions.items():
             if column not in existing:
                 conn.execute(f"ALTER TABLE messages ADD COLUMN {column} {col_type}")
+
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_chat_msg
+            ON messages(chat_id, message_id)
+            WHERE chat_id IS NOT NULL AND message_id IS NOT NULL
+            """
+        )
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)"
@@ -588,6 +600,18 @@ class DashboardStore:
                 ),
             )
 
+    def message_exists(self, chat_id: int, message_id: int) -> bool:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM messages
+                WHERE chat_id = ? AND message_id = ?
+                LIMIT 1
+                """,
+                (chat_id, message_id),
+            ).fetchone()
+        return row is not None
+
     def add_message(
         self,
         user_id: int,
@@ -600,16 +624,27 @@ class DashboardStore:
         chat_type: str | None = None,
         chat_title: str | None = None,
         reply_to_message_id: int | None = None,
-    ) -> dict[str, Any]:
-        created_at = datetime.utcnow().isoformat()
+        ingestion_source: str = "bot",
+        telegram_date: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        if chat_id is not None and message_id is not None and self.message_exists(chat_id, message_id):
+            with self._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM messages WHERE chat_id = ? AND message_id = ?",
+                    (chat_id, message_id),
+                ).fetchone()
+            return self._row_to_message(row), False
+
+        created_at = telegram_date or datetime.utcnow().isoformat()
         with self._conn() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO messages (
                     user_id, username, direction, text, created_at,
-                    chat_id, message_id, chat_type, chat_title, reply_to_message_id
+                    chat_id, message_id, chat_type, chat_title, reply_to_message_id,
+                    ingestion_source, telegram_date
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -622,6 +657,8 @@ class DashboardStore:
                     chat_type,
                     chat_title,
                     reply_to_message_id,
+                    ingestion_source,
+                    telegram_date,
                 ),
             )
             message = self._row_to_message(
@@ -631,7 +668,7 @@ class DashboardStore:
             )
         if chat_id is not None:
             self._ensure_chat_setting(chat_id, chat_type, chat_title)
-        return message
+        return message, True
 
     def _ensure_chat_setting(
         self, chat_id: int, chat_type: str | None, chat_title: str | None
@@ -740,6 +777,7 @@ class DashboardStore:
         topic_mode: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
+        ingestion_source: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> dict[str, Any]:
@@ -807,6 +845,10 @@ class DashboardStore:
             clauses.append("m.created_at <= ?")
             params.append(date_to)
 
+        if ingestion_source:
+            clauses.append("m.ingestion_source = ?")
+            params.append(ingestion_source)
+
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
         with self._conn() as conn:
@@ -864,6 +906,7 @@ class DashboardStore:
         topic_mode: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
+        ingestion_source: str | None = None,
         thread_limit: int = 20,
         thread_offset: int = 0,
         message_cap: int = 500,
@@ -877,6 +920,7 @@ class DashboardStore:
             topic_mode=topic_mode,
             date_from=date_from,
             date_to=date_to,
+            ingestion_source=ingestion_source,
             limit=message_cap,
             offset=0,
         )

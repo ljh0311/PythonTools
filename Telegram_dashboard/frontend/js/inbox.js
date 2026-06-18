@@ -15,6 +15,7 @@ export const inboxState = {
     userIds: [],
     chatType: "",
     direction: "",
+    ingestionSource: "",
     topics: "",
     dateFrom: "",
     dateTo: "",
@@ -64,6 +65,7 @@ function buildFilterParams() {
     q: inboxState.filters.q || undefined,
     chat_type: inboxState.filters.chatType || undefined,
     direction: inboxState.filters.direction || undefined,
+    ingestion_source: inboxState.filters.ingestionSource || undefined,
     topics: inboxState.filters.topics || undefined,
     date_from: inboxState.filters.dateFrom || undefined,
     date_to: inboxState.filters.dateTo || undefined,
@@ -78,6 +80,7 @@ export function readFiltersFromUrl() {
   inboxState.filters.q = params.get("q") || "";
   inboxState.filters.chatType = params.get("chat_type") || "";
   inboxState.filters.direction = params.get("direction") || "";
+  inboxState.filters.ingestionSource = params.get("ingestion_source") || "";
   inboxState.filters.topics = params.get("topics") || "";
   inboxState.filters.dateFrom = params.get("from") || "";
   inboxState.filters.dateTo = params.get("to") || "";
@@ -89,11 +92,13 @@ export function readFiltersFromUrl() {
 
 export function writeFiltersToUrl() {
   const params = new URLSearchParams();
-  const { q, userIds, chatType, direction, topics, dateFrom, dateTo } = inboxState.filters;
+  const { q, userIds, chatType, direction, ingestionSource, topics, dateFrom, dateTo } =
+    inboxState.filters;
   if (q) params.set("q", q);
   if (userIds.length) params.set("user_ids", userIds.join(","));
   if (chatType) params.set("chat_type", chatType);
   if (direction) params.set("direction", direction);
+  if (ingestionSource) params.set("ingestion_source", ingestionSource);
   if (topics) params.set("topics", topics);
   if (dateFrom) params.set("from", dateFrom);
   if (dateTo) params.set("to", dateTo);
@@ -109,6 +114,8 @@ export function syncFilterForm() {
   document.getElementById("inbox-topics").value = inboxState.filters.topics;
   document.getElementById("inbox-chat-type").value = inboxState.filters.chatType;
   document.getElementById("inbox-direction").value = inboxState.filters.direction;
+  const sourceEl = document.getElementById("inbox-source");
+  if (sourceEl) sourceEl.value = inboxState.filters.ingestionSource;
   document.getElementById("inbox-date-from").value = inboxState.filters.dateFrom;
   document.getElementById("inbox-date-to").value = inboxState.filters.dateTo;
   document.getElementById("inbox-view").value = inboxState.view;
@@ -132,13 +139,22 @@ export function renderUserFilter(users = []) {
   syncFilterForm();
 }
 
+function sourceLabel(item) {
+  return item.ingestion_source === "user_account" ? "My account" : "Bot";
+}
+
+function renderSourceBadge(item) {
+  const cls = item.ingestion_source === "user_account" ? "user-account" : "bot";
+  return `<span class="source-badge ${cls}">${sourceLabel(item)}</span>`;
+}
+
 function renderThreadMessages(messages) {
   return messages
     .map(
       (item) => `
       <li class="thread-message ${item.direction}">
         <div class="meta">
-          <span>${escapeHtml(displayName(item))} · ${item.direction}</span>
+          <span>${escapeHtml(displayName(item))} · ${item.direction} ${renderSourceBadge(item)}</span>
           <span>${formatTime(item.created_at)}</span>
         </div>
         ${renderTopicChips(item.topics)}
@@ -160,7 +176,7 @@ function renderFlatMessages(messages = []) {
       (item) => `
       <li class="${item.direction}">
         <div class="meta">
-          <span>${escapeHtml(displayName(item))} · ${item.chat_type || "chat"} · ${item.direction}</span>
+          <span>${escapeHtml(displayName(item))} · ${item.chat_type || "chat"} · ${item.direction} ${renderSourceBadge(item)}</span>
           <span>${formatTime(item.created_at)}</span>
         </div>
         ${renderTopicChips(item.topics)}
@@ -185,7 +201,12 @@ export function renderInboxThreads(threads = [], total = 0) {
     feed.innerHTML = threads
       .map((thread, index) => {
         const chatId = thread.chat_id ?? `thread-${index}`;
-        const typeBadge = thread.chat_type === "group" ? "Group" : "Private";
+        const typeBadge =
+          thread.chat_type === "group"
+            ? "Group"
+            : thread.chat_type === "channel"
+              ? "Channel"
+              : "Private";
         return `
         <article class="thread-card" data-chat-id="${chatId}" data-thread-index="${index}">
           <header class="thread-header">
@@ -267,6 +288,7 @@ export function collectFiltersFromForm() {
     userIds: selected,
     chatType: document.getElementById("inbox-chat-type").value,
     direction: document.getElementById("inbox-direction").value,
+    ingestionSource: document.getElementById("inbox-source")?.value || "",
     dateFrom: document.getElementById("inbox-date-from").value,
     dateTo: document.getElementById("inbox-date-to").value,
   };
@@ -318,6 +340,7 @@ function applyPreset(presetId) {
     userIds: f.userIds || (f.user_ids ? String(f.user_ids).split(",") : []),
     chatType: f.chatType || f.chat_type || "",
     direction: f.direction || "",
+    ingestionSource: f.ingestionSource || f.ingestion_source || "",
     dateFrom: f.dateFrom || f.date_from || "",
     dateTo: f.dateTo || f.date_to || "",
   };
@@ -353,6 +376,7 @@ export function bindInbox(onReply, onError) {
       userIds: [],
       chatType: "",
       direction: "",
+      ingestionSource: "",
       dateFrom: "",
       dateTo: "",
     };

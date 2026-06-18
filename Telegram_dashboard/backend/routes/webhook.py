@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from backend.config import TELEGRAM_WEBHOOK_SECRET
-from backend.routes.api import ws_manager
+from backend.services.ws_manager import ws_manager
 from backend.services.bot_handler import handle_telegram_update
 
 

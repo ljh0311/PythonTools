@@ -106,6 +106,12 @@ export const api = {
       body: JSON.stringify({ chat_id: chatId, text }),
     }),
   getBotStatus: () => request("/api/bot/status"),
+  getUserAccountStatus: () => request("/api/user-account/status"),
+  sendUserMessage: (chatId, text) =>
+    request("/api/user-account/send", {
+      method: "POST",
+      body: JSON.stringify({ chat_id: chatId, text }),
+    }),
   getReplyMode: () => request("/api/settings/reply-mode"),
   setReplyMode: (mode) =>
     request("/api/settings/reply-mode", {

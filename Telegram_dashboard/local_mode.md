@@ -91,6 +91,12 @@ python3 openclaw/skills/telegram-dashboard/scripts/tdash.py metrics
 
 See [docs/openclaw-integration.md](docs/openclaw-integration.md) for full details.
 
+## User inbox (v0.2)
+
+To capture **all messages on your personal Telegram account** (not just the bot), see [docs/user-inbox.md](docs/user-inbox.md).
+
+Quick steps: set `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `MTProto_ENABLED=true`, run `python3 scripts/mtproto_login.py`, restart the server.
+
 ## Telegram webhook
 
 For local testing without HTTPS you can use long-polling separately, but this dashboard expects webhook mode. Use a tunnel:
@@ -111,7 +117,10 @@ For local testing without HTTPS you can use long-polling separately, but this da
 
 | Variable | Purpose |
 |----------|---------|
-| `TELEGRAM_BOT_TOKEN` | Bot API token |
+| `TELEGRAM_BOT_TOKEN` | Bot API token (v0.1) |
+| `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` | User account API (v0.2) from my.telegram.org |
+| `MTProto_ENABLED` | `true` to listen on your personal account |
+| `MTProto_PHONE` | Phone for first-time login |
 | `TELEGRAM_WEBHOOK_SECRET` | Validates incoming webhooks |
 | `GEMINI_API_KEY` | Primary AI provider |
 | `OLLAMA_BASE_URL` | Local AI fallback |
