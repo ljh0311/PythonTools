@@ -6,8 +6,11 @@ import time
 import cv2
 import numpy as np
 import screen_brightness_control as sbc
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import os
+
+from desk_presence import DeskPresenceConfig, DeskPresenceTracker, PresenceState
+from face_detector_backend import FaceDetectorBackend
 
 
 class BrightnessController:
@@ -22,7 +25,7 @@ class BrightnessController:
         transition_delay: float = 0.05,
         camera_index: int = 0,
         enable_human_detection: bool = True,
-        strict_detection: bool = True,
+        strict_detection: bool = False,
         enable_distance_detection: bool = True,
     ):
         """
@@ -36,7 +39,7 @@ class BrightnessController:
             transition_delay: Delay between transition steps in seconds (default: 0.05)
             camera_index: Index of the camera to use (default: 0)
             enable_human_detection: Whether to enable human detection (default: True)
-            strict_detection: Whether to use strict detection parameters (default: True)
+            strict_detection: Whether to use strict detection parameters (default: False)
             enable_distance_detection: Whether to differentiate between close and distant people (default: True)
         """
         self.min_brightness = min_brightness
@@ -98,6 +101,15 @@ class BrightnessController:
         self.min_grace_period = 1.0  # Minimum grace period duration
         self.max_grace_period = 8.0  # Maximum grace period duration
 
+        self.look_away_floor = 20
+        self.brightness_restore_seconds = 3.0
+        self.desk_presence = DeskPresenceTracker(DeskPresenceConfig())
+        self.last_presence_state = PresenceState.ACTIVE
+        self.last_ambient_brightness = 128.0
+        self._active_since: Optional[float] = None
+        self._holding_look_away_floor = False
+        self._last_look_away_log = 0.0
+
         self.human_detector = HumanDetector(
             enable_human_detection=self.enable_human_detection,
             strict_detection=self.strict_detection,
@@ -140,12 +152,12 @@ class BrightnessController:
                 except (AttributeError, cv2.error):
                     pass
 
-    def get_brightness_from_camera(self) -> float:
+    def get_brightness_from_camera(self) -> Tuple[float, PresenceState]:
         """
-        Capture and calculate brightness from camera frame.
+        Capture brightness from camera and evaluate desk presence.
 
         Returns:
-            float: Average brightness value from camera frame
+            Tuple of (ambient brightness 0-255, presence state)
         """
         if self.cap is None or not self.cap.isOpened():
             self.setup_camera()
@@ -154,15 +166,17 @@ class BrightnessController:
         if not ret:
             raise RuntimeError("Failed to capture frame")
 
-        # Check for human presence if detection is enabled
-        if self.enable_human_detection:
-            human_present = self.human_detector.detect_human(frame)
-            if not human_present:
-                # Return 0 brightness when no human is detected
-                return 0.0
-
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        return float(np.mean(gray))
+        ambient = float(np.mean(gray))
+        self.last_ambient_brightness = ambient
+
+        if not self.enable_human_detection:
+            self.last_presence_state = PresenceState.ACTIVE
+            return ambient, PresenceState.ACTIVE
+
+        face_detected = self.human_detector.detect_face_only(frame)
+        self.last_presence_state = self.desk_presence.update(frame, face_detected)
+        return ambient, self.last_presence_state
 
     def smooth_transition(self, start_brightness: int, target_brightness: int) -> None:
         """
@@ -187,17 +201,24 @@ class BrightnessController:
                 print(f"Error during transition: {e}")
                 break
 
-    def adjust_screen_brightness(self, brightness: float) -> None:
+    def adjust_screen_brightness(
+        self, brightness: float, presence_state: Optional[PresenceState] = None
+    ) -> None:
         """
-        Adjust screen brightness based on input value.
+        Adjust screen brightness based on input value and presence state.
 
         Args:
-            brightness: Raw brightness value to adjust to
+            brightness: Raw ambient brightness value (0-255)
+            presence_state: Desk presence state when human detection is enabled
         """
-        # If brightness is 0 (no human detected), set screen to 0 immediately
-        if brightness == 0.0 and self.enable_human_detection:
+        state = presence_state or self.last_presence_state
+        now = time.time()
+
+        if self.enable_human_detection and state == PresenceState.AWAY:
+            self._active_since = None
+            self._holding_look_away_floor = False
             if self.current_brightness != 0:
-                print("👤 No human detected - setting brightness to 0%")
+                print("🚪 Away — setting brightness to 0%")
                 try:
                     sbc.set_brightness(0)
                     self.current_brightness = 0
@@ -205,6 +226,41 @@ class BrightnessController:
                 except Exception as e:
                     print(f"❌ Error setting brightness to 0: {e}")
             return
+
+        if self.enable_human_detection and state == PresenceState.LOOK_AWAY:
+            self._active_since = None
+            target = max(1, min(100, int(self.look_away_floor)))
+            if abs(self.current_brightness - target) > 3:
+                # Rate-limit log spam during flaps
+                if now - self._last_look_away_log > 2.0:
+                    print(f"👀 Look away — holding brightness at {target}% floor")
+                    self._last_look_away_log = now
+                try:
+                    self.smooth_transition(self.current_brightness, target)
+                    self.current_brightness = target
+                    self.last_set = target
+                    self._holding_look_away_floor = True
+                except Exception as e:
+                    print(f"❌ Error setting look-away floor: {e}")
+            else:
+                self._holding_look_away_floor = True
+            return
+
+        # ACTIVE: require sustained Active before leaving the look-away floor
+        if self.enable_human_detection and self._holding_look_away_floor:
+            if self._active_since is None:
+                self._active_since = now
+            restore_hold = max(
+                self.brightness_restore_seconds,
+                self.desk_presence.config.enter_active_seconds,
+            )
+            if (now - self._active_since) < restore_hold:
+                return
+            self._holding_look_away_floor = False
+            self._active_since = None
+            print("👤 Active confirmed — restoring ambient brightness")
+        else:
+            self._active_since = now if self.enable_human_detection else None
 
         self.prev_values.append(brightness)
         if len(self.prev_values) > self.history_size:
@@ -240,6 +296,54 @@ class BrightnessController:
                 print(
                     f"📊 Status: {new_brightness}% (Raw: {brightness:.1f}, Filtered: {filtered_brightness:.1f})"
                 )
+
+    def update_desk_mode_settings(
+        self,
+        enabled: Optional[bool] = None,
+        use_motion: Optional[bool] = None,
+        use_input_activity: Optional[bool] = None,
+        last_seen_window_seconds: Optional[float] = None,
+        away_timeout_seconds: Optional[float] = None,
+        look_away_floor: Optional[int] = None,
+        leave_active_seconds: Optional[float] = None,
+        enter_active_seconds: Optional[float] = None,
+        input_window_seconds: Optional[float] = None,
+        brightness_restore_seconds: Optional[float] = None,
+    ) -> None:
+        """Sync desk-mode and softened away settings from the GUI."""
+        if look_away_floor is not None:
+            self.look_away_floor = max(5, min(60, int(look_away_floor)))
+        if brightness_restore_seconds is not None:
+            self.brightness_restore_seconds = max(
+                0.5, min(15.0, float(brightness_restore_seconds))
+            )
+        self.desk_presence.update_config(
+            enabled=enabled,
+            use_motion=use_motion,
+            use_input_activity=use_input_activity,
+            last_seen_window_seconds=last_seen_window_seconds,
+            away_timeout_seconds=away_timeout_seconds,
+            leave_active_seconds=leave_active_seconds,
+            enter_active_seconds=enter_active_seconds,
+            input_window_seconds=input_window_seconds,
+        )
+
+    def get_presence_status(self) -> dict:
+        """Return combined face + desk presence status for the UI."""
+        status = self.desk_presence.get_status()
+        status["look_away_floor"] = self.look_away_floor
+        if self.enable_human_detection:
+            status.update(self.human_detector.get_detection_status())
+        return status
+
+    def update_auto_strict_setting(self, enabled: bool) -> None:
+        self.human_detector.update_auto_strict_setting(enabled)
+
+    def update_grace_period_setting(self, enabled: bool, duration: float = None) -> None:
+        self.human_detector.update_grace_period_setting(enabled, duration)
+
+    def update_adaptive_grace_period_setting(self, enabled: bool) -> None:
+        self.human_detector.update_adaptive_grace_period_setting(enabled)
 
     def cleanup(self) -> None:
         """Release camera resources."""
@@ -286,7 +390,7 @@ class HumanDetector:
         self.last_detection_changes = []
         self.instability_threshold = instability_threshold
         self.human_detection_history = []
-        self.face_cascade = None
+        self._face_backend: Optional[FaceDetectorBackend] = None
 
         self.grace_period_enabled = grace_period_enabled
         self.grace_period_duration = grace_period_duration
@@ -303,45 +407,114 @@ class HumanDetector:
         if self.enable_human_detection:
             self._setup_face_detection()
 
-    def _setup_face_detection(self) -> None:
-        """Initialize the face detection cascade classifier."""
-        try:
-            import cv2
-            import os
+    @property
+    def face_cascade(self) -> Optional[cv2.CascadeClassifier]:
+        """Haar cascade when Haar fallback is active (None for YuNet)."""
+        if self._face_backend is None:
+            return None
+        return self._face_backend.face_cascade
 
-            # Try to load the cascade classifier from OpenCV's data directory
-            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-            if os.path.exists(cascade_path):
-                self.face_cascade = cv2.CascadeClassifier(cascade_path)
-            else:
-                # Fallback: try to find it in common locations
-                possible_paths = [
-                    "haarcascade_frontalface_default.xml",
-                    "data/haarcascade_frontalface_default.xml",
-                    "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
-                ]
-                for path in possible_paths:
-                    if os.path.exists(path):
-                        self.face_cascade = cv2.CascadeClassifier(path)
-                        break
-                if self.face_cascade is None:
-                    print(
-                        "⚠️ Warning: Could not load face detection model. Human detection will be disabled."
-                    )
-                    self.enable_human_detection = False
-                    return
-            if self.face_cascade.empty():
+    @property
+    def profile_cascade(self) -> Optional[cv2.CascadeClassifier]:
+        """Profile Haar cascade when Haar fallback is active."""
+        if self._face_backend is None:
+            return None
+        return self._face_backend.profile_cascade
+
+    @property
+    def face_detector_ready(self) -> bool:
+        return self._face_backend is not None and self._face_backend.is_ready
+
+    def _setup_face_detection(self) -> None:
+        """Initialize YuNet face detector with Haar cascade fallback."""
+        try:
+            auto_download = os.environ.get("BRIGHTNESS_NO_MODEL_DOWNLOAD", "") != "1"
+            self._face_backend = FaceDetectorBackend(auto_download=auto_download)
+            if not self._face_backend.setup():
                 print(
-                    "⚠️ Warning: Face detection model is empty. Human detection will be disabled."
+                    "⚠️ Warning: Could not load face detection model. Human detection will be disabled."
                 )
                 self.enable_human_detection = False
-            else:
-                print("✅ Face detection model loaded successfully")
         except Exception as e:
             print(
                 f"⚠️ Warning: Error loading face detection model: {e}. Human detection will be disabled."
             )
             self.enable_human_detection = False
+
+    def _validation_thresholds(self, *, desk_mode: bool = False) -> dict:
+        if desk_mode:
+            return {
+                "brightness_min": 25,
+                "brightness_max": 230,
+                "aspect_min": 0.45,
+                "aspect_max": 1.5,
+                "min_face_percentage": 0.008,
+            }
+        if self.strict_detection:
+            return {
+                "brightness_min": 40,
+                "brightness_max": 200,
+                "aspect_min": 0.8,
+                "aspect_max": 1.3,
+                "min_face_percentage": 0.015,
+            }
+        return {
+            "brightness_min": 30,
+            "brightness_max": 220,
+            "aspect_min": 0.7,
+            "aspect_max": 1.5,
+            "min_face_percentage": 0.01,
+        }
+
+    def _detect_face_rects(self, frame, *, desk_mode: bool = False):
+        """Run YuNet or Haar detection and return bounding boxes."""
+        if not self.face_detector_ready:
+            return []
+        return self._face_backend.detect_rects(
+            frame,
+            desk_mode=desk_mode,
+            strict_detection=self.strict_detection,
+        )
+
+    def _validate_face_rect(
+        self, gray, frame, x: int, y: int, w: int, h: int, *, desk_mode: bool = False
+    ) -> bool:
+        thresholds = self._validation_thresholds(desk_mode=desk_mode)
+        face_brightness = float(np.mean(gray[y : y + h, x : x + w]))
+        if not (
+            thresholds["brightness_min"]
+            < face_brightness
+            < thresholds["brightness_max"]
+        ):
+            return False
+
+        aspect_ratio = w / h
+        if not (
+            thresholds["aspect_min"] < aspect_ratio < thresholds["aspect_max"]
+        ):
+            return False
+
+        frame_area = frame.shape[0] * frame.shape[1]
+        face_percentage = (w * h) / frame_area
+        if self.enable_distance_detection:
+            return face_percentage >= self.calibrated_thresholds["primary_user_min"]
+        return face_percentage >= thresholds["min_face_percentage"]
+
+    def detect_face_only(self, frame) -> bool:
+        """Return whether a face is visible this frame (no history voting)."""
+        if not self.enable_human_detection or not self.face_detector_ready:
+            return True
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            rects = self._detect_face_rects(frame, desk_mode=True)
+            if not rects:
+                return False
+
+            largest = max(rects, key=lambda r: r[2] * r[3])
+            x, y, w, h = largest
+            return self._validate_face_rect(gray, frame, x, y, w, h, desk_mode=True)
+        except Exception:
+            return True
 
     def detect_human(self, frame) -> bool:
         """
@@ -356,64 +529,38 @@ class HumanDetector:
         import numpy as np
         import time
 
-        if not self.enable_human_detection or self.face_cascade is None:
+        if not self.enable_human_detection or not self.face_detector_ready:
             return True  # If detection is disabled, assume human is present
 
         try:
-            # Convert to grayscale for face detection
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            # Use more strict detection parameters to reduce false positives
-            if self.strict_detection:
-                faces = self.face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.2, minNeighbors=12, minSize=(60, 60)
-                )
-            else:
-                faces = self.face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.15, minNeighbors=8, minSize=(50, 50)
-                )
+            rects = self._detect_face_rects(frame, desk_mode=False)
+            faces = rects
 
             human_detected = False
             primary_user_detected = False
             distant_person_detected = False
 
-            if len(faces) > 0:
-                largest_face = max(faces, key=lambda x: x[2] * x[3])
+            if len(rects) > 0:
+                largest_face = max(rects, key=lambda x: x[2] * x[3])
                 x, y, w, h = largest_face
-                face_region = gray[y : y + h, x : x + w]
-                face_brightness = np.mean(face_region)
-                brightness_min = 40 if self.strict_detection else 30
-                brightness_max = 200 if self.strict_detection else 220
-
-                if brightness_min < face_brightness < brightness_max:
-                    aspect_ratio = w / h
-                    aspect_min = 0.8 if self.strict_detection else 0.7
-                    aspect_max = 1.3 if self.strict_detection else 1.5
-
-                    if aspect_min < aspect_ratio < aspect_max:
-                        frame_area = frame.shape[0] * frame.shape[1]
-                        face_area = w * h
-                        face_percentage = face_area / frame_area
-
-                        if self.enable_distance_detection:
+                if self._validate_face_rect(gray, frame, x, y, w, h, desk_mode=False):
+                    human_detected = True
+                    primary_user_detected = True
+                    frame_area = frame.shape[0] * frame.shape[1]
+                    face_percentage = (w * h) / frame_area
+                    if self.enable_distance_detection:
+                        if (
+                            face_percentage
+                            < self.calibrated_thresholds["primary_user_min"]
+                        ):
+                            human_detected = False
+                            primary_user_detected = False
                             if (
-                                face_percentage
-                                >= self.calibrated_thresholds["primary_user_min"]
-                            ):
-                                primary_user_detected = True
-                                human_detected = True
-                            elif (
                                 face_percentage
                                 >= self.calibrated_thresholds["distant_person_min"]
                             ):
                                 distant_person_detected = True
-                        else:
-                            min_face_percentage = (
-                                0.015 if self.strict_detection else 0.01
-                            )
-                            if face_percentage >= min_face_percentage:
-                                human_detected = True
-                                primary_user_detected = True
 
             current_time = time.time()
 
@@ -524,6 +671,9 @@ class HumanDetector:
                 )
 
     def get_detection_status(self) -> dict:
+        backend = (
+            self._face_backend.backend_name if self._face_backend is not None else None
+        )
         if len(self.human_detection_history) < 5:
             return {
                 "strict_mode": self.strict_detection,
@@ -533,6 +683,7 @@ class HumanDetector:
                 "auto_strict_enabled": self.auto_strict_detection,
                 "grace_period_active": self.grace_period_active,
                 "grace_period_enabled": self.grace_period_enabled,
+                "face_backend": backend,
             }
         changes = 0
         for i in range(1, len(self.human_detection_history)):
@@ -554,6 +705,7 @@ class HumanDetector:
             "adaptive_grace_period": self.adaptive_grace_period,
             "current_grace_duration": self._calculate_adaptive_grace_period(),
             "face_loss_count": len(self.face_loss_durations),
+            "face_backend": backend,
         }
 
     def update_auto_strict_setting(self, enabled: bool):
@@ -626,7 +778,7 @@ class HumanDetector:
         import cv2
         import numpy as np
 
-        if not self.enable_human_detection or self.face_cascade is None:
+        if not self.enable_human_detection or not self.face_detector_ready:
             return {
                 "faces_detected": 0,
                 "primary_user_detected": False,
@@ -636,40 +788,33 @@ class HumanDetector:
             }
         try:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if self.strict_detection:
-                faces = self.face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.2, minNeighbors=12, minSize=(60, 60)
-                )
-            else:
-                faces = self.face_cascade.detectMultiScale(
-                    gray, scaleFactor=1.15, minNeighbors=8, minSize=(50, 50)
-                )
+            rects = self._detect_face_rects(frame, desk_mode=False)
+            thresholds = self._validation_thresholds(desk_mode=False)
             face_details = []
             frame_area = frame.shape[0] * frame.shape[1]
             primary_user_detected = False
             distant_person_detected = False
             largest_face_percentage = 0.0
-            for x, y, w, h in faces:
+            for x, y, w, h in rects:
                 face_area = w * h
                 face_percentage = face_area / frame_area
                 largest_face_percentage = max(largest_face_percentage, face_percentage)
                 face_type = "none"
-                if self.enable_distance_detection:
-                    if (
-                        face_percentage
-                        >= self.calibrated_thresholds["primary_user_min"]
-                    ):
-                        face_type = "primary_user"
-                        primary_user_detected = True
-                    elif (
-                        face_percentage
-                        >= self.calibrated_thresholds["distant_person_min"]
-                    ):
-                        face_type = "distant_person"
-                        distant_person_detected = True
-                else:
-                    min_threshold = 0.015 if self.strict_detection else 0.01
-                    if face_percentage >= min_threshold:
+                if self._validate_face_rect(gray, frame, x, y, w, h, desk_mode=False):
+                    if self.enable_distance_detection:
+                        if (
+                            face_percentage
+                            >= self.calibrated_thresholds["primary_user_min"]
+                        ):
+                            face_type = "primary_user"
+                            primary_user_detected = True
+                        elif (
+                            face_percentage
+                            >= self.calibrated_thresholds["distant_person_min"]
+                        ):
+                            face_type = "distant_person"
+                            distant_person_detected = True
+                    elif face_percentage >= thresholds["min_face_percentage"]:
                         face_type = "detected"
                         primary_user_detected = True
                 face_details.append(
@@ -683,7 +828,7 @@ class HumanDetector:
                     }
                 )
             return {
-                "faces_detected": len(faces),
+                "faces_detected": len(rects),
                 "primary_user_detected": primary_user_detected,
                 "distant_person_detected": distant_person_detected,
                 "largest_face_percentage": largest_face_percentage,
