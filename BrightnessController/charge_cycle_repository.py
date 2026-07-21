@@ -24,7 +24,13 @@ class ChargeCycleRepository:
         default_data: Dict[str, Any] = {
             "charge_cycles": [],
             "discharge_cycles": [],
-            "metadata": {"updated_at": None, "version": 1},
+            "metadata": {
+                "updated_at": None,
+                "version": 2,
+                "full_battery_percent": 100,
+                "full_battery_percent_learned": None,
+                "auto_apply_learned_full": True,
+            },
         }
 
         if not os.path.exists(self.file_path):
@@ -38,7 +44,13 @@ class ChargeCycleRepository:
                 return default_data
             data.setdefault("charge_cycles", [])
             data.setdefault("discharge_cycles", [])
-            data.setdefault("metadata", {"updated_at": None, "version": 1})
+            metadata = dict(data.setdefault("metadata", {}))
+            metadata.setdefault("updated_at", None)
+            metadata.setdefault("version", 2)
+            metadata.setdefault("full_battery_percent", 100)
+            metadata.setdefault("full_battery_percent_learned", None)
+            metadata.setdefault("auto_apply_learned_full", True)
+            data["metadata"] = metadata
             return data
         except Exception:
             return default_data
