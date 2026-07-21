@@ -249,7 +249,7 @@ class BatteryCycleTracker:
             data.setdefault("discharge_cycles", []).append(cycle)
             self._update_discharge_stats(data, cycle, session)
 
-        self.refresh_learned_full_percent()
+        self.analytics.maybe_auto_apply_learned(data)
         self.repository.save(data)
         self._active_session = None
         self._notify_changed()
