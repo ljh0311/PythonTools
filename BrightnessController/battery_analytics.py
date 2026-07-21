@@ -62,9 +62,9 @@ class LearnFullResult:
 class BatteryAnalytics:
     """Derive estimates and learned capacity from persisted cycle data."""
 
-    MIN_CHARGE_LEARN_MINUTES = 8.0
+    MIN_CHARGE_LEARN_MINUTES = 10.0
     MIN_CHARGE_LEARN_END = 65
-    LEARN_SAMPLE_LIMIT = 8
+    LEARN_SAMPLE_LIMIT = 15
     LEARN_BIN_SIZE = 5
     LEARN_VARIANCE_MAX = 5
     LEARN_RECENCY_HALF_LIFE = 3.0
@@ -174,11 +174,7 @@ class BatteryAnalytics:
         return self._clamp_learned_full(median(samples))
 
     def collect_full_samples(self, data: Dict[str, Any]) -> List[Tuple[int, float]]:
-        """Prefer recent plateau samples; fall back to charge-end peaks."""
-        plateau_samples = self.collect_plateau_weighted_samples(data)
-        if plateau_samples:
-            return plateau_samples
-
+        """Gather weighted charge-end samples for statistical peak learning."""
         samples: List[Tuple[int, float]] = []
         cycles = list(reversed(data.get("charge_cycles") or []))
         for index, cycle in enumerate(cycles):
