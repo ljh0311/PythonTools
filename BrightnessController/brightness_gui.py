@@ -361,8 +361,28 @@ class BrightnessGUI:
             self.battery_panel.session_card.set_value("—", "No active session")
 
         learned = insights.learned_full_percent
-        learned_text = f"Learned from cycles: {learned}%" if learned else "Learned: collecting data…"
+        trickle = insights.trickle_plateau_percent
+        if learned is not None and trickle is not None and trickle != learned:
+            learned_text = (
+                f"Learned from cycles: {learned}% • "
+                f"Trickle/full plateau ~{trickle}%"
+            )
+        elif learned is not None and trickle is not None:
+            learned_text = f"Learned: {learned}% (trickle/full plateau ~{trickle}%)"
+        elif learned is not None:
+            learned_text = f"Learned from cycles: {learned}%"
+        elif trickle is not None:
+            learned_text = f"Trickle/full plateau ~{trickle}% (collecting more data…)"
+        else:
+            learned_text = "Learned: collecting data…"
         self.battery_panel.learned_label.config(text=learned_text)
+        auto_note = (
+            "High-confidence learned values apply automatically."
+            if insights.auto_apply_learned_full
+            else "Auto-apply is off; use Apply learned value."
+        )
+        if hasattr(self.battery_panel, "auto_apply_label"):
+            self.battery_panel.auto_apply_label.config(text=auto_note)
         if learned is not None:
             self.battery_panel.apply_learned_btn.config(state="normal")
         else:
