@@ -1,9 +1,16 @@
 import { api, connectWebSocket, ensureAuthenticated } from "./api.js";
 import { renderCommandChart } from "./chart.js";
+import {
+  loadComposeRecipients,
+  readComposeTarget,
+  resolveChatTarget,
+  setComposeTarget,
+} from "./compose.js";
 import { bindInsights } from "./insights.js";
-import { bindInbox, loadInbox, renderUserFilter } from "./inbox.js";
+import { bindInbox, loadInbox, renderUserFilter, setOperatorUser } from "./inbox.js";
 import { initTheme } from "./theme.js";
 import { initNavigation } from "./navigation.js";
+import { bindDevNotify } from "./dev-notify.js";
 import { bindWorkflow, loadWorkflowSettings } from "./workflow.js";
 
 const state = {
@@ -80,15 +87,14 @@ function renderQuickActions(actions = []) {
     button.addEventListener("click", async (event) => {
       const row = event.target.closest(".action-row");
       const command = row.querySelector(".action-command").value.trim();
-      const chatId =
-        document.getElementById("chat-id")?.value.trim() ||
-        document.getElementById("chat-id-tools")?.value.trim();
-      if (!chatId) {
-        showToast("Enter a chat ID in Inbox or Tools before running a quick action.");
+      const chatTarget =
+        readComposeTarget("chat-id") || readComposeTarget("chat-id-tools");
+      if (!chatTarget) {
+        showToast("Pick @username or a chat before running a quick action.");
         return;
       }
       try {
-        await api.sendMessage(chatId, command);
+        await api.sendMessage(chatTarget, command);
         showToast(`Sent ${command}`);
         await refreshDashboard();
       } catch (error) {
@@ -125,16 +131,18 @@ function escapeHtml(value) {
 
 function prefillReply(chatId) {
   state.nav?.showView("inbox");
-  for (const id of ["chat-id", "chat-id-tools"]) {
-    const field = document.getElementById(id);
-    if (field) field.value = chatId;
-  }
+  setComposeTarget(chatId);
   document.getElementById("message-text")?.focus();
   document.querySelector(".compose-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  showToast(`Chat ID ${chatId} ready for reply.`);
+  const display = document.getElementById("chat-id")?.value || chatId;
+  showToast(`Reply to ${display} ready.`);
 }
 
-async function submitSend(chatId, text, clearFields = []) {
+async function submitSend(chatTarget, text, clearFields = []) {
+  const chatId = resolveChatTarget(chatTarget);
+  if (!chatId) {
+    throw new Error("Pick @username or a chat from the list.");
+  }
   await api.sendMessage(chatId, text);
   clearFields.forEach((id) => {
     const el = document.getElementById(id);
@@ -145,7 +153,10 @@ async function submitSend(chatId, text, clearFields = []) {
 }
 
 async function refreshDashboard() {
-  const [metrics, users, , events, analytics, quickActions, botStatus, userAccountStatus] =
+  const userAccountStatus = await api.getUserAccountStatus();
+  setOperatorUser(userAccountStatus.user);
+
+  const [metrics, users, , events, analytics, quickActions, botStatus] =
     await Promise.all([
       api.getMetrics(),
       api.getUsers(),
@@ -155,7 +166,7 @@ async function refreshDashboard() {
       api.getAnalytics(),
       api.getQuickActions(),
       api.getBotStatus(),
-      api.getUserAccountStatus(),
+      loadComposeRecipients(),
     ]);
 
   renderMetrics(metrics);
@@ -193,13 +204,13 @@ function bindForms() {
 
   document.getElementById("send-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const chatId = document.getElementById("chat-id").value.trim();
+    const chatTarget = document.getElementById("chat-id").value.trim();
     const text = document.getElementById("message-text").value.trim();
     try {
-      await submitSend(chatId, text, ["message-text"]);
+      await submitSend(chatTarget, text, ["message-text"]);
       const toolsMsg = document.getElementById("message-text-tools");
       if (toolsMsg) toolsMsg.value = "";
-      document.getElementById("chat-id-tools").value = chatId;
+      setComposeTarget(resolveChatTarget(chatTarget) || chatTarget, ["chat-id-tools"]);
     } catch (error) {
       showToast(error.message);
     }
@@ -207,11 +218,11 @@ function bindForms() {
 
   document.getElementById("send-form-tools")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const chatId = document.getElementById("chat-id-tools").value.trim();
+    const chatTarget = document.getElementById("chat-id-tools").value.trim();
     const text = document.getElementById("message-text-tools").value.trim();
     try {
-      await submitSend(chatId, text, ["message-text-tools"]);
-      document.getElementById("chat-id").value = chatId;
+      await submitSend(chatTarget, text, ["message-text-tools"]);
+      setComposeTarget(resolveChatTarget(chatTarget) || chatTarget, ["chat-id"]);
     } catch (error) {
       showToast(error.message);
     }
@@ -219,8 +230,13 @@ function bindForms() {
 
   document.getElementById("send-form-user")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const chatId = document.getElementById("chat-id-user").value.trim();
+    const chatTarget = document.getElementById("chat-id-user").value.trim();
     const text = document.getElementById("message-text-user").value.trim();
+    const chatId = resolveChatTarget(chatTarget);
+    if (!chatId) {
+      showToast("Pick @username or a chat from the list.");
+      return;
+    }
     try {
       await api.sendUserMessage(chatId, text);
       document.getElementById("message-text-user").value = "";
@@ -287,7 +303,15 @@ async function init() {
   initTheme();
   state.nav = initNavigation();
   bindForms();
-  bindInbox(prefillReply, (error) => showToast(error.message));
+  bindDevNotify(
+    (message) => showToast(message),
+    () => refreshDashboard()
+  );
+  bindInbox(
+    prefillReply,
+    (error) => showToast(error.message),
+    (message) => showToast(message)
+  );
   bindWorkflow((message) => showToast(message), (error) => showToast(error));
   bindInsights(
     (error) => showToast(error),

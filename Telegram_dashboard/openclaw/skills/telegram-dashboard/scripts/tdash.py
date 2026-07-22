@@ -10,6 +10,9 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
+
+TELEGRAM_MAX = 4096
 
 
 def base_url() -> str:
@@ -135,8 +138,34 @@ def cmd_suggest(args: argparse.Namespace) -> None:
     )
 
 
+def truncate_for_telegram(text: str) -> str:
+    if len(text) <= TELEGRAM_MAX:
+        return text
+    note = "\n\n…truncated for Telegram (full file on disk)."
+    return text[: TELEGRAM_MAX - len(note)].rstrip() + note
+
+
 def cmd_send(args: argparse.Namespace) -> None:
     print(json.dumps(request("POST", "/api/send", body={"chat_id": args.chat_id, "text": args.text}), indent=2))
+
+
+def cmd_send_file(args: argparse.Namespace) -> None:
+    path = Path(args.file)
+    if not path.is_file():
+        print(f"Error: file not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    chat_id = (args.chat_id or "").strip()
+    if not chat_id:
+        for name in ("NOTIFY_TELEGRAM_CHAT_ID", "EOD_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID"):
+            value = os.environ.get(name, "").strip()
+            if value:
+                chat_id = value
+                break
+    if not chat_id:
+        print("Error: pass --chat-id or set NOTIFY_TELEGRAM_CHAT_ID", file=sys.stderr)
+        sys.exit(1)
+    text = truncate_for_telegram(path.read_text(encoding="utf-8").strip())
+    print(json.dumps(request("POST", "/api/send", body={"chat_id": chat_id, "text": text}), indent=2))
 
 
 def cmd_reply_mode(_: argparse.Namespace) -> None:
@@ -190,6 +219,11 @@ def main() -> None:
     p_send.add_argument("--chat-id", required=True)
     p_send.add_argument("--text", required=True)
     p_send.set_defaults(func=cmd_send)
+
+    p_send_file = sub.add_parser("send-file", help="Send file contents as Telegram message")
+    p_send_file.add_argument("--file", required=True, help="Path to text/markdown file")
+    p_send_file.add_argument("--chat-id", default=None, help="Chat ID or @username (default from env)")
+    p_send_file.set_defaults(func=cmd_send_file)
 
     args = parser.parse_args()
     args.func(args)

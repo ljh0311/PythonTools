@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="End of day">
+  <rect width="32" height="32" rx="7" fill="#0f172a"/>
+  <rect x="8" y="7" width="16" height="18" rx="2" fill="#334155" stroke="#5eead4" stroke-width="1.5"/>
+  <path d="M11 12h10M11 16h7M11 20h9" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="22" cy="22" r="5" fill="#0f766e"/>
+  <path d="M20.5 22l1 1 2.5-2.5" fill="none" stroke="#ccfbf1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

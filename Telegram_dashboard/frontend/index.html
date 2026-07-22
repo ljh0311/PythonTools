@@ -154,7 +154,16 @@
           <div class="compose-bar card" aria-labelledby="compose-title">
             <h2 id="compose-title" class="sr-only">Quick reply</h2>
             <form id="send-form" class="compose-form">
-              <input id="chat-id" type="text" placeholder="Chat ID" required aria-label="Chat ID" />
+              <input
+                id="chat-id"
+                type="text"
+                list="chat-recipient-list"
+                placeholder="@username or chat"
+                required
+                aria-label="Recipient (@username or chat name)"
+                autocomplete="off"
+              />
+              <datalist id="chat-recipient-list"></datalist>
               <textarea id="message-text" rows="2" placeholder="Type your reply…" required aria-label="Message"></textarea>
               <button class="btn btn-primary" type="submit">Send</button>
             </form>
@@ -244,9 +253,12 @@
 
         <!-- TOOLS -->
         <section class="app-view" data-view="tools" hidden>
-          <div class="view-intro">
-            <h2>Tools</h2>
-            <p>Send messages and manage bot command shortcuts.</p>
+          <div class="view-intro view-intro-tools">
+            <img class="tools-brand-icon" src="/static/assets/icons/icon-operator.svg" width="28" height="28" alt="" aria-hidden="true" />
+            <div>
+              <h2>Tools</h2>
+              <p>Send messages and manage bot command shortcuts.</p>
+            </div>
           </div>
           <div class="tools-grid">
             <section class="card" aria-labelledby="user-account-title">
@@ -256,7 +268,14 @@
               <p id="user-account-status" class="filter-hint">Checking…</p>
               <p class="filter-hint">Log in once with the CLI script <code>scripts/mtproto_login.py</code>. See <code>docs/user-inbox.md</code>.</p>
               <form id="send-form-user" class="send-form">
-                <input id="chat-id-user" type="text" placeholder="Chat ID" />
+                <input
+                  id="chat-id-user"
+                  type="text"
+                  list="chat-recipient-list"
+                  placeholder="@username or chat"
+                  aria-label="Recipient (@username or chat name)"
+                  autocomplete="off"
+                />
                 <textarea id="message-text-user" rows="3" placeholder="Reply as your personal account"></textarea>
                 <button class="btn btn-primary" type="submit">Send as me</button>
               </form>
@@ -266,7 +285,15 @@
                 <h2 id="send-title">Send message</h2>
               </div>
               <form id="send-form-tools" class="send-form">
-                <input id="chat-id-tools" type="text" placeholder="Chat ID" required />
+                <input
+                  id="chat-id-tools"
+                  type="text"
+                  list="chat-recipient-list"
+                  placeholder="@username or chat"
+                  required
+                  aria-label="Recipient (@username or chat name)"
+                  autocomplete="off"
+                />
                 <textarea id="message-text-tools" rows="4" placeholder="Message text" required></textarea>
                 <button class="btn btn-primary" type="submit">Send via bot (v0.1)</button>
               </form>
@@ -281,6 +308,53 @@
                 <input id="action-label" type="text" placeholder="Label" required />
                 <input id="action-command" type="text" placeholder="/command" required />
                 <button class="btn btn-primary btn-sm" type="submit">Add</button>
+              </form>
+            </section>
+            <section class="card span-full dev-notify-card" aria-labelledby="dev-notify-title">
+              <div class="card-header dev-notify-header">
+                <div class="dev-notify-title-wrap">
+                  <img
+                    src="/static/assets/icon-dev-notify.svg"
+                    width="24"
+                    height="24"
+                    alt=""
+                    class="dev-notify-icon"
+                  />
+                  <h2 id="dev-notify-title">Dev notify / EOD</h2>
+                </div>
+                <span id="dev-notify-char-count" class="dev-notify-char-count" aria-live="polite">0 / 4096</span>
+              </div>
+              <p class="filter-hint dev-notify-hint">
+                Paste or load markdown, pick a recipient, and send via the bot. Use for EOD summaries, audit notes, or team alerts.
+              </p>
+              <form id="dev-notify-form" class="send-form dev-notify-form">
+                <input
+                  id="dev-notify-chat-id"
+                  type="text"
+                  list="chat-recipient-list"
+                  placeholder="@username or chat"
+                  required
+                  aria-label="Dev notify recipient"
+                  autocomplete="off"
+                />
+                <div class="dev-notify-toolbar">
+                  <label class="dev-notify-check">
+                    <input id="dev-notify-eod-header" type="checkbox" />
+                    Prefix with EOD header
+                  </label>
+                  <button id="dev-notify-load-file" class="btn btn-ghost btn-sm" type="button">
+                    <img src="/static/assets/icon-eod-doc.svg" width="16" height="16" alt="" aria-hidden="true" />
+                    Load markdown file
+                  </button>
+                  <input id="dev-notify-file" type="file" accept=".md,.txt,.markdown,text/plain,text/markdown" hidden />
+                </div>
+                <textarea
+                  id="dev-notify-text"
+                  rows="8"
+                  placeholder="Paste markdown or plain text…"
+                  aria-label="Notification message body"
+                ></textarea>
+                <button class="btn btn-primary" type="submit">Send via bot</button>
               </form>
             </section>
           </div>
