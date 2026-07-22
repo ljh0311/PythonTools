@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Send text or a file to Telegram via Dashboard POST /api/send."""
+"""Send text or a file to Telegram — delegates to tdash.py when available."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import subprocess
+import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -16,7 +18,6 @@ SKILL_ENV = SKILL_ROOT / ".env"
 
 
 def load_env_file(path: Path) -> None:
-    """Load KEY=VALUE lines into os.environ if the key is not already set."""
     if not path.is_file():
         return
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -30,6 +31,17 @@ def load_env_file(path: Path) -> None:
             os.environ[key] = value
 
 
+def find_tdash() -> Path | None:
+    candidates = [
+        SKILL_ROOT.parent.parent / "openclaw" / "skills" / "telegram-dashboard" / "scripts" / "tdash.py",
+        Path.home() / ".openclaw" / "workspace" / "skills" / "telegram-dashboard" / "scripts" / "tdash.py",
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
 def base_url() -> str:
     return os.environ.get("TELEGRAM_DASHBOARD_URL", "http://localhost:8000").rstrip("/")
 
@@ -37,9 +49,7 @@ def base_url() -> str:
 def api_key() -> str:
     key = os.environ.get("DASHBOARD_API_KEY", "")
     if not key:
-        raise SystemExit(
-            f"DASHBOARD_API_KEY is not set. Add it to {SKILL_ENV} (see .env.example)."
-        )
+        raise SystemExit(f"DASHBOARD_API_KEY is not set. Add it to {SKILL_ENV}.")
     return key
 
 
@@ -48,10 +58,7 @@ def default_chat_id() -> str:
         value = os.environ.get(name, "").strip()
         if value:
             return value
-    raise SystemExit(
-        "No default chat ID. Set NOTIFY_TELEGRAM_CHAT_ID in "
-        f"{SKILL_ENV} or pass --chat-id."
-    )
+    raise SystemExit(f"No default chat ID in {SKILL_ENV}; pass --chat-id.")
 
 
 def read_payload(args: argparse.Namespace) -> str:
@@ -74,15 +81,12 @@ def truncate_for_telegram(text: str) -> str:
     return text[: TELEGRAM_MAX - len(note)].rstrip() + note
 
 
-def send(chat: str, text: str) -> dict:
+def send_http(chat: str, text: str) -> dict:
     payload = json.dumps({"chat_id": chat, "text": text}).encode("utf-8")
     req = urllib.request.Request(
         f"{base_url()}/api/send",
         data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": api_key(),
-        },
+        headers={"Content-Type": "application/json", "X-API-Key": api_key()},
         method="POST",
     )
     try:
@@ -96,32 +100,41 @@ def send(chat: str, text: str) -> dict:
         raise SystemExit(f"Request failed: {exc}") from exc
 
 
+def run_tdash(args: argparse.Namespace, tdash: Path) -> int:
+    chat = (args.chat_id or default_chat_id()).strip()
+    if args.text:
+        cmd = [sys.executable, str(tdash), "send", "--chat-id", chat, "--text", args.text]
+    else:
+        cmd = [sys.executable, str(tdash), "send-file", "--file", args.file]
+        if args.chat_id:
+            cmd.extend(["--chat-id", args.chat_id])
+    if args.dry_run:
+        text = truncate_for_telegram(read_payload(args))
+        print(json.dumps({"chat_id": chat, "text": text, "via": "tdash"}, indent=2))
+        return 0
+    return subprocess.call(cmd)
+
+
 def main() -> None:
     load_env_file(SKILL_ENV)
 
-    parser = argparse.ArgumentParser(
-        description="Send text or a markdown/report file to Telegram via Dashboard API"
-    )
-    parser.add_argument("--text", help="Message body (plain text or markdown)")
-    parser.add_argument("--file", help="Path to a text/markdown file to send")
-    parser.add_argument("--chat-id", default=None, help="Override default Telegram chat ID")
-    parser.add_argument("--dry-run", action="store_true", help="Print payload only")
+    parser = argparse.ArgumentParser(description="Send dev notify via Dashboard API (tdash preferred)")
+    parser.add_argument("--text")
+    parser.add_argument("--file")
+    parser.add_argument("--chat-id")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
+    tdash = find_tdash()
+    if tdash:
+        raise SystemExit(run_tdash(args, tdash))
+
+    chat = (args.chat_id or default_chat_id()).strip()
     text = truncate_for_telegram(read_payload(args))
-    target = (args.chat_id or default_chat_id()).strip()
-
     if args.dry_run:
-        print(
-            json.dumps(
-                {"chat_id": target, "text": text, "url": f"{base_url()}/api/send"},
-                indent=2,
-            )
-        )
+        print(json.dumps({"chat_id": chat, "text": text, "url": f"{base_url()}/api/send"}, indent=2))
         return
-
-    result = send(target, text)
-    print(json.dumps(result, indent=2))
+    print(json.dumps(send_http(chat, text), indent=2))
 
 
 if __name__ == "__main__":

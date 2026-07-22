@@ -1,0 +1,41 @@
+{
+  "_draft": true,
+  "_scope": "Development tooling only — operator Telegram audit trail for isomer/HAT workspace. NOT part of the public website. Does not replace the main isomer content audit automation.",
+  "name": "HAT weekday EOD → Telegram (addon)",
+  "description": "Weekday evening: generate dev EOD from git/docs/dev-log, send summary to operator Telegram via Dashboard API.",
+  "workflow": {
+    "triggers": [
+      {
+        "cron": {
+          "cron": "0 18 * * 1-5",
+          "comment": "Weekday 6 PM local — adjust in Automations UI for your timezone"
+        }
+      }
+    ],
+    "prompts": [
+      "You are running the HAT weekday end-of-day (EOD) development workflow for the isomer project workspace.\n\nIMPORTANT SCOPE:\n- This is a **development tool** for audit trail, feature tracking, and operator visibility.\n- This is **NOT** part of the public website and must not modify published site content.\n- The main isomer **content audit** automation stays separate — do not merge content-audit checks into this EOD send step.\n\nSteps:\n1. Review today's git activity (commits, changed files, open PRs) in the isomer repo.\n2. Read `docs/dev-log/` (or the latest dev-log entry) for session notes if present.\n3. Write a concise markdown EOD with three sections:\n   - What was done (by area: features, fixes, docs, tooling)\n   - What went well\n   - What to improve tomorrow\n4. Save to `docs/eod/eod-YYYY-MM-DD.md` (create `docs/eod/` if needed).\n5. Send the summary to the operator Telegram chat via Telegram Dashboard:\n   - Ensure env is set: `TELEGRAM_DASHBOARD_URL`, `DASHBOARD_API_KEY`, `EOD_TELEGRAM_CHAT_ID`\n   - POST `$TELEGRAM_DASHBOARD_URL/api/send` with header `X-API-Key: $DASHBOARD_API_KEY` and body `{\"chat_id\": \"$EOD_TELEGRAM_CHAT_ID\", \"text\": \"<summary>\"}`\n   - Or run: `python3 Telegram_dashboard/openclaw/skills/telegram-dashboard/scripts/tdash.py send-eod --file docs/eod/eod-YYYY-MM-DD.md`\n6. Confirm file path and send result. If the dashboard is unreachable, keep the markdown file and report the error — do not skip saving the EOD.\n\nDo not edit unrelated repositories. Do not publish or deploy website content as part of this automation."
+    ],
+    "model": "",
+    "agentOptions": {
+      "skipInstall": false
+    },
+    "memoryEnabled": true,
+    "gitConfig": {
+      "repo": "isomer",
+      "branch": "main",
+      "comment": "Set to your isomer clone path/branch in the Automations editor"
+    }
+  },
+  "requiredEnv": [
+    "TELEGRAM_DASHBOARD_URL",
+    "DASHBOARD_API_KEY",
+    "EOD_TELEGRAM_CHAT_ID"
+  ],
+  "toFinishInEditor": [
+    "Point gitConfig.repo at your local isomer clone",
+    "Confirm cron timezone in Cursor Automations UI",
+    "Ensure Telegram Dashboard is running with bot token configured",
+    "Copy dev-skills to ~/.cursor/skills/ if using Cursor agent steps",
+    "Keep main isomer content-audit automation unchanged — this addon only adds EOD Telegram delivery"
+  ]
+}

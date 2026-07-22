@@ -13,6 +13,23 @@ import urllib.request
 from pathlib import Path
 
 TELEGRAM_MAX = 4096
+SKILL_ROOT = Path(__file__).resolve().parent.parent
+SKILL_ENV = SKILL_ROOT / ".env"
+
+
+def load_env_file(path: Path) -> None:
+    """Load KEY=VALUE lines into os.environ if the key is not already set."""
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 def base_url() -> str:
@@ -49,6 +66,34 @@ def request(method: str, path: str, *, params: dict | None = None, body: dict | 
         detail = exc.read().decode()
         print(f"HTTP {exc.code}: {detail}", file=sys.stderr)
         sys.exit(1)
+
+
+def truncate_for_telegram(text: str) -> str:
+    if len(text) <= TELEGRAM_MAX:
+        return text
+    note = "\n\n…truncated for Telegram (full file on disk)."
+    return text[: TELEGRAM_MAX - len(note)].rstrip() + note
+
+
+def read_file_text(path: str) -> str:
+    file_path = Path(path)
+    if not file_path.is_file():
+        print(f"Error: file not found: {file_path}", file=sys.stderr)
+        sys.exit(1)
+    return truncate_for_telegram(file_path.read_text(encoding="utf-8").strip())
+
+
+def resolve_chat_id(explicit: str | None, *, env_names: tuple[str, ...]) -> str:
+    chat_id = (explicit or "").strip()
+    if chat_id:
+        return chat_id
+    for name in env_names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    env_hint = " or ".join(env_names)
+    print(f"Error: pass --chat-id or set {env_hint}", file=sys.stderr)
+    sys.exit(1)
 
 
 def cmd_manifest(_: argparse.Namespace) -> None:
@@ -138,33 +183,22 @@ def cmd_suggest(args: argparse.Namespace) -> None:
     )
 
 
-def truncate_for_telegram(text: str) -> str:
-    if len(text) <= TELEGRAM_MAX:
-        return text
-    note = "\n\n…truncated for Telegram (full file on disk)."
-    return text[: TELEGRAM_MAX - len(note)].rstrip() + note
-
-
 def cmd_send(args: argparse.Namespace) -> None:
     print(json.dumps(request("POST", "/api/send", body={"chat_id": args.chat_id, "text": args.text}), indent=2))
 
 
 def cmd_send_file(args: argparse.Namespace) -> None:
-    path = Path(args.file)
-    if not path.is_file():
-        print(f"Error: file not found: {path}", file=sys.stderr)
-        sys.exit(1)
-    chat_id = (args.chat_id or "").strip()
-    if not chat_id:
-        for name in ("NOTIFY_TELEGRAM_CHAT_ID", "EOD_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID"):
-            value = os.environ.get(name, "").strip()
-            if value:
-                chat_id = value
-                break
-    if not chat_id:
-        print("Error: pass --chat-id or set NOTIFY_TELEGRAM_CHAT_ID", file=sys.stderr)
-        sys.exit(1)
-    text = truncate_for_telegram(path.read_text(encoding="utf-8").strip())
+    chat_id = resolve_chat_id(
+        args.chat_id,
+        env_names=("NOTIFY_TELEGRAM_CHAT_ID", "EOD_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID"),
+    )
+    text = read_file_text(args.file)
+    print(json.dumps(request("POST", "/api/send", body={"chat_id": chat_id, "text": text}), indent=2))
+
+
+def cmd_send_eod(args: argparse.Namespace) -> None:
+    chat_id = resolve_chat_id(args.chat_id, env_names=("EOD_TELEGRAM_CHAT_ID",))
+    text = read_file_text(args.file)
     print(json.dumps(request("POST", "/api/send", body={"chat_id": chat_id, "text": text}), indent=2))
 
 
@@ -173,6 +207,8 @@ def cmd_reply_mode(_: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    load_env_file(SKILL_ENV)
+
     parser = argparse.ArgumentParser(description="Telegram Dashboard CLI for OpenClaw")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -224,6 +260,11 @@ def main() -> None:
     p_send_file.add_argument("--file", required=True, help="Path to text/markdown file")
     p_send_file.add_argument("--chat-id", default=None, help="Chat ID or @username (default from env)")
     p_send_file.set_defaults(func=cmd_send_file)
+
+    p_send_eod = sub.add_parser("send-eod", help="Send EOD markdown file (uses EOD_TELEGRAM_CHAT_ID)")
+    p_send_eod.add_argument("--file", required=True, help="Path to eod-YYYY-MM-DD.md")
+    p_send_eod.add_argument("--chat-id", default=None, help="Override EOD_TELEGRAM_CHAT_ID")
+    p_send_eod.set_defaults(func=cmd_send_eod)
 
     args = parser.parse_args()
     args.func(args)
