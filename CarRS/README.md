@@ -7,11 +7,10 @@ This application helps users find the best car rental option based on their trip
 ### Main Files (Use These)
 
 - **CarRentalApp.bat** - The main launcher for the enhanced application (RECOMMENDED)
-- **fixed_car_loader.py** - The enhanced loader script that fixes data issues and adds features
+- **car_rental_recommender_gui.py** - The GUI launched by CarRentalApp.bat
 
-### Original Files
+### Other Files
 
-- **car_rental_recommender_gui.py** - The original GUI application
 - **car_rental_recommender.py** - The original CLI application
 - **22 - Sheet1.csv** - The data file with rental records
 

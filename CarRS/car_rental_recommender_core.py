@@ -7,11 +7,11 @@ import json
 from typing import List, Dict, Optional
 import re
 from datetime import datetime, timedelta
-
 # Region and provider constants: Singapore vs Malaysia categories kept separate
 VALID_REGIONS = ("Singapore", "Malaysia")
 SINGAPORE_PROVIDERS = ["Getgo", "Car Club", "Econ", "Stand", "Getgo(EV)"]
 MALAYSIA_PROVIDERS = ["SoCar", "NormalRental"]
+PROVIDER_ALIASES = {"Getgo EV": "Getgo(EV)"}
 
 # Data cleaning pipeline: schema and deduplication
 REQUIRED_COLUMNS = ["Date"]  # Minimum required for pipeline to run
@@ -44,6 +44,34 @@ def get_providers_for_region(region: Optional[str]) -> List[str]:
     if region == "Malaysia":
         return MALAYSIA_PROVIDERS
     return SINGAPORE_PROVIDERS
+
+
+def normalize_pricing_provider(provider):
+    """Return the canonical provider name used by pricing configuration."""
+    if not isinstance(provider, str):
+        return provider
+    return PROVIDER_ALIASES.get(" ".join(provider.strip().split()), provider)
+
+
+def _load_pricing_config(pricing_config=None):
+    """Load local pricing rates and normalize legacy provider keys."""
+    if pricing_config is None:
+        try:
+            with open(os.path.join(os.path.dirname(__file__), "pricing_config.json"), "r") as f:
+                pricing_config = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {}
+    return {normalize_pricing_provider(provider): config for provider, config in pricing_config.items()}
+
+
+def _display_predicted_rental_total(raw_total, predictions):
+    """Keep a non-zero probability signal visible as at least one rental."""
+    try:
+        raw_total = float(raw_total)
+        has_probability = any(float(prediction.get("rental_probability", 0)) > 0 for prediction in predictions)
+    except (TypeError, ValueError):
+        return 0
+    return max(1, round(raw_total)) if raw_total > 0 and has_probability else round(raw_total)
 
 
 def validate_numeric_input(
@@ -455,72 +483,29 @@ def calculate_estimated_cost(
     distance, duration, provider, car_model=None, cost_analysis=None, is_weekend=False, pricing_config=None
 ):
     """Calculate estimated cost for a rental using pricing_config.json rates"""
-    # Load pricing config if not provided
-    if pricing_config is None:
-        try:
-            with open("pricing_config.json", "r") as f:
-                pricing_config = json.load(f)
-        except:
-            pricing_config = {}
-    
-    # Try to use pricing_config first
-    if provider in pricing_config:
-        config = pricing_config[provider]
+    provider = normalize_pricing_provider(provider)
+    config = _load_pricing_config(pricing_config).get(provider)
+    if config:
         pricing_type = config.get("pricing_type", "mileage")
-
-        # NormalRental (Malaysia): traditional daily rental, no formula-based estimate
         if pricing_type == "traditional":
             return None
-
-        # SoCar (Malaysia): hour rate + mileage package (10/50/100 km add-ons) + excess RM/km
-        if pricing_type == "socar":
-            hour_rate = config.get("hour_rate", 8.0)
-            packages = config.get("mileage_packages", [{"km": 10, "price": 2.5}, {"km": 50, "price": 11}, {"km": 100, "price": 15}])
-            excess_km_rate = config.get("excess_km_rate", 0.25)
-            duration_cost = (duration or 0) * hour_rate
-            # Best package: smallest package that covers distance, or largest if distance exceeds all
-            packages_sorted = sorted(packages, key=lambda p: p["km"])
-            chosen = packages_sorted[0]
-            for p in packages_sorted:
-                if (distance or 0) <= p["km"]:
-                    chosen = p
-                    break
-                chosen = p
-            package_km = chosen["km"]
-            package_price = chosen["price"]
-            excess_km = max(0, (distance or 0) - package_km)
-            mileage_cost = package_price + excess_km * excess_km_rate
-            total_cost = duration_cost + mileage_cost
-            return {
-                "total_cost": total_cost,
-                "duration_cost": duration_cost,
-                "mileage_cost": mileage_cost,
-                "fuel_cost": 0,
-            }
-
+        distance, duration = float(distance or 0), float(duration or 0)
         day_type = "weekend" if is_weekend else "weekday"
-        hour_rate_key = f"hour_rate_{day_type}" if f"hour_rate_{day_type}" in config else "hour_rate"
-        km_rate_key = f"km_rate_{day_type}" if f"km_rate_{day_type}" in config else "mileage_rate"
-        base_key = f"base_{day_type}" if f"base_{day_type}" in config else "base_weekday"
-
-        hour_rate = config.get(hour_rate_key, config.get("hour_rate", 10.0))
-        base_cost = config.get(base_key, config.get("base_weekday", 0.0))
-
+        duration_cost = duration * config.get(f"hour_rate_{day_type}", config.get("hour_rate", 0))
+        base_cost = config.get(f"base_{day_type}", config.get("base_weekday", 0))
+        mileage_cost = fuel_cost = 0
         if pricing_type == "mileage":
-            km_rate = config.get(km_rate_key, config.get("mileage_rate", 0.39))
-            mileage_cost = distance * km_rate
-            duration_cost = duration * hour_rate
-            fuel_cost = 0
-            total_cost = base_cost + mileage_cost + duration_cost
-        else:  # fuel-based
-            fuel_rate = config.get("fuel_rate", config.get("usual_fuel_amount", 20.0))
-            duration_cost = duration * hour_rate
-            fuel_cost = fuel_rate
-            mileage_cost = 0
-            total_cost = base_cost + duration_cost + fuel_cost
-
+            mileage_cost = distance * config.get(f"km_rate_{day_type}", config.get("mileage_rate", 0))
+        elif pricing_type == "socar":
+            packages = sorted(config.get("mileage_packages", []), key=lambda item: item["km"])
+            if not packages:
+                return None
+            package = next((item for item in packages if distance <= item["km"]), packages[-1])
+            mileage_cost = package["price"] + max(0, distance - package["km"]) * config.get("excess_km_rate", 0)
+        else:
+            fuel_cost = config.get("fuel_rate", config.get("usual_fuel_amount", 0))
         return {
-            "total_cost": total_cost,
+            "total_cost": base_cost + duration_cost + mileage_cost + fuel_cost,
             "duration_cost": duration_cost,
             "mileage_cost": mileage_cost,
             "fuel_cost": fuel_cost,
@@ -596,6 +581,25 @@ def get_recommendations(distance, duration, cost_analysis, is_weekend=False, top
     # Sort by total cost and return top N
     recommendations.sort(key=lambda x: x["total_cost"])
     return recommendations[:top_n]
+
+
+def get_pricing_recommendations(distance, duration, region="Singapore", is_weekend=False):
+    """Return comparable formula-priced providers without requiring rental data."""
+    recommendations = []
+    for provider in list_comparable_providers(region):
+        cost = calculate_estimated_cost(distance, duration, provider, is_weekend=is_weekend)
+        if cost is not None:
+            recommendations.append(
+                {
+                    "provider": provider,
+                    "model": "Standard",
+                    "method": "Pricing (MVP)",
+                    "confidence": 1.0,
+                    "reasoning": "Based on current provider pricing.",
+                    **cost,
+                }
+            )
+    return sorted(recommendations, key=lambda recommendation: recommendation["total_cost"])
 
 
 def analyze_rental_costs(df):
@@ -2650,6 +2654,7 @@ def create_trip_record(
     additional_fee_rm=None,
 ):
     """Create a new trip record for saving to the dataset. Region must be Singapore or Malaysia."""
+    provider = normalize_provider_name(provider) or provider
     if region not in VALID_REGIONS:
         region = "Singapore"
     allowed = get_providers_for_region(region)
@@ -3921,13 +3926,7 @@ def compare_pricing_models(distance, duration, is_weekend=False, pricing_config=
         - reasoning: explanation of recommendation
         - cost_difference: difference in costs
     """
-    # Load pricing config if not provided
-    if pricing_config is None:
-        try:
-            with open("pricing_config.json", "r") as f:
-                pricing_config = json.load(f)
-        except:
-            pricing_config = {}
+    pricing_config = _load_pricing_config(pricing_config)
     
     # Calculate mileage-included cost (Econ, Stand, Tribecar)
     # Average rates from config
@@ -3963,7 +3962,7 @@ def compare_pricing_models(distance, duration, is_weekend=False, pricing_config=
     pay_per_km_km_rate = 0
     pay_per_km_count = 0
     
-    for provider in ["Getgo", "Car Club", "Getgo EV"]:
+    for provider in ["Getgo", "Car Club", "Getgo(EV)"]:
         if provider in pricing_config:
             config = pricing_config[provider]
             day_type = "weekend" if is_weekend else "weekday"
@@ -4498,8 +4497,9 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
         total_predicted_spending = sum(p["predicted_cost"] * p["rental_probability"] for p in ml_preds)
         total_predicted_distance = sum(p["predicted_distance"] * p["rental_probability"] for p in ml_preds)
         
-        # Round total rentals to whole number
-        total_predicted_rentals = round(total_predicted_rentals_raw)
+        total_predicted_rentals = safe_predicted_rental_total(
+            total_predicted_rentals_raw, ml_preds
+        )
         
         # Distribute rounded rentals across periods proportionally using largest remainder method
         if total_predicted_rentals > 0 and len(ml_preds) > 0:
@@ -4533,17 +4533,7 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
                     a["date"].strftime("%Y-%m-%d"): a["rentals"] for a in period_allocations
                 }
                 
-                # Recalculate spending and distance based on actual rental distribution
-                total_predicted_spending = sum(
-                    a["predicted_cost"] * a["rentals"] for a in period_allocations
-                )
-                total_predicted_distance = sum(
-                    a["predicted_distance"] * a["rentals"] for a in period_allocations
-                )
-        else:
-            # No rentals predicted, set spending and distance to 0
-            total_predicted_spending = 0.0
-            total_predicted_distance = 0.0
+                # Keep probability-weighted totals: allocations are display-only.
         
         avg_distance = total_predicted_distance / max(1, total_predicted_rentals) if total_predicted_rentals > 0 else 0.0
         
@@ -4565,7 +4555,6 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
         else:  # monthly
             total_predicted_rentals_raw = ts_model["avg_monthly_rentals"] * date_range_months
         
-        # Round total rentals to whole number
         total_predicted_rentals = round(total_predicted_rentals_raw)
         
         # Estimate spending and distance from historical averages

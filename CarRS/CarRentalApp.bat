@@ -1,20 +1,12 @@
 @echo off
+cd /d "%~dp0"
 echo ================================================
-echo  CAR RENTAL RECOMMENDATION SYSTEM (ENHANCED)
+echo  CAR RENTAL RECOMMENDATION SYSTEM
 echo ================================================
 echo.
-
-echo Installing required packages...
-pip install -r requirements.txt
-
-echo.
-echo Starting the enhanced application with:
-echo  - Automatic data loading from 22 - Sheet1.csv
-echo  - Fixed data analysis features
-echo  - Separated duration and fuel costs in recommendations
-echo  (Even when entering new values and clicking "Get Recommendations")
+echo Starting the car rental recommender...
+echo Costs use pricing_config.json by default.
 echo.
 
-python fixed_car_loader.py
-
+python car_rental_recommender_gui.py
 pause

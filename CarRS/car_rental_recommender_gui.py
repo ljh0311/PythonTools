@@ -64,6 +64,7 @@ from car_rental_recommender_core import (
     validate_date_range,
 )
 from components import LoadingDialog, GUIHelper, OllamaHelper
+from mvp_cost_engine import get_mvp_recommendations
 
 
 def set_modern_theme(root):
@@ -367,11 +368,14 @@ class CarRentalRecommenderApp:
         ai_settings_inner = ttk.Frame(ai_frame)
         ai_settings_inner.pack(fill=tk.X, padx=(10, 0), pady=(2, 0))
         
-        self.use_ml_var = tk.BooleanVar(value=True)
+        self.use_ml_var = tk.BooleanVar(value=False)
         GUIHelper.create_checkbutton(ai_settings_inner, "Use Machine Learning", self.use_ml_var)
         
         self.use_ollama_var = tk.BooleanVar(value=False)
         GUIHelper.create_checkbutton(ai_settings_inner, "Use Ollama LLM", self.use_ollama_var)
+        self.mode_status_var = tk.StringVar()
+        self.use_ml_var.trace_add("write", lambda *_: self._update_recommendation_mode_status())
+        self.use_ollama_var.trace_add("write", lambda *_: self._update_recommendation_mode_status())
         
         # Ollama model selection with refresh button
         ollama_model_frame = ttk.Frame(ai_settings_inner)
@@ -454,6 +458,14 @@ class CarRentalRecommenderApp:
         # --- Right: Recommendations, Error Log, Results, Chart, Data Source ---
         right_panel = ttk.LabelFrame(container, text="Recommendations", padding=(10, 5))
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0), pady=5)
+
+        ttk.Label(
+            right_panel,
+            textvariable=self.mode_status_var,
+            foreground="#666666",
+            font=("Segoe UI", 9),
+        ).pack(anchor=tk.W, padx=5, pady=(0, 5))
+        self._update_recommendation_mode_status()
 
         # Error log
         error_frame = ttk.LabelFrame(right_panel, text="Error Log", padding=(5, 5))
@@ -867,6 +879,15 @@ class CarRentalRecommenderApp:
         if hasattr(self, "recommendation_region_label"):
             region = self._get_current_region()
             self.recommendation_region_label.config(text=f"Showing recommendations for: {region}")
+
+    def _update_recommendation_mode_status(self):
+        """Show whether recommendations use pricing only or optional AI."""
+        if not hasattr(self, "mode_status_var"):
+            return
+        if self.use_ml_var.get() or self.use_ollama_var.get():
+            self.mode_status_var.set("Cost estimates: pricing config (AI optional)")
+        else:
+            self.mode_status_var.set("Cost estimates: pricing config (non-AI)")
 
     def _update_pref_region_label(self):
         """Update the User Preference tab region label."""
@@ -1545,7 +1566,9 @@ class CarRentalRecommenderApp:
             )
             return
 
-        if self.df is None or self.df.empty:
+        use_ml = self.use_ml_var.get() if hasattr(self, "use_ml_var") else False
+        use_ollama = self.use_ollama_var.get() if hasattr(self, "use_ollama_var") else False
+        if (self.df is None or self.df.empty) and (use_ml or use_ollama):
             self.add_bot_message(
                 "❌ I need rental data to provide recommendations. Please load a data file first using the 'Browse...' button."
             )
@@ -1564,7 +1587,7 @@ class CarRentalRecommenderApp:
                     is_weekend = self.is_weekend_var.get()
                 
                 selected_cat = self.car_cat_var.get()
-                use_ml = self.use_ml_var.get() if hasattr(self, "use_ml_var") else True
+                use_ml = self.use_ml_var.get() if hasattr(self, "use_ml_var") else False
                 use_ollama = (
                     self.use_ollama_var.get() if hasattr(self, "use_ollama_var") else False
                 )
@@ -1590,46 +1613,40 @@ class CarRentalRecommenderApp:
                 else:
                     space_requirements = self.chat_state.get("space_requirements", "little")
 
-                # Get enhanced recommendations (region-aware)
+                # Default to configured prices; AI paths retain their existing behavior.
                 region = self.current_region_var.get() if hasattr(self, "current_region_var") else "Singapore"
                 if region not in VALID_REGIONS:
                     region = "Singapore"
-                cost_analysis = self.cost_analysis
-                if cost_analysis is None:
-                    loading.update_message("Creating cost analysis...")
-                    cost_analysis = create_complete_cost_analysis(self.df, region=region)
-
-                # Load pricing config
-                try:
-                    with open("pricing_config.json", "r") as f:
-                        pricing_config = json.load(f)
-                except:
-                    pricing_config = None
-
                 loading.update_message("Generating recommendations...")
-                try:
-                    from car_rental_recommender_core import get_ollama_enhanced_recommendations
-                    recommendations = get_ollama_enhanced_recommendations(
-                        distance,
-                        duration,
-                        self.df,
-                        cost_analysis,
-                        is_weekend,
-                        top_n=10,
-                        use_ollama=use_ollama,
-                        ollama_model=ollama_model,
-                        use_ml=use_ml,
-                        passenger_count=passenger_count,
-                        space_requirements=space_requirements,
-                        rental_timing=self.chat_state.get("rental_timing"),
-                        pricing_config=pricing_config
+                cost_analysis = self.cost_analysis
+                if not use_ml and not use_ollama:
+                    recommendations = get_mvp_recommendations(
+                        distance, duration, is_weekend, region
                     )
-                    print(f"Generated {len(recommendations)} recommendations")
-                except Exception as e:
-                    error_msg = f"Ollama LLM is not available: {str(e)}"
-                    print(f"Recommendation error: {error_msg}")
-                    if use_ollama:
-                        # Fallback without Ollama
+                else:
+                    if cost_analysis is None:
+                        loading.update_message("Creating cost analysis...")
+                        cost_analysis = create_complete_cost_analysis(self.df, region=region)
+                    try:
+                        with open("pricing_config.json", "r") as f:
+                            pricing_config = json.load(f)
+                    except:
+                        pricing_config = None
+                    try:
+                        recommendations = get_ollama_enhanced_recommendations(
+                            distance, duration, self.df, cost_analysis, is_weekend,
+                            top_n=10, use_ollama=use_ollama, ollama_model=ollama_model,
+                            use_ml=use_ml, passenger_count=passenger_count,
+                            space_requirements=space_requirements,
+                            rental_timing=self.chat_state.get("rental_timing"),
+                            pricing_config=pricing_config,
+                        )
+                        print(f"Generated {len(recommendations)} recommendations")
+                    except Exception as e:
+                        error_msg = f"Ollama LLM is not available: {str(e)}"
+                        print(f"Recommendation error: {error_msg}")
+                        if not use_ollama:
+                            raise
                         recommendations = get_ollama_enhanced_recommendations(
                             distance,
                             duration,
@@ -1645,9 +1662,6 @@ class CarRentalRecommenderApp:
                             rental_timing=self.chat_state.get("rental_timing"),
                             pricing_config=pricing_config
                         )
-                    else:
-                        raise e
-
                 # Filter recommendations by selected category if not "All"
                 if selected_cat != "All":
                     recommendations = [
@@ -7360,7 +7374,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                 "hour_rate": 8.0,
                 "pricing_type": "mileage",
             },
-            "Getgo EV": {
+            "Getgo(EV)": {
                 "mileage_rate": 0.35,
                 "hour_rate": 9.0,
                 "pricing_type": "mileage",
@@ -7407,7 +7421,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         ttk.Label(instructions_frame, text=instructions_text, font=("Arial", 10)).pack()
 
         # Create pricing input frames for each provider
-        providers = ["Getgo", "Getgo EV", "Tribecar", "Car Club", "Econ", "Stand"]
+        providers = ["Getgo", "Getgo(EV)", "Tribecar", "Car Club", "Econ", "Stand"]
 
         def create_pricing_fields(provider, parent_frame):
             def add_labeled_entry(
@@ -7576,7 +7590,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
 
     def update_pricing_data_from_inputs(self):
         """Update pricing data from current input fields (Singapore providers + SoCar)"""
-        providers = ["Getgo", "Getgo EV", "Tribecar", "Car Club", "Econ", "Stand"]
+        providers = ["Getgo", "Getgo(EV)", "Tribecar", "Car Club", "Econ", "Stand"]
         for provider in providers:
             if provider not in self.pricing_data:
                 continue
@@ -7669,7 +7683,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
 
     default_pricing = {
         "Getgo": {"mileage_rate": 0.39, "hour_rate": 8.0, "pricing_type": "mileage"},
-        "Getgo EV": {"mileage_rate": 0.35, "hour_rate": 9.0, "pricing_type": "mileage"},
+        "Getgo(EV)": {"mileage_rate": 0.35, "hour_rate": 9.0, "pricing_type": "mileage"},
         "Tribecar": {"usual_fuel_amount": 20, "hour_rate": 8.5, "pricing_type": "fuel"},
         "Car Club": {"mileage_rate": 0.30, "hour_rate": 9.5, "pricing_type": "mileage"},
         "Econ": {"usual_fuel_amount": 15, "hour_rate": 7.5, "pricing_type": "fuel"},
@@ -7699,6 +7713,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
 
     def migrate_pricing_data(self, loaded_data):
         """Migrate old pricing data structure to new structure"""
+        if "Getgo EV" in loaded_data and "Getgo(EV)" not in loaded_data:
+            loaded_data = {**loaded_data, "Getgo(EV)": loaded_data["Getgo EV"]}
         migrated_data = {}
         for provider, default_config in self.default_pricing.items():
             if provider in loaded_data:
