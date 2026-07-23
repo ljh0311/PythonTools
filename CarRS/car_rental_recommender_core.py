@@ -586,7 +586,7 @@ def get_recommendations(distance, duration, cost_analysis, is_weekend=False, top
 def get_pricing_recommendations(distance, duration, region="Singapore", is_weekend=False):
     """Return comparable formula-priced providers without requiring rental data."""
     recommendations = []
-    for provider in list_comparable_providers(region):
+    for provider in get_providers_for_region(region):
         cost = calculate_estimated_cost(distance, duration, provider, is_weekend=is_weekend)
         if cost is not None:
             recommendations.append(
@@ -4497,7 +4497,7 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
         total_predicted_spending = sum(p["predicted_cost"] * p["rental_probability"] for p in ml_preds)
         total_predicted_distance = sum(p["predicted_distance"] * p["rental_probability"] for p in ml_preds)
         
-        total_predicted_rentals = safe_predicted_rental_total(
+        total_predicted_rentals = _display_predicted_rental_total(
             total_predicted_rentals_raw, ml_preds
         )
         
