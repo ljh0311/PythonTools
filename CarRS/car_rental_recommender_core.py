@@ -7,6 +7,11 @@ import json
 from typing import List, Dict, Optional
 import re
 from datetime import datetime, timedelta
+from components.provider_pricing import (
+    coerce_predicted_rental_total,
+    estimate_provider_cost,
+    normalize_provider,
+)
 # Region and provider constants: Singapore vs Malaysia categories kept separate
 VALID_REGIONS = ("Singapore", "Malaysia")
 SINGAPORE_PROVIDERS = ["Getgo", "Car Club", "Econ", "Stand", "Getgo(EV)"]
@@ -483,6 +488,12 @@ def calculate_estimated_cost(
     distance, duration, provider, car_model=None, cost_analysis=None, is_weekend=False, pricing_config=None
 ):
     """Calculate estimated cost for a rental using pricing_config.json rates"""
+    configured_cost = estimate_provider_cost(
+        distance, duration, normalize_provider(provider), is_weekend
+    )
+    if configured_cost is not None:
+        return configured_cost
+
     provider = normalize_pricing_provider(provider)
     config = _load_pricing_config(pricing_config).get(provider)
     if config:
@@ -4497,8 +4508,9 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
         total_predicted_spending = sum(p["predicted_cost"] * p["rental_probability"] for p in ml_preds)
         total_predicted_distance = sum(p["predicted_distance"] * p["rental_probability"] for p in ml_preds)
         
-        total_predicted_rentals = _display_predicted_rental_total(
-            total_predicted_rentals_raw, ml_preds
+        total_predicted_rentals = coerce_predicted_rental_total(
+            total_predicted_rentals_raw,
+            [prediction["rental_probability"] for prediction in ml_preds],
         )
         
         # Distribute rounded rentals across periods proportionally using largest remainder method
