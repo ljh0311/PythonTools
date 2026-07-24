@@ -10,6 +10,7 @@ from backend.config import DASHBOARD_API_KEY
 from backend.models.store import store
 from backend.routes.deps import verify_operator
 from backend.services.ai_service import ai_service
+from backend.services.profile_learner import learn_from_chat as profile_learn_from_chat
 from backend.services.auth_service import validate_token
 from backend.services.ai_rate_limiter import RateLimitExceeded, ai_rate_limiter
 from backend.services.mtproto_service import mtproto_service
@@ -444,28 +445,22 @@ async def learn_from_chat(chat_id: int) -> dict[str, Any]:
     messages = store.get_messages_by_chat_id(chat_id)
     if not messages:
         raise HTTPException(status_code=404, detail="No messages for this chat")
-    recent = messages[-80:]
-    chat_type = recent[-1].get("chat_type")
-    chat_title = recent[-1].get("chat_title")
-    learned = await ai_service.learn_from_thread(
-        recent, chat_type=chat_type, chat_title=chat_title
-    )
+    chat_meta = {
+        "chat_type": messages[-1].get("chat_type"),
+        "chat_title": messages[-1].get("chat_title"),
+    }
+    try:
+        learned = await profile_learn_from_chat(chat_id, messages, chat_meta)
+    except RateLimitExceeded as exc:
+        _raise_ai_http_error(exc)
     saved = store.update_chat_settings(
         chat_id,
-        relationship=learned["relationship"],
-        relationship_source=learned.get("source", "ai"),
-        ai_context=learned.get("ai_context", ""),
+        relationship=learned.relationship,
+        relationship_source=learned.relationship_source,
+        ai_context=learned.ai_context,
     )
     await ws_manager.broadcast("chat_reply_updated", saved)
-    return {
-        "settings": saved,
-        "learn": {
-            "message_count": len(recent),
-            "facts": learned.get("facts", []),
-            "source": learned.get("source", "ai"),
-            "degraded": bool(learned.get("degraded")),
-        },
-    }
+    return {"settings": saved, "learn": learned.to_learn_meta()}
 
 
 @router.get("/chats/{chat_id}/memories", dependencies=[Depends(verify_operator)])

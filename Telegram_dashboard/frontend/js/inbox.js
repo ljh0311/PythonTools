@@ -88,7 +88,7 @@ function renderTopicChips(topics = []) {
   return `<div class="topic-chips">${topics
     .map(
       (topic) =>
-        `<span class="topic-chip ${topic.source || "manual"}">${escapeHtml(topic.name)}</span>`
+        `<span class="topic-chip ${topic.source || "manual"}">${escapeHtml(topic.name)}</span>`,
     )
     .join("")}</div>`;
 }
@@ -128,14 +128,24 @@ export function readFiltersFromUrl() {
   }
   inboxState.view = params.get("view") === "flat" ? "flat" : "threads";
   const userIds = params.get("user_ids");
-  inboxState.filters.userIds = userIds ? userIds.split(",").filter(Boolean) : [];
+  inboxState.filters.userIds = userIds
+    ? userIds.split(",").filter(Boolean)
+    : [];
   inboxState.offset = Number(params.get("offset") || 0);
 }
 
 export function writeFiltersToUrl() {
   const params = new URLSearchParams();
-  const { q, userIds, chatType, direction, ingestionSource, topics, dateFrom, dateTo } =
-    inboxState.filters;
+  const {
+    q,
+    userIds,
+    chatType,
+    direction,
+    ingestionSource,
+    topics,
+    dateFrom,
+    dateTo,
+  } = inboxState.filters;
   if (q) params.set("q", q);
   if (userIds.length) params.set("user_ids", userIds.join(","));
   if (chatType) params.set("chat_type", chatType);
@@ -154,11 +164,14 @@ export function writeFiltersToUrl() {
 export function syncFilterForm() {
   document.getElementById("inbox-search").value = inboxState.filters.q;
   document.getElementById("inbox-topics").value = inboxState.filters.topics;
-  document.getElementById("inbox-chat-type").value = inboxState.filters.chatType;
-  document.getElementById("inbox-direction").value = inboxState.filters.direction;
+  document.getElementById("inbox-chat-type").value =
+    inboxState.filters.chatType;
+  document.getElementById("inbox-direction").value =
+    inboxState.filters.direction;
   const sourceEl = document.getElementById("inbox-source");
   if (sourceEl) sourceEl.value = inboxState.filters.ingestionSource;
-  document.getElementById("inbox-date-from").value = inboxState.filters.dateFrom;
+  document.getElementById("inbox-date-from").value =
+    inboxState.filters.dateFrom;
   document.getElementById("inbox-date-to").value = inboxState.filters.dateTo;
   document.getElementById("inbox-view").value = inboxState.view;
 
@@ -191,17 +204,18 @@ function renderTopicFilterChips(topics = []) {
   const strip = document.getElementById("topic-filter-chips");
   if (!strip) return;
   const top = topics.slice(0, TOPIC_CHIP_LIMIT);
+  strip.hidden = false;
   if (!top.length) {
-    strip.hidden = true;
-    strip.innerHTML = "";
+    strip.innerHTML = `<p class="topic-filter-empty">No topic tags yet. Click <strong>Generate AI tags</strong> to create them.</p>`;
     return;
   }
-  strip.hidden = false;
   strip.innerHTML = top
-    .map(
-      (topic) =>
-        `<button type="button" class="topic-filter-chip" data-topic="${escapeHtml(topic.name)}" title="${topic.message_count} message${topic.message_count === 1 ? "" : "s"}">${escapeHtml(topic.name)}</button>`
-    )
+    .map((topic) => {
+      const active =
+        inboxState.filters.topics?.trim().toLowerCase() ===
+        topic.name.toLowerCase();
+      return `<button type="button" class="topic-filter-chip${active ? " active" : ""}" data-topic="${escapeHtml(topic.name)}" title="${topic.message_count} message${topic.message_count === 1 ? "" : "s"}">${escapeHtml(topic.name)} <span class="topic-filter-count">${topic.message_count}</span></button>`;
+    })
     .join("");
 }
 
@@ -221,6 +235,15 @@ export async function runTopicBackfill({ onError, onNotify, limit = 50 } = {}) {
   try {
     const result = await api.backfillTopics({ limit, enable_ai_mode: true });
     await loadTopicSuggestions();
+    // Keep Workflow UI in sync when backfill switches to ai_assign.
+    try {
+      const topic = await api.getTopicMode();
+      workflowState.topicMode = topic.mode;
+      const select = document.getElementById("topic-mode");
+      if (select) select.value = topic.mode;
+    } catch {
+      /* optional */
+    }
     onNotify?.(`Tagged ${result.tagged} of ${result.processed} messages.`);
     return result;
   } catch (error) {
@@ -252,7 +275,7 @@ export function renderUserFilter(users = []) {
   select.innerHTML = users
     .map(
       (user) =>
-        `<option value="${user.user_id}">${escapeHtml(user.display_name)} (${user.message_count})</option>`
+        `<option value="${user.user_id}">${escapeHtml(user.display_name)} (${user.message_count})</option>`,
     )
     .join("");
   syncFilterForm();
@@ -278,16 +301,15 @@ function renderThreadMessages(messages) {
         </div>
         ${renderTopicChips(item.topics)}
         <div class="message-text">${escapeHtml(item.text)}</div>
-      </li>`
+      </li>`,
     )
     .join("");
 }
 
 function emptyInboxHtml(view = "threads") {
-  const topicHint =
-    inboxState.filters.topics && workflowState.topicMode === "ai_assign"
-      ? " AI assign mode only matches AI topic tags — switch to User type in Workflow, or use the message search box."
-      : "";
+  const topicHint = inboxState.filters.topics
+    ? " AI expands your words into related tags and message text."
+    : "";
   return buildInboxEmptyHtml({
     filters: inboxState.filters,
     view,
@@ -317,7 +339,7 @@ function renderFlatMessages(messages = []) {
             ? `<div class="message-actions"><button type="button" class="btn btn-ghost btn-sm reply-btn" data-chat-id="${item.chat_id}">Reply</button></div>`
             : ""
         }
-      </li>`
+      </li>`,
     )
     .join("")}</ul>`;
 }
@@ -325,7 +347,9 @@ function renderFlatMessages(messages = []) {
 function renderThreadContext(thread) {
   if (!thread.chat_id) return "";
 
-  const expanded = inboxState.expandedContextChatIds.has(Number(thread.chat_id));
+  const expanded = inboxState.expandedContextChatIds.has(
+    Number(thread.chat_id),
+  );
   const notes = thread.ai_context || "";
   const preview = notes
     ? escapeHtml(notes.length > 120 ? `${notes.slice(0, 120)}…` : notes)
@@ -335,9 +359,14 @@ function renderThreadContext(thread) {
     <div class="thread-context" data-chat-id="${thread.chat_id}">
       <div class="thread-context-toolbar">
         <strong>Your context</strong>
-        <button type="button" class="btn btn-ghost btn-sm toggle-thread-context" data-chat-id="${thread.chat_id}">
-          ${expanded ? "Hide" : notes ? "Edit" : "Add"}
-        </button>
+        <div class="relationship-actions">
+          <button type="button" class="btn btn-ghost btn-sm learn-thread-context" data-chat-id="${thread.chat_id}" title="Learn relationship and drafting context from messages">
+            Learn from chat
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm toggle-thread-context" data-chat-id="${thread.chat_id}">
+            ${expanded ? "Hide" : notes ? "Edit" : "Add"}
+          </button>
+        </div>
       </div>
       <p class="thread-context-preview" ${expanded ? "hidden" : ""}>${preview}</p>
       <div class="thread-context-editor" ${expanded ? "" : "hidden"}>
@@ -433,7 +462,9 @@ function updateInboxCount(total, shownCount) {
 
   const loadMoreBtn = document.getElementById("inbox-load-more");
   loadMoreBtn.textContent =
-    inboxState.view === "flat" ? "Load more messages" : "Load more conversations";
+    inboxState.view === "flat"
+      ? "Load more messages"
+      : "Load more conversations";
   loadMoreBtn.disabled = inboxState.offset + shownCount >= total;
   loadMoreBtn.hidden = inboxState.offset + shownCount >= total;
 }
@@ -498,7 +529,8 @@ async function loadCachedThreadSummary(thread, index) {
   const summaryEl = document.getElementById(`summary-${chatId}`);
   if (!summaryEl || !thread.chat_id || thread.messages.length < 1) {
     if (summaryEl) {
-      summaryEl.querySelector(".summary-body").innerHTML = "<em>No summary available.</em>";
+      summaryEl.querySelector(".summary-body").innerHTML =
+        "<em>No summary available.</em>";
     }
     return;
   }
@@ -514,7 +546,11 @@ async function loadCachedThreadSummary(thread, index) {
   }
 }
 
-async function requestThreadSummary(chatId, messageIds, { force = false, summaryEl } = {}) {
+async function requestThreadSummary(
+  chatId,
+  messageIds,
+  { force = false, summaryEl } = {},
+) {
   const btn = summaryEl?.querySelector(".summarize-thread-btn");
   const body = summaryEl?.querySelector(".summary-body");
   if (btn) {
@@ -542,7 +578,9 @@ async function requestThreadSummary(chatId, messageIds, { force = false, summary
 }
 
 async function loadCachedSummariesForThreads(threads) {
-  await Promise.all(threads.map((thread, index) => loadCachedThreadSummary(thread, index)));
+  await Promise.all(
+    threads.map((thread, index) => loadCachedThreadSummary(thread, index)),
+  );
 }
 
 export function clearInboxFilters(onError) {
@@ -586,7 +624,9 @@ export async function loadInbox({ append = false } = {}) {
 
   if (inboxState.view === "flat") {
     const result = await api.getMessages(params);
-    const messages = append ? [...inboxState.messages, ...result.items] : result.items;
+    const messages = append
+      ? [...inboxState.messages, ...result.items]
+      : result.items;
     inboxState.messages = messages;
     renderFlatMessages(messages);
     updateInboxCount(result.total, messages.length);
@@ -595,7 +635,9 @@ export async function loadInbox({ append = false } = {}) {
   }
 
   const result = await api.getInboxThreads(params);
-  const threads = append ? [...inboxState.threads, ...result.threads] : result.threads;
+  const threads = append
+    ? [...inboxState.threads, ...result.threads]
+    : result.threads;
   renderInboxThreads(threads, result.total);
   writeFiltersToUrl();
   await loadCachedSummariesForThreads(append ? result.threads : threads);
@@ -641,7 +683,10 @@ function applyFiltersNow(onError) {
 
 function scheduleFilterApply(onError) {
   clearTimeout(filterDebounceTimer);
-  filterDebounceTimer = setTimeout(() => applyFiltersNow(onError), FILTER_DEBOUNCE_MS);
+  filterDebounceTimer = setTimeout(
+    () => applyFiltersNow(onError),
+    FILTER_DEBOUNCE_MS,
+  );
 }
 
 function bindFilterInput(id, onError) {
@@ -651,7 +696,11 @@ function bindFilterInput(id, onError) {
   el.addEventListener("input", () => scheduleFilterApply(onError));
 }
 
-function handleEmptyStateAction(action, button, { onError, onOpenTools, onRefresh } = {}) {
+function handleEmptyStateAction(
+  action,
+  button,
+  { onError, onOpenTools, onRefresh } = {},
+) {
   if (action === "clear-filters") {
     clearInboxFilters(onError);
     return true;
@@ -666,7 +715,9 @@ function handleEmptyStateAction(action, button, { onError, onOpenTools, onRefres
     return true;
   }
   if (action === "toggle-connect-details") {
-    const details = button.closest(".empty-thread-setup")?.querySelector(".empty-thread-details");
+    const details = button
+      .closest(".empty-thread-setup")
+      ?.querySelector(".empty-thread-details");
     if (!details) return true;
     const open = details.hidden;
     details.hidden = !open;
@@ -677,7 +728,12 @@ function handleEmptyStateAction(action, button, { onError, onOpenTools, onRefres
   return false;
 }
 
-export function bindInbox(onReply, onError, onNotify, { onOpenTools, onRefresh } = {}) {
+export function bindInbox(
+  onReply,
+  onError,
+  onNotify,
+  { onOpenTools, onRefresh } = {},
+) {
   readFiltersFromUrl();
   syncFilterForm();
   loadPresets().catch(onError);
@@ -686,15 +742,21 @@ export function bindInbox(onReply, onError, onNotify, { onOpenTools, onRefresh }
   const toggleBtn = document.getElementById("toggle-filters");
   const advanced = document.getElementById("advanced-filters");
   toggleBtn?.addEventListener("click", () => {
-    const open = advanced.hidden;
-    advanced.hidden = !open;
-    toggleBtn.setAttribute("aria-expanded", String(open));
-    toggleBtn.classList.toggle("active", open);
+    const willOpen = advanced.hasAttribute("hidden");
+    if (willOpen) {
+      advanced.removeAttribute("hidden");
+    } else {
+      advanced.setAttribute("hidden", "");
+    }
+    toggleBtn.setAttribute("aria-expanded", String(willOpen));
+    toggleBtn.classList.toggle("active", willOpen);
   });
 
   initAiPanel();
 
-  document.getElementById("inbox-apply").addEventListener("click", () => applyFiltersNow(onError));
+  document
+    .getElementById("inbox-apply")
+    .addEventListener("click", () => applyFiltersNow(onError));
 
   document.getElementById("inbox-clear").addEventListener("click", () => {
     clearInboxFilters(onError);
@@ -703,16 +765,20 @@ export function bindInbox(onReply, onError, onNotify, { onOpenTools, onRefresh }
   bindFilterInput("inbox-search", onError);
   bindFilterInput("inbox-topics", onError);
 
-  document.getElementById("topic-filter-chips")?.addEventListener("click", (event) => {
-    const chip = event.target.closest(".topic-filter-chip");
-    if (!chip) return;
-    document.getElementById("inbox-topics").value = chip.dataset.topic || "";
-    applyFiltersNow(onError);
-  });
+  document
+    .getElementById("topic-filter-chips")
+    ?.addEventListener("click", (event) => {
+      const chip = event.target.closest(".topic-filter-chip");
+      if (!chip) return;
+      document.getElementById("inbox-topics").value = chip.dataset.topic || "";
+      applyFiltersNow(onError);
+    });
 
-  document.getElementById("inbox-backfill-topics")?.addEventListener("click", () => {
-    runTopicBackfill({ onError, onNotify }).catch(onError);
-  });
+  document
+    .getElementById("inbox-backfill-topics")
+    ?.addEventListener("click", () => {
+      runTopicBackfill({ onError, onNotify }).catch(onError);
+    });
 
   document.getElementById("inbox-view").addEventListener("change", () => {
     collectFiltersFromForm();
@@ -724,104 +790,159 @@ export function bindInbox(onReply, onError, onNotify, { onOpenTools, onRefresh }
     loadInbox({ append: true }).catch(onError);
   });
 
-  document.getElementById("messages-feed").addEventListener("click", (event) => {
-    const emptyActionBtn = event.target.closest("[data-empty-action]");
-    if (emptyActionBtn) {
-      handleEmptyStateAction(emptyActionBtn.dataset.emptyAction, emptyActionBtn, {
-        onError,
-        onOpenTools,
-        onRefresh,
-      });
-      return;
-    }
-
-    const toggleContextBtn = event.target.closest(".toggle-thread-context");
-    if (toggleContextBtn) {
-      const chatId = Number(toggleContextBtn.dataset.chatId);
-      if (inboxState.expandedContextChatIds.has(chatId)) {
-        inboxState.expandedContextChatIds.delete(chatId);
-      } else {
-        inboxState.expandedContextChatIds.add(chatId);
+  document
+    .getElementById("messages-feed")
+    .addEventListener("click", (event) => {
+      const emptyActionBtn = event.target.closest("[data-empty-action]");
+      if (emptyActionBtn) {
+        handleEmptyStateAction(
+          emptyActionBtn.dataset.emptyAction,
+          emptyActionBtn,
+          {
+            onError,
+            onOpenTools,
+            onRefresh,
+          },
+        );
+        return;
       }
-      renderInboxThreads(inboxState.threads, inboxState.total);
-      return;
-    }
 
-    const saveContextBtn = event.target.closest(".save-thread-context");
-    if (saveContextBtn) {
-      const chatId = Number(saveContextBtn.dataset.chatId);
-      const textarea = document.querySelector(`.thread-context-input[data-chat-id="${chatId}"]`);
-      const aiContext = textarea?.value.trim() ?? "";
-      saveContextBtn.disabled = true;
-      api
-        .updateChatSettings(chatId, { ai_context: aiContext })
-        .then((saved) => {
-          const thread = inboxState.threads.find((item) => Number(item.chat_id) === chatId);
-          if (thread) {
-            thread.ai_context = saved.ai_context || "";
-          }
+      const toggleContextBtn = event.target.closest(".toggle-thread-context");
+      if (toggleContextBtn) {
+        const chatId = Number(toggleContextBtn.dataset.chatId);
+        if (inboxState.expandedContextChatIds.has(chatId)) {
           inboxState.expandedContextChatIds.delete(chatId);
-          renderInboxThreads(inboxState.threads, inboxState.total);
-          onNotify?.("Chat context saved.");
-        })
-        .catch(onError)
-        .finally(() => {
-          saveContextBtn.disabled = false;
-        });
-      return;
-    }
+        } else {
+          inboxState.expandedContextChatIds.add(chatId);
+        }
+        renderInboxThreads(inboxState.threads, inboxState.total);
+        return;
+      }
 
-    const summarizeBtn = event.target.closest(".summarize-thread-btn");
-    if (summarizeBtn) {
-      const chatId = Number(summarizeBtn.dataset.chatId);
-      const messageIds = (summarizeBtn.dataset.messageIds || "")
-        .split(",")
-        .filter(Boolean)
-        .map(Number);
-      const summaryEl = document.getElementById(`summary-${chatId}`);
-      const force = summarizeBtn.textContent.toLowerCase().includes("refresh");
-      requestThreadSummary(chatId, messageIds, { force, summaryEl }).catch(onError);
-      return;
-    }
+      const learnContextBtn = event.target.closest(".learn-thread-context");
+      if (learnContextBtn) {
+        const chatId = Number(learnContextBtn.dataset.chatId);
+        learnContextBtn.disabled = true;
+        api
+          .learnFromChat(chatId)
+          .then((result) => {
+            const saved = result.settings || result;
+            const thread = inboxState.threads.find(
+              (item) => Number(item.chat_id) === chatId,
+            );
+            if (thread) {
+              thread.ai_context = saved.ai_context || "";
+            }
+            inboxState.expandedContextChatIds.add(chatId);
+            renderInboxThreads(inboxState.threads, inboxState.total);
+            const facts = result.learn?.facts?.length || 0;
+            const msgs = result.learn?.message_count || 0;
+            const note = result.learn?.degraded ? " (heuristic fallback)" : "";
+            onNotify?.(
+              `Learned from ${msgs} messages${facts ? `, ${facts} facts` : ""}${note}.`,
+            );
+          })
+          .catch(onError)
+          .finally(() => {
+            learnContextBtn.disabled = false;
+          });
+        return;
+      }
 
-    const button = event.target.closest(".reply-btn");
-    if (!button) return;
-    onReply(button.dataset.chatId);
-  });
+      const saveContextBtn = event.target.closest(".save-thread-context");
+      if (saveContextBtn) {
+        const chatId = Number(saveContextBtn.dataset.chatId);
+        const textarea = document.querySelector(
+          `.thread-context-input[data-chat-id="${chatId}"]`,
+        );
+        const aiContext = textarea?.value.trim() ?? "";
+        saveContextBtn.disabled = true;
+        api
+          .updateChatSettings(chatId, { ai_context: aiContext })
+          .then((saved) => {
+            const thread = inboxState.threads.find(
+              (item) => Number(item.chat_id) === chatId,
+            );
+            if (thread) {
+              thread.ai_context = saved.ai_context || "";
+            }
+            inboxState.expandedContextChatIds.delete(chatId);
+            renderInboxThreads(inboxState.threads, inboxState.total);
+            onNotify?.("Chat context saved.");
+          })
+          .catch(onError)
+          .finally(() => {
+            saveContextBtn.disabled = false;
+          });
+        return;
+      }
 
-  document.getElementById("inbox-presets")?.addEventListener("change", (event) => {
-    if (!event.target.value) return;
-    applyPreset(event.target.value);
-    loadInbox().catch(onError);
-  });
+      const summarizeBtn = event.target.closest(".summarize-thread-btn");
+      if (summarizeBtn) {
+        const chatId = Number(summarizeBtn.dataset.chatId);
+        const messageIds = (summarizeBtn.dataset.messageIds || "")
+          .split(",")
+          .filter(Boolean)
+          .map(Number);
+        const summaryEl = document.getElementById(`summary-${chatId}`);
+        const force = summarizeBtn.textContent
+          .toLowerCase()
+          .includes("refresh");
+        requestThreadSummary(chatId, messageIds, { force, summaryEl }).catch(
+          onError,
+        );
+        return;
+      }
 
-  document.getElementById("inbox-save-preset")?.addEventListener("click", async () => {
-    const name = window.prompt("Preset name (e.g. VIP today)");
-    if (!name) return;
-    collectFiltersFromForm();
-    await api.savePreset(name, { ...inboxState.filters, view: inboxState.view });
-    await loadPresets();
-  });
+      const button = event.target.closest(".reply-btn");
+      if (!button) return;
+      onReply(button.dataset.chatId);
+    });
 
-  document.getElementById("inbox-delete-preset")?.addEventListener("click", async () => {
-    const select = document.getElementById("inbox-presets");
-    if (!select.value) return;
-    await api.deletePreset(Number(select.value));
-    await loadPresets();
-  });
+  document
+    .getElementById("inbox-presets")
+    ?.addEventListener("change", (event) => {
+      if (!event.target.value) return;
+      applyPreset(event.target.value);
+      loadInbox().catch(onError);
+    });
 
-  document.getElementById("inbox-export")?.addEventListener("click", async () => {
-    collectFiltersFromForm();
-    const params = buildFilterParams();
-    const csv = await api.exportMessages(params);
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "messages-export.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-  });
+  document
+    .getElementById("inbox-save-preset")
+    ?.addEventListener("click", async () => {
+      const name = window.prompt("Preset name (e.g. VIP today)");
+      if (!name) return;
+      collectFiltersFromForm();
+      await api.savePreset(name, {
+        ...inboxState.filters,
+        view: inboxState.view,
+      });
+      await loadPresets();
+    });
+
+  document
+    .getElementById("inbox-delete-preset")
+    ?.addEventListener("click", async () => {
+      const select = document.getElementById("inbox-presets");
+      if (!select.value) return;
+      await api.deletePreset(Number(select.value));
+      await loadPresets();
+    });
+
+  document
+    .getElementById("inbox-export")
+    ?.addEventListener("click", async () => {
+      collectFiltersFromForm();
+      const params = buildFilterParams();
+      const csv = await api.exportMessages(params);
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "messages-export.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    });
 }
 
 function initAiPanel() {
@@ -843,7 +964,9 @@ function initAiPanel() {
     }
   }
 
-  toggleBtn.addEventListener("click", () => setOpen(!layout.classList.contains("ai-panel-open")));
+  toggleBtn.addEventListener("click", () =>
+    setOpen(!layout.classList.contains("ai-panel-open")),
+  );
   closeBtn?.addEventListener("click", () => setOpen(false));
   backdrop?.addEventListener("click", () => setOpen(false));
   window.addEventListener("resize", () => {
