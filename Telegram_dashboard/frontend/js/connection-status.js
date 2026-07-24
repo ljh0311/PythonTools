@@ -275,50 +275,75 @@ export function renderSetupWarnings(warnings = []) {
   });
 }
 
+function updateComposeIdentityChip(botStatus, botReady) {
+  const chip = document.getElementById("compose-identity-chip");
+  if (!chip) return;
+
+  chip.classList.remove("identity-chip-unavailable", "identity-chip-bot");
+  if (!botReady) {
+    chip.textContent = "Bot unavailable";
+    chip.classList.add("identity-chip-unavailable");
+    return;
+  }
+
+  const username = botStatus?.bot?.username;
+  chip.textContent = username ? `Sending as: Bot @${username}` : "Sending as: Bot";
+  chip.classList.add("identity-chip-bot");
+}
+
 export function updateSendFormAvailability() {
   const botStatus = connectionState.botStatus;
   const userStatus = connectionState.userAccountStatus;
   const botReady = Boolean(botStatus?.configured);
   const userReady = Boolean(userStatus?.authorized);
+  const botUsername = botStatus?.bot?.username;
 
   const composeBtn = document.querySelector("#send-form button[type='submit']");
   const composeHint = document.getElementById("compose-send-hint");
+  updateComposeIdentityChip(botStatus, botReady);
   if (composeBtn) {
-    composeBtn.textContent = "Send via bot (v0.1)";
+    composeBtn.textContent = "Send";
     composeBtn.disabled = !botReady;
-    composeBtn.title = botReady
-      ? "Recipients see your bot identity, not your personal account"
-      : "Set TELEGRAM_BOT_TOKEN in .env first";
+    composeBtn.setAttribute("aria-describedby", "compose-send-hint");
+    composeBtn.removeAttribute("title");
   }
   if (composeHint) {
     composeHint.textContent = botReady
-      ? "Sends as your bot — not your personal Telegram name."
+      ? botUsername
+        ? `Sends as @${botUsername} — not your personal Telegram name.`
+        : "Sends as your bot — not your personal Telegram name."
       : "Bot not configured. Set TELEGRAM_BOT_TOKEN in .env to enable sending.";
   }
 
   const toolsBtn = document.querySelector("#send-form-tools button[type='submit']");
   const toolsHint = document.getElementById("send-tools-hint");
   if (toolsBtn) {
+    toolsBtn.textContent = "Send as bot";
     toolsBtn.disabled = !botReady;
-    toolsBtn.title = botReady ? "Sends via bot API (v0.1)" : "Set TELEGRAM_BOT_TOKEN first";
+    toolsBtn.setAttribute("aria-describedby", "send-tools-hint");
+    toolsBtn.removeAttribute("title");
   }
   if (toolsHint) {
     toolsHint.textContent = botReady
-      ? "Bot send — message appears from @your_bot, not from you personally."
+      ? botUsername
+        ? `Bot send — message appears from @${botUsername}, not from you personally.`
+        : "Bot send — message appears from your bot, not from you personally."
       : "Configure TELEGRAM_BOT_TOKEN before sending via bot.";
   }
 
   const userBtn = document.querySelector("#send-form-user button[type='submit']");
   const userHint = document.getElementById("send-user-hint");
+  const userUsername = userStatus?.user?.username;
   if (userBtn) {
     userBtn.disabled = !userReady;
-    userBtn.title = userReady
-      ? "Sends from your logged-in Telegram account (v0.2)"
-      : "Run scripts/mtproto_login.py to enable Send as me";
+    userBtn.setAttribute("aria-describedby", "send-user-hint");
+    userBtn.removeAttribute("title");
   }
   if (userHint) {
     userHint.textContent = userReady
-      ? "Personal send — recipients see your account, not the bot."
+      ? userUsername
+        ? `Personal send — recipients see @${userUsername}, not the bot.`
+        : "Personal send — recipients see your account, not the bot."
       : "Not logged in. Run scripts/mtproto_login.py once, then restart if needed.";
   }
 }
