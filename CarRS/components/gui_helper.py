@@ -43,3 +43,34 @@ class GUIHelper:
             cb.bind(event, handler)
 
         return cb
+
+    @staticmethod
+    def create_collapsible(parent, title, start_open=False, pack_kwargs=None):
+        """Return (outer_frame, body_frame). Body is packed only when open."""
+        pack_kwargs = pack_kwargs or {"fill": tk.X, "expand": False, "padx": 5, "pady": 5}
+        outer = ttk.Frame(parent)
+        outer.pack(**pack_kwargs)
+
+        open_var = tk.BooleanVar(value=bool(start_open))
+        body = ttk.Frame(outer)
+
+        def _toggle():
+            if open_var.get():
+                toggle_btn.config(text=f"▼ {title}")
+                body.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+            else:
+                toggle_btn.config(text=f"▶ {title}")
+                body.pack_forget()
+
+        toggle_btn = ttk.Checkbutton(
+            outer,
+            text=f"{'▼' if start_open else '▶'} {title}",
+            variable=open_var,
+            command=_toggle,
+            style="Toolbutton",
+        )
+        toggle_btn.pack(anchor=tk.W, padx=2, pady=2)
+        if start_open:
+            body.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+        outer._collapse_var = open_var  # noqa: SLF001 — allow callers to inspect
+        return outer, body

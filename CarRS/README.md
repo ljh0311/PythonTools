@@ -31,14 +31,14 @@ This application helps users find the best car rental option based on their trip
 
 ## How to Use
 
-1. Double-click on **CarRentalApp.bat** to start the application
-2. Use the different tabs to access various features:
+1. Double-click **CarRentalApp.bat** (one launcher — starts the GUI; no install step each run)
+2. Use the tabs:
 
 ### Recommendations Tab
 
-- Enter your trip details (distance, duration, weekend trip)
-- Get personalized rental recommendations
-- View cost comparisons and charts
+- Enter trip details (distance, duration, weekend, region, category)
+- Click **Get Recommendations** for pricing-based costs (AI optional under Advanced)
+- Optionally open **Show chat assistant** for the chat flow
 
 ### Data Analysis Tab
 
@@ -52,14 +52,11 @@ This application helps users find the best car rental option based on their trip
 - Search and filter your rental history
 - Export your rental data
 
-### Cost Planning Tab (NEW!)
+### Budget Planner Tab
 
-- Set a target monthly cost (e.g., $2000)
-- Choose calculation type:
-  - **Duration-based**: Calculate required mileage for your target cost and duration
-  - **Mileage-based**: Calculate required duration for your target cost and mileage
-- View booking scenarios to optimize your rental strategy
-- See detailed cost breakdowns
+- Set monthly budget and period, click **Generate**
+- Read the top verdict: Affordable / Tight / Over budget
+- Charts and details stay below for follow-up
 
 ## Data management / cleaning pipeline
 
