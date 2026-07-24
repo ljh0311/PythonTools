@@ -157,15 +157,19 @@
             <div class="inbox-main card">
               <div class="inbox-toolbar">
                 <input id="inbox-search" type="search" placeholder="Search messages…" aria-label="Search messages" />
-                <input id="inbox-topics" type="search" placeholder="Topic filter…" aria-label="Filter by topics" />
+                <input id="inbox-topics" type="search" list="topic-suggestions" placeholder="Topic filter…" aria-label="Filter by topics" />
+                <datalist id="topic-suggestions"></datalist>
+                <button id="inbox-backfill-topics" class="btn btn-ghost btn-sm" type="button" title="Tag recent messages with AI">Generate AI tags</button>
                 <button id="toggle-filters" class="btn btn-ghost btn-sm" type="button" aria-expanded="false" aria-controls="advanced-filters">
-                  Filters
+                  Filters<span id="filters-topic-badge" class="filter-badge" hidden aria-label="Topic filter active"></span>
                 </button>
                 <button id="toggle-ai-panel" class="btn btn-ghost btn-sm ai-toggle-btn" type="button" aria-expanded="true" aria-controls="ai-drawer">
                   AI panel
                 </button>
                 <button id="inbox-apply" class="btn btn-primary btn-sm" type="button">Apply</button>
               </div>
+
+              <div id="topic-filter-chips" class="topic-filter-chips" hidden aria-label="Popular topic filters"></div>
 
               <div id="advanced-filters" class="advanced-filters" hidden>
                 <select id="inbox-users" multiple size="3" aria-label="Filter by users"></select>
@@ -286,6 +290,7 @@
               </label>
             </div>
             <p id="topic-mode-hint" class="filter-hint">Type topic keywords to search tags and message text.</p>
+            <button id="workflow-generate-tags" class="btn btn-ghost btn-sm" type="button">Generate AI tags</button>
             <div id="per-chat-panel" class="per-chat-panel" hidden>
               <div class="per-chat-header">
                 <div>

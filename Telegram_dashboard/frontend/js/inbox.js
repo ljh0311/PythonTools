@@ -4,7 +4,23 @@ import { workflowState } from "./workflow.js";
 
 const DEFAULT_LIMIT = 10;
 const FILTER_DEBOUNCE_MS = 350;
+const TOPIC_CHIP_LIMIT = 12;
 let filterDebounceTimer = null;
+let cachedTopics = [];
+
+/** Local calendar date as YYYY-MM-DD for <input type="date">. */
+export function localTodayInputValue() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function defaultDateFilters() {
+  const today = localTodayInputValue();
+  return { dateFrom: today, dateTo: today };
+}
 
 export const inboxState = {
   users: [],
@@ -21,8 +37,7 @@ export const inboxState = {
     direction: "",
     ingestionSource: "",
     topics: "",
-    dateFrom: "",
-    dateTo: "",
+    ...defaultDateFilters(),
   },
   expandedContextChatIds: new Set(),
   operatorUser: null,
@@ -102,8 +117,15 @@ export function readFiltersFromUrl() {
   inboxState.filters.direction = params.get("direction") || "";
   inboxState.filters.ingestionSource = params.get("ingestion_source") || "";
   inboxState.filters.topics = params.get("topics") || "";
-  inboxState.filters.dateFrom = params.get("from") || "";
-  inboxState.filters.dateTo = params.get("to") || "";
+  // Default: today's messages. Explicit from/to in the URL win (including empty = all dates).
+  if (!params.has("from") && !params.has("to")) {
+    const today = localTodayInputValue();
+    inboxState.filters.dateFrom = today;
+    inboxState.filters.dateTo = today;
+  } else {
+    inboxState.filters.dateFrom = params.get("from") || "";
+    inboxState.filters.dateTo = params.get("to") || "";
+  }
   inboxState.view = params.get("view") === "flat" ? "flat" : "threads";
   const userIds = params.get("user_ids");
   inboxState.filters.userIds = userIds ? userIds.split(",").filter(Boolean) : [];
@@ -145,6 +167,58 @@ export function syncFilterForm() {
     if (!option.value) return;
     option.selected = inboxState.filters.userIds.includes(option.value);
   });
+  updateTopicsFilterBadge();
+}
+
+function updateTopicsFilterBadge() {
+  const badge = document.getElementById("filters-topic-badge");
+  const toggleBtn = document.getElementById("toggle-filters");
+  const active = Boolean(inboxState.filters.topics?.trim());
+  if (badge) badge.hidden = !active;
+  toggleBtn?.classList.toggle("has-topic-filter", active);
+}
+
+function renderTopicSuggestions(topics = []) {
+  const datalist = document.getElementById("topic-suggestions");
+  if (!datalist) return;
+  datalist.innerHTML = topics
+    .map((topic) => `<option value="${escapeHtml(topic.name)}"></option>`)
+    .join("");
+}
+
+function renderTopicFilterChips(topics = []) {
+  const strip = document.getElementById("topic-filter-chips");
+  if (!strip) return;
+  const top = topics.slice(0, TOPIC_CHIP_LIMIT);
+  if (!top.length) {
+    strip.hidden = true;
+    strip.innerHTML = "";
+    return;
+  }
+  strip.hidden = false;
+  strip.innerHTML = top
+    .map(
+      (topic) =>
+        `<button type="button" class="topic-filter-chip" data-topic="${escapeHtml(topic.name)}" title="${topic.message_count} message${topic.message_count === 1 ? "" : "s"}">${escapeHtml(topic.name)}</button>`
+    )
+    .join("");
+}
+
+function updateBackfillTopicsButton(topics = []) {
+  const btn = document.getElementById("inbox-backfill-topics");
+  if (!btn) return;
+  btn.textContent = topics.length ? "Refresh tags" : "Generate AI tags";
+}
+
+export async function loadTopicSuggestions() {
+  try {
+    cachedTopics = await api.getTopics();
+    renderTopicSuggestions(cachedTopics);
+    renderTopicFilterChips(cachedTopics);
+    updateBackfillTopicsButton(cachedTopics);
+  } catch {
+    /* keep existing suggestions */
+  }
 }
 
 export function renderUserFilter(users = []) {
@@ -447,6 +521,7 @@ async function loadCachedSummariesForThreads(threads) {
 }
 
 export function clearInboxFilters(onError) {
+  // Reset to the default inbox view: today only.
   inboxState.filters = {
     q: "",
     topics: "",
@@ -454,8 +529,7 @@ export function clearInboxFilters(onError) {
     chatType: "",
     direction: "",
     ingestionSource: "",
-    dateFrom: "",
-    dateTo: "",
+    ...defaultDateFilters(),
   };
   syncFilterForm();
   return loadInbox().catch(onError);
@@ -536,6 +610,7 @@ function applyPreset(presetId) {
 function applyFiltersNow(onError) {
   clearTimeout(filterDebounceTimer);
   collectFiltersFromForm();
+  updateTopicsFilterBadge();
   loadInbox().catch(onError);
 }
 
@@ -581,6 +656,7 @@ export function bindInbox(onReply, onError, onNotify, { onOpenTools, onRefresh }
   readFiltersFromUrl();
   syncFilterForm();
   loadPresets().catch(onError);
+  loadTopicSuggestions().catch(onError);
 
   const toggleBtn = document.getElementById("toggle-filters");
   const advanced = document.getElementById("advanced-filters");
@@ -601,6 +677,32 @@ export function bindInbox(onReply, onError, onNotify, { onOpenTools, onRefresh }
 
   bindFilterInput("inbox-search", onError);
   bindFilterInput("inbox-topics", onError);
+
+  document.getElementById("topic-filter-chips")?.addEventListener("click", (event) => {
+    const chip = event.target.closest(".topic-filter-chip");
+    if (!chip) return;
+    document.getElementById("inbox-topics").value = chip.dataset.topic || "";
+    applyFiltersNow(onError);
+  });
+
+  document.getElementById("inbox-backfill-topics")?.addEventListener("click", async () => {
+    const btn = document.getElementById("inbox-backfill-topics");
+    if (!btn || btn.disabled) return;
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Tagging…";
+    try {
+      const result = await api.backfillTopics({ limit: 50, enable_ai_mode: true });
+      await loadTopicSuggestions();
+      onNotify?.(`Tagged ${result.tagged} of ${result.processed} messages.`);
+    } catch (error) {
+      onError(error);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+      updateBackfillTopicsButton(cachedTopics);
+    }
+  });
 
   document.getElementById("inbox-view").addEventListener("change", () => {
     collectFiltersFromForm();

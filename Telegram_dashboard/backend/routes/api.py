@@ -79,6 +79,10 @@ class MessageTopicsRequest(BaseModel):
     topics: list[str] = Field(min_length=1)
 
 
+class TopicBackfillRequest(BaseModel):
+    limit: int = Field(default=40, ge=1, le=100)
+
+
 class SuggestionStatusRequest(BaseModel):
     status: str = Field(pattern="^(pending|sent|dismissed|done)$")
 
@@ -428,6 +432,44 @@ async def set_topic_mode(body: TopicModeRequest) -> dict[str, str]:
 @router.get("/topics", dependencies=[Depends(verify_operator)])
 async def list_topics() -> list[dict[str, Any]]:
     return store.list_topics()
+
+
+@router.post("/topics/backfill", dependencies=[Depends(verify_operator)])
+async def backfill_topics(body: TopicBackfillRequest) -> dict[str, Any]:
+    mode = store.get_topic_mode()
+    if mode != "ai_assign":
+        mode = store.set_topic_mode("ai_assign")
+        await ws_manager.broadcast("topic_mode_updated", {"mode": mode})
+
+    message_ids = store.list_recent_untagged_message_ids(body.limit)
+    tagged = 0
+    topics_created: set[str] = set()
+
+    for msg_id in message_ids:
+        messages = store.get_messages_by_ids([msg_id])
+        if not messages:
+            continue
+        text = (messages[0].get("text") or "").strip()
+        if not text:
+            continue
+        try:
+            topics = await ai_service.assign_topics(text)
+        except RateLimitExceeded as exc:
+            if tagged == 0:
+                _raise_ai_http_error(exc)
+            break
+        if not topics:
+            continue
+        added = store.add_message_topics(msg_id, topics, source="ai")
+        if added:
+            tagged += 1
+            topics_created.update(added)
+
+    return {
+        "tagged": tagged,
+        "topics_created": sorted(topics_created),
+        "mode": mode,
+    }
 
 
 @router.post("/messages/{message_id}/topics", dependencies=[Depends(verify_operator)])

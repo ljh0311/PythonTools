@@ -34,7 +34,7 @@ class DashboardStore:
 
     @contextmanager
     def _conn(self):
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=10)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
@@ -84,10 +84,97 @@ class DashboardStore:
             "relationship": "TEXT",
             "relationship_source": "TEXT",
             "relationship_generated_at": "TEXT",
+            "ai_context": "TEXT",
         }
         for column, col_type in additions.items():
             if column not in existing:
                 conn.execute(f"ALTER TABLE chat_settings ADD COLUMN {column} {col_type}")
+
+    def _migrate_thread_summaries(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS thread_summaries (
+                chat_id INTEGER PRIMARY KEY,
+                content_hash TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                redaction_applied INTEGER NOT NULL DEFAULT 0,
+                redaction_count INTEGER NOT NULL DEFAULT 0,
+                generated_at TEXT NOT NULL
+            )
+            """
+        )
+
+    @staticmethod
+    def thread_content_hash(message_ids: list[int]) -> str:
+        payload = ",".join(str(mid) for mid in sorted(message_ids))
+        return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+    def get_thread_summary(self, chat_id: int) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT chat_id, content_hash, summary, provider,
+                       redaction_applied, redaction_count, generated_at
+                FROM thread_summaries
+                WHERE chat_id = ?
+                """,
+                (chat_id,),
+            ).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        item["redaction_applied"] = bool(item["redaction_applied"])
+        item["cached"] = True
+        return item
+
+    def save_thread_summary(
+        self,
+        chat_id: int,
+        content_hash: str,
+        *,
+        summary: str,
+        provider: str,
+        redaction_applied: bool = False,
+        redaction_count: int = 0,
+    ) -> dict[str, Any]:
+        generated_at = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO thread_summaries (
+                    chat_id, content_hash, summary, provider,
+                    redaction_applied, redaction_count, generated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    content_hash = excluded.content_hash,
+                    summary = excluded.summary,
+                    provider = excluded.provider,
+                    redaction_applied = excluded.redaction_applied,
+                    redaction_count = excluded.redaction_count,
+                    generated_at = excluded.generated_at
+                """,
+                (
+                    chat_id,
+                    content_hash,
+                    summary,
+                    provider,
+                    int(redaction_applied),
+                    redaction_count,
+                    generated_at,
+                ),
+            )
+        return {
+            "chat_id": chat_id,
+            "content_hash": content_hash,
+            "summary": summary,
+            "provider": provider,
+            "redaction_applied": redaction_applied,
+            "redaction_count": redaction_count,
+            "generated_at": generated_at,
+            "cached": False,
+        }
 
     def _init_db(self) -> None:
         with self._conn() as conn:
@@ -177,10 +264,20 @@ class DashboardStore:
                     filters_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS thread_summaries (
+                    chat_id INTEGER PRIMARY KEY,
+                    content_hash TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    redaction_applied INTEGER NOT NULL DEFAULT 0,
+                    redaction_count INTEGER NOT NULL DEFAULT 0,
+                    generated_at TEXT NOT NULL
+                );
                 """
             )
             self._migrate_messages(conn)
             self._migrate_chat_settings(conn)
+            self._migrate_thread_summaries(conn)
             self._seed_defaults(conn)
             count = conn.execute("SELECT COUNT(*) FROM quick_actions").fetchone()[0]
             if count == 0:
@@ -272,6 +369,7 @@ class DashboardStore:
                     cs.relationship,
                     cs.relationship_source,
                     cs.relationship_generated_at,
+                    cs.ai_context,
                     COUNT(m.id) AS message_count,
                     MAX(m.created_at) AS last_message_at,
                     GROUP_CONCAT(DISTINCT m.username) AS participants
@@ -312,6 +410,21 @@ class DashboardStore:
                 chat_ids,
             ).fetchall()
         return {int(row["chat_id"]): row["relationship"] for row in rows}
+
+    def get_ai_context_map(self, chat_ids: list[int]) -> dict[int, str]:
+        if not chat_ids:
+            return {}
+        placeholders = ",".join("?" for _ in chat_ids)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT chat_id, ai_context
+                FROM chat_settings
+                WHERE chat_id IN ({placeholders}) AND ai_context IS NOT NULL AND ai_context != ''
+                """,
+                chat_ids,
+            ).fetchall()
+        return {int(row["chat_id"]): row["ai_context"] for row in rows}
 
     def set_chat_relationship(
         self,
@@ -366,6 +479,7 @@ class DashboardStore:
         enabled: bool | None = None,
         relationship: str | None = None,
         relationship_source: str | None = None,
+        ai_context: str | None = None,
     ) -> dict[str, Any]:
         with self._conn() as conn:
             row = conn.execute(
@@ -410,6 +524,15 @@ class DashboardStore:
                         generated_at,
                         chat_id,
                     ),
+                )
+            if ai_context is not None:
+                conn.execute(
+                    """
+                    UPDATE chat_settings
+                    SET ai_context = ?
+                    WHERE chat_id = ?
+                    """,
+                    (ai_context.strip(), chat_id),
                 )
             saved = conn.execute(
                 "SELECT * FROM chat_settings WHERE chat_id = ?", (chat_id,)
@@ -475,6 +598,21 @@ class DashboardStore:
                 """
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_recent_untagged_message_ids(self, limit: int = 40) -> list[int]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT m.id
+                FROM messages m
+                LEFT JOIN message_topics mt ON mt.message_id = m.id
+                WHERE mt.message_id IS NULL
+                ORDER BY m.created_at DESC
+                LIMIT ?
+                """,
+                (max(1, limit),),
+            ).fetchall()
+        return [int(row["id"]) for row in rows]
 
     def get_message_topics(self, message_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
         if not message_ids:
@@ -599,6 +737,43 @@ class DashboardStore:
                     now,
                 ),
             )
+
+    def backfill_message_usernames(self, user_id: int, username: str | None) -> int:
+        if not username:
+            return 0
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                UPDATE messages
+                SET username = ?
+                WHERE user_id = ? AND (username IS NULL OR username = '')
+                """,
+                (username, user_id),
+            )
+            return cur.rowcount
+
+    def _enrich_message_usernames(self, items: list[dict[str, Any]]) -> None:
+        missing_ids = {
+            int(m["user_id"])
+            for m in items
+            if m.get("user_id") is not None and not m.get("username")
+        }
+        if not missing_ids:
+            return
+        placeholders = ",".join("?" for _ in missing_ids)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT user_id, username FROM users
+                WHERE user_id IN ({placeholders}) AND username IS NOT NULL AND username != ''
+                """,
+                list(missing_ids),
+            ).fetchall()
+        by_id = {int(row[0]): row[1] for row in rows}
+        for item in items:
+            user_id = item.get("user_id")
+            if user_id is not None and not item.get("username"):
+                item["username"] = by_id.get(int(user_id))
 
     def message_exists(self, chat_id: int, message_id: int) -> bool:
         with self._conn() as conn:
@@ -766,6 +941,106 @@ class DashboardStore:
             result.append(item)
         return result
 
+    @staticmethod
+    def _recipient_label(
+        chat_id: int,
+        chat_type: str | None,
+        chat_title: str | None,
+        participants: list[str] | None,
+        username: str | None = None,
+        display_name: str | None = None,
+    ) -> str:
+        ctype = chat_type or "private"
+        if ctype in ("group", "channel") and chat_title:
+            kind = "Group" if ctype == "group" else "Channel"
+            return f"{chat_title} ({kind})"
+        if username:
+            return f"@{username}"
+        if participants:
+            handles = [f"@{p.lstrip('@')}" for p in participants if p]
+            if len(handles) == 1:
+                return handles[0]
+            if handles:
+                return ", ".join(handles[:3])
+        if display_name:
+            return display_name
+        if chat_title:
+            return chat_title
+        return f"Chat {chat_id}"
+
+    @staticmethod
+    def _recipient_handle(
+        chat_type: str | None,
+        participants: list[str] | None,
+        username: str | None = None,
+    ) -> str | None:
+        if (chat_type or "private") != "private":
+            return None
+        if username:
+            return username.lstrip("@").lower()
+        if participants and len(participants) == 1:
+            return participants[0].lstrip("@").lower()
+        return None
+
+    def list_compose_recipients(self) -> list[dict[str, Any]]:
+        recipients: dict[int, dict[str, Any]] = {}
+
+        for chat in self.list_chat_settings():
+            chat_id = int(chat["chat_id"])
+            participants = chat.get("participants") or []
+            username = participants[0] if len(participants) == 1 else None
+            recipients[chat_id] = {
+                "chat_id": chat_id,
+                "label": self._recipient_label(
+                    chat_id,
+                    chat.get("chat_type"),
+                    chat.get("chat_title"),
+                    participants,
+                    username=username,
+                ),
+                "handle": self._recipient_handle(
+                    chat.get("chat_type"), participants, username=username
+                ),
+                "chat_type": chat.get("chat_type") or "private",
+            }
+
+        for user in self.list_users():
+            chat_id = int(user["user_id"])
+            if chat_id in recipients:
+                continue
+            username = user.get("username")
+            recipients[chat_id] = {
+                "chat_id": chat_id,
+                "label": self._recipient_label(
+                    chat_id,
+                    "private",
+                    None,
+                    [username] if username else [],
+                    username=username,
+                    display_name=user.get("display_name"),
+                ),
+                "handle": self._recipient_handle("private", None, username=username),
+                "chat_type": "private",
+            }
+
+        return sorted(recipients.values(), key=lambda item: item["label"].lower())
+
+    def resolve_compose_target(self, target: str) -> int | None:
+        raw = (target or "").strip()
+        if not raw:
+            return None
+        if raw.lstrip("-").isdigit():
+            return int(raw)
+
+        needle = raw.lstrip("@").lower()
+        for item in self.list_compose_recipients():
+            if item.get("handle") and item["handle"] == needle:
+                return int(item["chat_id"])
+            label = item.get("label") or ""
+            if label.lower() == raw.lower() or label.lstrip("@").lower() == needle:
+                return int(item["chat_id"])
+        return None
+
     def query_messages(
         self,
         *,
@@ -865,6 +1140,7 @@ class DashboardStore:
             ).fetchall()
 
         items = [self._row_to_message(row) for row in rows]
+        self._enrich_message_usernames(items)
         topic_map = self.get_message_topics([m["id"] for m in items])
         for item in items:
             item["topics"] = topic_map.get(item["id"], [])
@@ -882,7 +1158,9 @@ class DashboardStore:
                 "SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC",
                 (chat_id,),
             ).fetchall()
-        return [self._row_to_message(row) for row in rows]
+        items = [self._row_to_message(row) for row in rows]
+        self._enrich_message_usernames(items)
+        return items
 
     def get_messages_by_ids(self, message_ids: list[int]) -> list[dict[str, Any]]:
         if not message_ids:
@@ -893,7 +1171,9 @@ class DashboardStore:
                 f"SELECT * FROM messages WHERE id IN ({placeholders}) ORDER BY created_at ASC",
                 message_ids,
             ).fetchall()
-        return [self._row_to_message(row) for row in rows]
+        items = [self._row_to_message(row) for row in rows]
+        self._enrich_message_usernames(items)
+        return items
 
     def query_threads(
         self,
@@ -955,6 +1235,12 @@ class DashboardStore:
         threads.sort(key=lambda t: t.get("latest_at") or "", reverse=True)
         total_threads = len(threads)
         page = threads[thread_offset : thread_offset + thread_limit]
+        chat_ids = [int(t["chat_id"]) for t in page if t.get("chat_id") is not None]
+        context_map = self.get_ai_context_map(chat_ids)
+        for thread in page:
+            chat_id = thread.get("chat_id")
+            if chat_id is not None:
+                thread["ai_context"] = context_map.get(int(chat_id), "")
 
         return {
             "threads": page,
