@@ -599,21 +599,20 @@ class DashboardStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def list_recent_untagged_messages(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_recent_untagged_message_ids(self, limit: int = 40) -> list[int]:
         with self._conn() as conn:
             rows = conn.execute(
                 """
-                SELECT m.id, m.text
+                SELECT m.id
                 FROM messages m
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM message_topics mt WHERE mt.message_id = m.id
-                )
-                ORDER BY m.id DESC
+                LEFT JOIN message_topics mt ON mt.message_id = m.id
+                WHERE mt.message_id IS NULL
+                ORDER BY m.created_at DESC
                 LIMIT ?
                 """,
-                (max(1, min(limit, 200)),),
+                (max(1, limit),),
             ).fetchall()
-        return [{"id": int(row["id"]), "text": row["text"]} for row in rows]
+        return [int(row["id"]) for row in rows]
 
     def get_message_topics(self, message_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
         if not message_ids:

@@ -190,48 +190,53 @@ function renderTopicSuggestions(topics = []) {
 function renderTopicFilterChips(topics = []) {
   const strip = document.getElementById("topic-filter-chips");
   if (!strip) return;
-  const top = topics.slice(0, TOPIC_CHIP_LIMIT);
-  if (!top.length) {
-    strip.hidden = true;
-    strip.innerHTML = "";
+  const activeTopic = (inboxState.filters.topics || "").trim().toLowerCase();
+
+  if (!topics.length) {
+    strip.innerHTML = `
+      <span class="topic-filter-empty">No topic tags yet.</span>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="backfill-topics">Generate AI tags</button>`;
     return;
   }
-  strip.hidden = false;
+
+  const top = topics.slice(0, TOPIC_CHIP_LIMIT);
   strip.innerHTML = top
     .map(
       (topic) =>
-        `<button type="button" class="topic-filter-chip" data-topic="${escapeHtml(topic.name)}" title="${topic.message_count} message${topic.message_count === 1 ? "" : "s"}">${escapeHtml(topic.name)}</button>`
+        `<button type="button" class="topic-filter-chip${activeTopic === topic.name ? " active" : ""}" data-topic="${escapeHtml(topic.name)}">${escapeHtml(topic.name)} <span class="topic-filter-count">${topic.message_count}</span></button>`
     )
     .join("");
 }
 
-function updateBackfillTopicsButton(topics = []) {
-  const btn = document.getElementById("inbox-backfill-topics");
-  if (!btn) return;
-  btn.textContent = topics.length ? "Refresh tags" : "Generate AI tags";
-}
-
-export async function runTopicBackfill({ onError, onNotify, limit = 50 } = {}) {
-  const btn = document.getElementById("inbox-backfill-topics");
-  const originalLabel = btn?.textContent || "Generate AI tags";
-  if (btn) {
+export async function runTopicBackfill({ onError, onNotify, limit = 40 } = {}) {
+  const buttons = document.querySelectorAll('[data-action="backfill-topics"], #workflow-generate-tags');
+  buttons.forEach((btn) => {
     btn.disabled = true;
-    btn.textContent = "Tagging…";
-  }
+    btn.dataset.originalLabel = btn.textContent;
+    btn.textContent = "Generating…";
+  });
   try {
-    const result = await api.backfillTopics({ limit, enable_ai_mode: true });
+    const result = await api.backfillTopics(limit);
+    if (result.mode === "ai_assign") {
+      workflowState.topicMode = "ai_assign";
+      const select = document.getElementById("topic-mode");
+      if (select) select.value = "ai_assign";
+    }
     await loadTopicSuggestions();
-    onNotify?.(`Tagged ${result.tagged} of ${result.processed} messages.`);
+    await loadInbox();
+    const topicCount = result.topics_created?.length ?? 0;
+    onNotify?.(
+      `Tagged ${result.tagged} message(s)${topicCount ? ` · ${topicCount} topic(s)` : ""}.`
+    );
     return result;
   } catch (error) {
     onError?.(error);
     throw error;
   } finally {
-    if (btn) {
+    buttons.forEach((btn) => {
       btn.disabled = false;
-      btn.textContent = originalLabel;
-      updateBackfillTopicsButton(cachedTopics);
-    }
+      btn.textContent = btn.dataset.originalLabel || "Generate AI tags";
+    });
   }
 }
 
@@ -240,7 +245,6 @@ export async function loadTopicSuggestions() {
     cachedTopics = await api.getTopics();
     renderTopicSuggestions(cachedTopics);
     renderTopicFilterChips(cachedTopics);
-    updateBackfillTopicsButton(cachedTopics);
   } catch {
     /* keep existing suggestions */
   }
@@ -704,14 +708,15 @@ export function bindInbox(onReply, onError, onNotify, { onOpenTools, onRefresh }
   bindFilterInput("inbox-topics", onError);
 
   document.getElementById("topic-filter-chips")?.addEventListener("click", (event) => {
+    const backfillBtn = event.target.closest('[data-action="backfill-topics"]');
+    if (backfillBtn) {
+      runTopicBackfill({ onError, onNotify }).catch(onError);
+      return;
+    }
     const chip = event.target.closest(".topic-filter-chip");
     if (!chip) return;
     document.getElementById("inbox-topics").value = chip.dataset.topic || "";
     applyFiltersNow(onError);
-  });
-
-  document.getElementById("inbox-backfill-topics")?.addEventListener("click", () => {
-    runTopicBackfill({ onError, onNotify }).catch(onError);
   });
 
   document.getElementById("inbox-view").addEventListener("change", () => {

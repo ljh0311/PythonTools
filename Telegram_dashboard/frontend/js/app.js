@@ -13,7 +13,7 @@ import {
   setComposeTarget,
 } from "./compose.js";
 import { bindInsights } from "./insights.js";
-import { bindInbox, loadInbox, refreshInboxEmptyStateIfNeeded, renderUserFilter, setOperatorUser } from "./inbox.js";
+import { bindInbox, loadInbox, loadTopicSuggestions, refreshInboxEmptyStateIfNeeded, renderUserFilter, runTopicBackfill, setOperatorUser } from "./inbox.js";
 import { initTheme } from "./theme.js";
 import { initNavigation } from "./navigation.js";
 import { initSidebar } from "./sidebar.js";
@@ -167,7 +167,7 @@ async function refreshDashboard() {
   setOperatorUser(userAccountStatus.user);
   renderSetupWarnings(setupStatus.warnings);
 
-  const [metrics, users, , events, analytics, quickActions, botStatus] =
+  const [metrics, users, , , events, analytics, quickActions, botStatus] =
     await Promise.all([
       api.getMetrics(),
       api.getUsers(),
@@ -178,6 +178,7 @@ async function refreshDashboard() {
       api.getQuickActions(),
       api.getBotStatus(),
       loadComposeRecipients(),
+      loadTopicSuggestions(),
     ]);
 
   renderMetrics(metrics);
@@ -313,6 +314,13 @@ async function init() {
     }
   );
   bindWorkflow((message) => showToast(message), (error) => showToast(error));
+
+  document.getElementById("workflow-generate-tags")?.addEventListener("click", () => {
+    runTopicBackfill({
+      onError: (error) => showToast(error.message || String(error)),
+      onNotify: showToast,
+    }).catch((error) => showToast(error.message || String(error)));
+  });
   bindInsights(
     (error) => showToast(error),
     (message) => showToast(message || "Suggestion updated.")

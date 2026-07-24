@@ -1639,6 +1639,23 @@ h2 {
   color: var(--accent);
 }
 
+.topic-filter-chip.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  color: var(--accent);
+}
+
+.topic-filter-count {
+  margin-left: 0.25rem;
+  opacity: 0.75;
+  font-size: 0.68rem;
+}
+
+.topic-filter-empty {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
 #toggle-filters.has-topic-filter {
   position: relative;
 }

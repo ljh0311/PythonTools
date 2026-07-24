@@ -166,13 +166,10 @@ export const api = {
       body: JSON.stringify({ mode }),
     }),
   getTopics: () => request("/api/topics"),
-  backfillTopics: (payload = {}) =>
+  backfillTopics: (limit = 40) =>
     request("/api/topics/backfill", {
       method: "POST",
-      body: JSON.stringify({
-        limit: payload.limit ?? 50,
-        enable_ai_mode: Boolean(payload.enable_ai_mode),
-      }),
+      body: JSON.stringify({ limit }),
     }),
   addMessageTopics: (messageId, topics) =>
     request(`/api/messages/${messageId}/topics`, {
