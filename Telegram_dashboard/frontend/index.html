@@ -9,8 +9,7 @@
 </head>
 <body>
   <div class="app-shell">
-    <div id="sidebar-backdrop" class="sidebar-backdrop" hidden aria-hidden="true"></div>
-    <aside id="sidebar" class="sidebar" aria-label="Primary navigation">
+    <aside class="sidebar" aria-label="Primary navigation">
       <div class="sidebar-brand">
         <img
           class="brand-icon"
@@ -31,7 +30,7 @@
           aria-label="Inbox — Messages and AI"
           title="Inbox"
         >
-          <img class="nav-icon" src="/static/assets/icons/icon-inbox.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <img class="nav-icon" src="/static/assets/icons/nav-inbox.svg" width="24" height="24" alt="" aria-hidden="true" />
           <span class="nav-text">
             <span class="nav-label">Inbox</span>
             <span class="nav-desc">Messages &amp; AI</span>
@@ -44,7 +43,7 @@
           aria-label="Workflow — Reply and topics"
           title="Workflow"
         >
-          <img class="nav-icon" src="/static/assets/icons/icon-workflow.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <img class="nav-icon" src="/static/assets/icons/nav-workflow.svg" width="24" height="24" alt="" aria-hidden="true" />
           <span class="nav-text">
             <span class="nav-label">Workflow</span>
             <span class="nav-desc">Reply &amp; topics</span>
@@ -57,7 +56,7 @@
           aria-label="Analytics — Stats and events"
           title="Analytics"
         >
-          <img class="nav-icon" src="/static/assets/icons/icon-analytics.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <img class="nav-icon" src="/static/assets/icons/nav-analytics.svg" width="24" height="24" alt="" aria-hidden="true" />
           <span class="nav-text">
             <span class="nav-label">Analytics</span>
             <span class="nav-desc">Stats &amp; events</span>
@@ -70,7 +69,7 @@
           aria-label="Tools — Send and commands"
           title="Tools"
         >
-          <img class="nav-icon" src="/static/assets/icons/icon-tools.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <img class="nav-icon" src="/static/assets/icons/nav-tools.svg" width="24" height="24" alt="" aria-hidden="true" />
           <span class="nav-text">
             <span class="nav-label">Tools</span>
             <span class="nav-desc">Send &amp; commands</span>
@@ -82,7 +81,7 @@
           aria-label="Feedback — User ratings"
           title="Feedback"
         >
-          <img class="nav-icon" src="/static/assets/icons/icon-feedback.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <img class="nav-icon" src="/static/assets/icons/nav-feedback.svg" width="24" height="24" alt="" aria-hidden="true" />
           <span class="nav-text">
             <span class="nav-label">Feedback</span>
             <span class="nav-desc">User ratings</span>
@@ -94,35 +93,22 @@
     <div class="main-column">
       <header class="topbar">
         <div class="topbar-left">
-          <button
-            id="sidebar-toggle"
-            class="sidebar-toggle btn btn-ghost btn-sm"
-            type="button"
-            aria-controls="sidebar"
-            aria-expanded="false"
-            aria-label="Open navigation"
+          <h1>Telegram Dashboard</h1>
+          <div
+            id="connection-status"
+            class="connection-status"
+            role="status"
+            aria-live="polite"
+            aria-label="Connection status"
           >
-            <img class="sidebar-toggle-icon sidebar-toggle-icon--menu" src="/static/assets/icons/icon-menu.svg" width="24" height="24" alt="" aria-hidden="true" />
-            <img class="sidebar-toggle-icon sidebar-toggle-icon--close" src="/static/assets/icons/icon-close.svg" width="24" height="24" alt="" aria-hidden="true" />
-          </button>
-          <div class="topbar-heading">
-            <h1>Telegram Dashboard</h1>
-            <div
-              id="connection-status"
-              class="connection-status"
-              role="status"
-              aria-live="polite"
-              aria-label="Connection status"
-            >
-              <span class="status-pill status-pill--loading">
-                <span class="status-pill-label">Bot</span>
-                <span class="status-pill-state">Checking…</span>
-              </span>
-              <span class="status-pill status-pill--loading">
-                <span class="status-pill-label">My account</span>
-                <span class="status-pill-state">Checking…</span>
-              </span>
-            </div>
+            <span class="status-pill status-pill--loading">
+              <span class="status-pill-label">Bot</span>
+              <span class="status-pill-state">Checking…</span>
+            </span>
+            <span class="status-pill status-pill--loading">
+              <span class="status-pill-label">My account</span>
+              <span class="status-pill-state">Checking…</span>
+            </span>
           </div>
         </div>
         <div class="topbar-actions">
