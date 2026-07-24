@@ -70,6 +70,9 @@ body {
   position: sticky;
   top: 0;
   height: 100vh;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sidebar-brand {
@@ -90,11 +93,24 @@ body {
   gap: 0.35rem;
 }
 
-.nav-item {
+.nav-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.nav-text {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 0.1rem;
+  min-width: 0;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.65rem;
   width: 100%;
   text-align: left;
   padding: 0.65rem 0.75rem;
@@ -105,7 +121,9 @@ body {
   cursor: pointer;
   text-decoration: none;
   font: inherit;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .nav-item:hover {
@@ -146,8 +164,54 @@ body {
   flex-wrap: wrap;
 }
 
-.topbar-left h1 {
+.topbar-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.topbar-heading h1 {
   margin: 0;
+}
+
+.sidebar-toggle {
+  display: none;
+  flex-shrink: 0;
+  padding: 0.45rem;
+  line-height: 0;
+}
+
+.sidebar-toggle-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.sidebar-toggle-icon--close {
+  display: none;
+}
+
+.app-shell.sidebar-open .sidebar-toggle-icon--menu {
+  display: none;
+}
+
+.app-shell.sidebar-open .sidebar-toggle-icon--close {
+  display: block;
+}
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  border: 0;
+  background: rgba(8, 12, 18, 0.55);
+  cursor: pointer;
+}
+
+body.sidebar-drawer-open {
+  overflow: hidden;
 }
 
 .connection-status {
@@ -361,7 +425,9 @@ body {
   top: 1rem;
   max-height: calc(100vh - 8rem);
   overflow: auto;
-  transition: transform 0.28s ease, opacity 0.28s ease;
+  transition:
+    transform 0.28s ease,
+    opacity 0.28s ease;
 }
 
 .ai-drawer-close {
@@ -555,6 +621,19 @@ body {
 }
 
 .brand-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  display: block;
+}
+
+.sidebar .brand-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.brand .brand-icon {
   width: 44px;
   height: 44px;
   display: grid;
@@ -584,6 +663,51 @@ h2 {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+/* Standalone pages (feedback, etc.) — not the app-shell layout */
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 2rem;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.nav-link:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nav-link.active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  font-weight: 600;
 }
 
 .grid {
@@ -698,7 +822,11 @@ h2 {
 }
 
 .thread-summary {
-  background: linear-gradient(135deg, rgba(42, 171, 238, 0.12), rgba(108, 92, 231, 0.1));
+  background: linear-gradient(
+    135deg,
+    rgba(42, 171, 238, 0.12),
+    rgba(108, 92, 231, 0.1)
+  );
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.65rem 0.75rem;
@@ -1263,7 +1391,9 @@ h2 {
   background: linear-gradient(180deg, var(--bg-elevated), var(--bg-hover));
   box-shadow: var(--shadow);
   overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .chat-card.auto-on {
@@ -1353,7 +1483,9 @@ h2 {
   background: var(--bg);
   border: 1px solid var(--border);
   position: relative;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .toggle-thumb {
@@ -1364,7 +1496,9 @@ h2 {
   height: 18px;
   border-radius: 50%;
   background: var(--text-muted);
-  transition: transform 0.2s ease, background 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease;
 }
 
 .toggle-switch input:checked + .toggle-track {
@@ -1619,7 +1753,9 @@ textarea {
   padding: 0.55rem 0.9rem;
   font: inherit;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
 }
 
 .btn:hover {
@@ -1702,36 +1838,60 @@ textarea {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 899px) {
   .app-shell {
     grid-template-columns: 1fr;
   }
 
+  .sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar-backdrop:not([hidden]) {
+    display: block;
+  }
+
   .sidebar {
-    position: static;
-    height: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    padding: 0.75rem;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    width: min(280px, 86vw);
+    height: 100vh;
+    max-height: none;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    border-right: 1px solid var(--border);
+    border-bottom: none;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: var(--shadow);
+  }
+
+  .app-shell.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-brand {
+    padding: 0 0.35rem;
   }
 
   .sidebar-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    width: 100%;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    overflow: visible;
   }
 
   .nav-item {
-    flex: 1 1 auto;
-    min-width: 100px;
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
   }
+}
 
-  .nav-desc {
-    display: none;
-  }
-
+@media (max-width: 768px) {
   .main-column {
     padding: 1rem;
   }

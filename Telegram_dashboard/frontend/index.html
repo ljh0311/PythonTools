@@ -9,31 +9,47 @@
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar" aria-label="Primary navigation">
+    <div id="sidebar-backdrop" class="sidebar-backdrop" hidden aria-hidden="true"></div>
+    <aside id="sidebar" class="sidebar" aria-label="Primary navigation">
       <div class="sidebar-brand">
-        <span class="brand-icon" aria-hidden="true">✈</span>
+        <img class="brand-icon" src="/static/assets/icons/icon-operator.svg" width="32" height="32" alt="" aria-hidden="true" />
         <span class="sidebar-title">Operator</span>
       </div>
       <nav class="sidebar-nav">
         <button type="button" class="nav-item active" data-view-target="inbox" aria-current="page">
-          <span class="nav-label">Inbox</span>
-          <span class="nav-desc">Messages &amp; AI</span>
+          <img class="nav-icon" src="/static/assets/icons/icon-inbox.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Inbox</span>
+            <span class="nav-desc">Messages &amp; AI</span>
+          </span>
         </button>
         <button type="button" class="nav-item" data-view-target="workflow">
-          <span class="nav-label">Workflow</span>
-          <span class="nav-desc">Reply &amp; topics</span>
+          <img class="nav-icon" src="/static/assets/icons/icon-workflow.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Workflow</span>
+            <span class="nav-desc">Reply &amp; topics</span>
+          </span>
         </button>
         <button type="button" class="nav-item" data-view-target="analytics">
-          <span class="nav-label">Analytics</span>
-          <span class="nav-desc">Stats &amp; events</span>
+          <img class="nav-icon" src="/static/assets/icons/icon-analytics.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Analytics</span>
+            <span class="nav-desc">Stats &amp; events</span>
+          </span>
         </button>
         <button type="button" class="nav-item" data-view-target="tools">
-          <span class="nav-label">Tools</span>
-          <span class="nav-desc">Send &amp; commands</span>
+          <img class="nav-icon" src="/static/assets/icons/icon-tools.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Tools</span>
+            <span class="nav-desc">Send &amp; commands</span>
+          </span>
         </button>
         <a href="/feedback" class="nav-item nav-link-item">
-          <span class="nav-label">Feedback</span>
-          <span class="nav-desc">User ratings</span>
+          <img class="nav-icon" src="/static/assets/icons/icon-feedback.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Feedback</span>
+            <span class="nav-desc">User ratings</span>
+          </span>
         </a>
       </nav>
     </aside>
@@ -41,22 +57,35 @@
     <div class="main-column">
       <header class="topbar">
         <div class="topbar-left">
-          <h1>Telegram Dashboard</h1>
-          <div
-            id="connection-status"
-            class="connection-status"
-            role="status"
-            aria-live="polite"
-            aria-label="Connection status"
+          <button
+            id="sidebar-toggle"
+            class="sidebar-toggle btn btn-ghost btn-sm"
+            type="button"
+            aria-controls="sidebar"
+            aria-expanded="false"
+            aria-label="Open navigation"
           >
-            <span class="status-pill status-pill--loading">
-              <span class="status-pill-label">Bot</span>
-              <span class="status-pill-state">Checking…</span>
-            </span>
-            <span class="status-pill status-pill--loading">
-              <span class="status-pill-label">My account</span>
-              <span class="status-pill-state">Checking…</span>
-            </span>
+            <img class="sidebar-toggle-icon sidebar-toggle-icon--menu" src="/static/assets/icons/icon-menu.svg" width="24" height="24" alt="" aria-hidden="true" />
+            <img class="sidebar-toggle-icon sidebar-toggle-icon--close" src="/static/assets/icons/icon-close.svg" width="24" height="24" alt="" aria-hidden="true" />
+          </button>
+          <div class="topbar-heading">
+            <h1>Telegram Dashboard</h1>
+            <div
+              id="connection-status"
+              class="connection-status"
+              role="status"
+              aria-live="polite"
+              aria-label="Connection status"
+            >
+              <span class="status-pill status-pill--loading">
+                <span class="status-pill-label">Bot</span>
+                <span class="status-pill-state">Checking…</span>
+              </span>
+              <span class="status-pill status-pill--loading">
+                <span class="status-pill-label">My account</span>
+                <span class="status-pill-state">Checking…</span>
+              </span>
+            </div>
           </div>
         </div>
         <div class="topbar-actions">
