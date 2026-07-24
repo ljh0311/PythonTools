@@ -25,6 +25,24 @@ def safe_predicted_rental_total(raw: Any, probs: Iterable[Any]) -> int:
     return max(1, total) if any(_probability(item) > 0 for item in probs) else total
 
 
+def format_predicted_rental_display(shown: Any, expected: Any) -> str:
+    """UI label: never fake a lone '0' when expected rentals are positive."""
+    try:
+        expected_f = float(expected)
+    except (TypeError, ValueError):
+        expected_f = 0.0
+    try:
+        shown_i = int(shown)
+    except (TypeError, ValueError):
+        shown_i = 0
+
+    if expected_f > 0:
+        if shown_i <= 0:
+            shown_i = 1
+        return f"Expected ~{expected_f:.1f} → shown as {shown_i}"
+    return str(shown_i)
+
+
 def get_mvp_recommendations(
     distance: float, duration: float, is_weekend: bool, region: str = "Singapore"
 ) -> list[dict[str, Any]]:

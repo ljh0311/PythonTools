@@ -64,7 +64,23 @@ from car_rental_recommender_core import (
     validate_date_range,
 )
 from components import LoadingDialog, GUIHelper, OllamaHelper
-from mvp_cost_engine import get_mvp_recommendations
+from components.loading_dialog import run_with_loading
+from components.date_picker import apply_picked_date
+from components.collection_location import (
+    COLLECTION_LOCATION_COL,
+    DISTANCE_RATING_COL,
+    format_rating_choice,
+    parse_rating_choice,
+    rating_choice_labels,
+)
+from components.ev_traditional_analysis import (
+    ELECTRIC,
+    TRADITIONAL,
+    build_comparison_figure,
+    classify_vehicle_type,
+    compute_ev_traditional_stats,
+)
+from mvp_cost_engine import format_predicted_rental_display, get_mvp_recommendations
 
 
 def set_modern_theme(root):
@@ -167,6 +183,8 @@ class CarRentalRecommenderApp:
             "record_deposit_rm_var",
             "record_rental_fee_rm_var",
             "record_additional_fee_rm_var",
+            "record_collection_location_var",
+            "record_distance_rating_var",
         ]
         # Remove duplicates (record_kwh_used_var, record_electricity_cost_var appear twice)
         record_vars = list(dict.fromkeys(record_vars))
@@ -298,183 +316,123 @@ class CarRentalRecommenderApp:
         self.status_var.set(f"Error: {title}")
     
     def setup_recommendation_tab(self):
-        # Main container
+        # Main container: trip form + results first; chat optional
         container = ttk.Frame(self.recommendation_tab)
         container.pack(fill=tk.BOTH, expand=True)
 
-        # --- Left: Chat Assistant ---
-        left_panel = ttk.LabelFrame(container, text="Car Rental Assistant", padding=(10, 5))
-        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5), pady=5)
+        main_panel = ttk.Frame(container)
+        main_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5), pady=5)
 
-        # Chat display
-        chat_frame = ttk.Frame(left_panel)
-        chat_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.chat_display = tk.Text(
-            chat_frame, wrap=tk.WORD, state=tk.DISABLED, font=("Segoe UI", 10),
-            bg="white", relief=tk.SUNKEN, borderwidth=1
-        )
-        chat_scrollbar = ttk.Scrollbar(chat_frame, orient=tk.VERTICAL, command=self.chat_display.yview)
-        self.chat_display.configure(yscrollcommand=chat_scrollbar.set)
-        self.chat_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        chat_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        # --- Trip inputs (primary) ---
+        trip_panel = ttk.LabelFrame(main_panel, text="Trip details", padding=(10, 5))
+        trip_panel.pack(fill=tk.X, padx=5, pady=5)
 
-        # Chat input
-        input_frame = ttk.Frame(left_panel)
-        input_frame.pack(fill=tk.X, padx=5, pady=(5, 0))
-        self.message_var = tk.StringVar()
-        self.message_entry = ttk.Entry(
-            input_frame, textvariable=self.message_var, font=("Segoe UI", 10), state="normal"
-        )
-        self.message_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        send_button = ttk.Button(
-            input_frame, text="Send", command=self.send_message, style="Accent.TButton"
-        )
-        send_button.pack(side=tk.RIGHT)
-        self.message_entry.bind("<Return>", lambda e: self.send_message())
-
-        # Settings (left, below chat) - Enhanced with better organization
-        settings_frame = ttk.LabelFrame(left_panel, text="Settings", padding=(5, 5))
-        settings_frame.pack(fill=tk.X, padx=5, pady=(5, 0))
-        
-        # Trip Settings Section
-        trip_frame = ttk.Frame(settings_frame)
-        trip_frame.pack(fill=tk.X, pady=(0, 5))
-        ttk.Label(trip_frame, text="Trip Settings:", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W)
-        trip_settings_inner = ttk.Frame(trip_frame)
-        trip_settings_inner.pack(fill=tk.X, padx=(10, 0), pady=(2, 0))
-        
-        self.is_weekend_var = tk.BooleanVar()
-        GUIHelper.create_checkbutton(trip_settings_inner, "Weekend Trip", self.is_weekend_var)
-        
-        ttk.Label(trip_settings_inner, text="Passengers:").pack(side=tk.LEFT, padx=(10, 2))
-        self.passenger_count_var = tk.StringVar()
-        passenger_spinbox = ttk.Spinbox(
-            trip_settings_inner, from_=1, to=10, textvariable=self.passenger_count_var,
-            width=5, state="readonly"
-        )
-        passenger_spinbox.pack(side=tk.LEFT, padx=(0, 5))
-        self.passenger_count_var.set("2")
-        
-        ttk.Label(trip_settings_inner, text="Space:").pack(side=tk.LEFT, padx=(5, 2))
-        self.space_requirements_var = tk.StringVar()
-        space_combobox = ttk.Combobox(trip_settings_inner, textvariable=self.space_requirements_var, width=12, values=["little", "medium", "alot"], state="readonly")
-        space_combobox.pack(side=tk.LEFT, padx=(0, 5))
-        self.space_requirements_var.set("little")
-        
-        # AI Settings Section
-        ai_frame = ttk.Frame(settings_frame)
-        ai_frame.pack(fill=tk.X, pady=(0, 5))
-        ttk.Label(ai_frame, text="AI Settings:", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W)
-        ai_settings_inner = ttk.Frame(ai_frame)
-        ai_settings_inner.pack(fill=tk.X, padx=(10, 0), pady=(2, 0))
-        
-        self.use_ml_var = tk.BooleanVar(value=False)
-        GUIHelper.create_checkbutton(ai_settings_inner, "Use Machine Learning", self.use_ml_var)
-        
-        self.use_ollama_var = tk.BooleanVar(value=False)
-        GUIHelper.create_checkbutton(ai_settings_inner, "Use Ollama LLM", self.use_ollama_var)
+        self.trip_distance_var = tk.StringVar(value="40")
+        self.trip_duration_var = tk.StringVar(value="4")
+        self.is_weekend_var = tk.BooleanVar(value=False)
+        self.current_region_var = tk.StringVar(value="Singapore")
+        self.car_cat_var = tk.StringVar(value="All")
         self.mode_status_var = tk.StringVar()
+        self.use_ml_var = tk.BooleanVar(value=False)
+        self.use_ollama_var = tk.BooleanVar(value=False)
+        self.passenger_count_var = tk.StringVar(value="2")
+        self.space_requirements_var = tk.StringVar(value="little")
+        self.ollama_model_var = tk.StringVar(value="llama3.1:3b")
+
+        trip_row = ttk.Frame(trip_panel)
+        trip_row.pack(fill=tk.X, pady=2)
+        ttk.Label(trip_row, text="Distance (km):").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Entry(trip_row, textvariable=self.trip_distance_var, width=8).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Label(trip_row, text="Duration (hrs):").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Entry(trip_row, textvariable=self.trip_duration_var, width=8).pack(side=tk.LEFT, padx=(0, 12))
+        GUIHelper.create_checkbutton(trip_row, "Weekend", self.is_weekend_var)
+
+        filter_row = ttk.Frame(trip_panel)
+        filter_row.pack(fill=tk.X, pady=2)
+        ttk.Label(filter_row, text="Region:").pack(side=tk.LEFT, padx=(0, 4))
+        GUIHelper.create_combobox(filter_row, self.current_region_var, list(VALID_REGIONS), width=12)
+        self.current_region_var.trace_add("write", lambda *a: self._on_region_filter_changed())
+        ttk.Label(filter_row, text="Category:").pack(side=tk.LEFT, padx=(8, 4))
+        self.car_cat_combo = GUIHelper.create_combobox(
+            filter_row, self.car_cat_var,
+            ["All"] + get_providers_for_region("Singapore"), width=12,
+        )
+        self.recommendation_region_label = ttk.Label(
+            trip_panel, text="Showing recommendations for: Singapore", font=("Segoe UI", 9)
+        )
+        self.recommendation_region_label.pack(anchor=tk.W, pady=(2, 0))
+
+        ttk.Button(
+            trip_panel,
+            text="Get Recommendations",
+            command=self.get_trip_form_recommendations,
+            style="Accent.TButton",
+        ).pack(anchor=tk.W, pady=(6, 2))
+
+        ttk.Label(
+            trip_panel,
+            textvariable=self.mode_status_var,
+            foreground="#666666",
+            font=("Segoe UI", 9),
+        ).pack(anchor=tk.W, pady=(2, 0))
         self.use_ml_var.trace_add("write", lambda *_: self._update_recommendation_mode_status())
         self.use_ollama_var.trace_add("write", lambda *_: self._update_recommendation_mode_status())
-        
-        # Ollama model selection with refresh button
-        ollama_model_frame = ttk.Frame(ai_settings_inner)
-        ollama_model_frame.pack(fill=tk.X, pady=(5, 0))
-        ttk.Label(ollama_model_frame, text="Model:").pack(side=tk.LEFT, padx=(10, 2))
-        self.ollama_model_var = tk.StringVar(value="llama3.1:3b")
+        self._update_recommendation_mode_status()
+
+        # Advanced: AI + extra trip prefs (collapsed)
+        _, advanced_body = GUIHelper.create_collapsible(
+            main_panel, "Advanced", start_open=False, pack_kwargs={"fill": tk.X, "padx": 5, "pady": 2}
+        )
+        adv_row = ttk.Frame(advanced_body)
+        adv_row.pack(fill=tk.X, pady=2)
+        GUIHelper.create_checkbutton(adv_row, "Use Machine Learning", self.use_ml_var)
+        GUIHelper.create_checkbutton(adv_row, "Use Ollama LLM", self.use_ollama_var)
+        ttk.Label(adv_row, text="Passengers:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Spinbox(
+            adv_row, from_=1, to=10, textvariable=self.passenger_count_var, width=5, state="readonly"
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(adv_row, text="Space:").pack(side=tk.LEFT, padx=(5, 2))
+        ttk.Combobox(
+            adv_row,
+            textvariable=self.space_requirements_var,
+            width=10,
+            values=["little", "medium", "alot"],
+            state="readonly",
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        ollama_model_frame = ttk.Frame(advanced_body)
+        ollama_model_frame.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(ollama_model_frame, text="Ollama model:").pack(side=tk.LEFT, padx=(0, 2))
         self.ollama_model_combobox = GUIHelper.create_combobox(
-            ollama_model_frame, self.ollama_model_var,
+            ollama_model_frame,
+            self.ollama_model_var,
             ["llama3.1:3b", "llama2", "llama2:7b", "llama2:13b", "mistral", "codellama", "neural-chat"],
             width=15,
         )
-        self.ollama_model_combobox.pack(side=tk.LEFT, padx=(0, 5))
-        
-        refresh_model_btn = ttk.Button(
-            ollama_model_frame, text="🔄", width=3,
-            command=self.refresh_ollama_models
+        ttk.Button(ollama_model_frame, text="🔄", width=3, command=self.refresh_ollama_models).pack(
+            side=tk.LEFT, padx=(0, 5)
         )
-        refresh_model_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Ollama connection status indicator
         self.ollama_status_label = ttk.Label(
             ollama_model_frame, text="●", foreground="gray", font=("Segoe UI", 12)
         )
         self.ollama_status_label.pack(side=tk.LEFT, padx=(5, 0))
         self.ollama_status_tooltip = "Ollama status: Unknown"
-        
-        # Filter Settings Section (region-aware: Singapore vs Malaysia)
-        filter_frame = ttk.Frame(settings_frame)
-        filter_frame.pack(fill=tk.X)
-        ttk.Label(filter_frame, text="Filter Settings:", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W)
-        filter_settings_inner = ttk.Frame(filter_frame)
-        filter_settings_inner.pack(fill=tk.X, padx=(10, 0), pady=(2, 0))
-
-        ttk.Label(filter_settings_inner, text="Region:").pack(side=tk.LEFT, padx=(0, 2))
-        self.current_region_var = tk.StringVar(value="Singapore")
-        GUIHelper.create_combobox(
-            filter_settings_inner, self.current_region_var,
-            list(VALID_REGIONS), width=12,
-        )
-        self.current_region_var.trace_add("write", lambda *a: self._on_region_filter_changed())
-
-        ttk.Label(filter_settings_inner, text="Category:").pack(side=tk.LEFT, padx=(0, 2))
-        self.car_cat_var = tk.StringVar(value="All")
-        self.car_cat_combo = GUIHelper.create_combobox(
-            filter_settings_inner, self.car_cat_var,
-            ["All"] + get_providers_for_region("Singapore"), width=12,
-        )
-        self.recommendation_region_label = ttk.Label(
-            filter_frame, text="Showing recommendations for: Singapore",
-            font=("Segoe UI", 9)
-        )
-        self.recommendation_region_label.pack(anchor=tk.W, padx=(10, 0), pady=(2, 0))
-
-        # Initialize Ollama model list (will be populated asynchronously)
-        self.available_ollama_models = ["llama3.1:3b", "llama2", "llama2:7b", "llama2:13b", "mistral", "codellama", "neural-chat"]
+        self.available_ollama_models = [
+            "llama3.1:3b", "llama2", "llama2:7b", "llama2:13b", "mistral", "codellama", "neural-chat"
+        ]
         self.ollama_available = False
 
-        # Chat state
-        self.chat_state = {
-            "waiting_for_timing": False,
-            "waiting_for_distance": False,
-            "waiting_for_duration": False,
-            "waiting_for_passengers": False,
-            "waiting_for_space": False,
-            "rental_date": None,
-            "rental_time": None,
-            "rental_timing": None,
-            "distance": None,
-            "duration": None,
-            "passenger_count": 2,  # Default: 2 passengers (including driver)
-            "space_requirements": "little",  # Default: little space
-            "conversation_started": False,
-            "conversation_history": [],
-            "last_recommendations": None,
-            "user_preferences": {},
-            "trip_context": {},
-        }
-        self.start_chat()
+        # Results + chart
+        results_panel = ttk.LabelFrame(main_panel, text="Recommendations", padding=(10, 5))
+        results_panel.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # --- Right: Recommendations, Error Log, Results, Chart, Data Source ---
-        right_panel = ttk.LabelFrame(container, text="Recommendations", padding=(10, 5))
-        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0), pady=5)
-
-        ttk.Label(
-            right_panel,
-            textvariable=self.mode_status_var,
-            foreground="#666666",
-            font=("Segoe UI", 9),
-        ).pack(anchor=tk.W, padx=5, pady=(0, 5))
-        self._update_recommendation_mode_status()
-
-        # Error log
-        error_frame = ttk.LabelFrame(right_panel, text="Error Log", padding=(5, 5))
+        error_frame = ttk.LabelFrame(results_panel, text="Error Log", padding=(5, 5))
         error_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
         error_display_frame = ttk.Frame(error_frame)
         error_display_frame.pack(fill=tk.BOTH, expand=True)
         self.error_display = tk.Text(
             error_display_frame, wrap=tk.WORD, state=tk.DISABLED, font=("Segoe UI", 9),
-            bg="#fff5f5", fg="#d73a49", relief=tk.SUNKEN, borderwidth=1, height=3
+            bg="#fff5f5", fg="#d73a49", relief=tk.SUNKEN, borderwidth=1, height=2
         )
         error_scrollbar = ttk.Scrollbar(error_display_frame, orient=tk.VERTICAL, command=self.error_display.yview)
         self.error_display.configure(yscrollcommand=error_scrollbar.set)
@@ -485,9 +443,10 @@ class CarRentalRecommenderApp:
         error_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         clear_error_button.pack(side=tk.RIGHT, padx=(5, 0))
 
-        # Results treeview
+        tree_wrap = ttk.Frame(results_panel)
+        tree_wrap.pack(fill=tk.BOTH, expand=True)
         self.results_tree = ttk.Treeview(
-            right_panel,
+            tree_wrap,
             columns=("provider", "car_model", "cost", "method", "confidence", "reasoning", "full_reasoning"),
             show="headings",
         )
@@ -517,42 +476,111 @@ class CarRentalRecommenderApp:
             else:
                 self.results_tree.column(col, width=width, stretch=(col != "full_reasoning"))
         self.results_tree.column("full_reasoning", stretch=False)
-        results_scroll = ttk.Scrollbar(right_panel, orient=tk.VERTICAL, command=self.results_tree.yview)
+        results_scroll = ttk.Scrollbar(tree_wrap, orient=tk.VERTICAL, command=self.results_tree.yview)
         self.results_tree.configure(yscrollcommand=results_scroll.set)
         self.results_tree.bind("<Double-1>", self.show_recommendation_details)
         results_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.results_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Chart
-        self.chart_frame = ttk.LabelFrame(right_panel, text="Cost Comparison", padding=(10, 5))
+        self.chart_frame = ttk.LabelFrame(results_panel, text="Cost Comparison", padding=(10, 5))
         self.chart_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.fig, self.ax = plt.subplots(figsize=(5, 3), dpi=100)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.chart_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        # Data file selection frame
-        file_frame = ttk.LabelFrame(right_panel, text="Data Source", padding=5)
+        file_frame = ttk.LabelFrame(results_panel, text="Data Source", padding=5)
         file_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        # Variables
         self.data_file_var = tk.StringVar()
         self.file_path_var = tk.StringVar()
-
-        # "Loaded File:" label
         file_label = GUIHelper.create_label(file_frame, "Loaded File:")
         file_label.grid(row=0, column=0, sticky=tk.W, padx=(0, 2), pady=2)
-        file_name_entry = ttk.Entry(
+        ttk.Entry(
             file_frame, textvariable=self.data_file_var, state="readonly", width=24, font=("Segoe UI", 9)
-        )
-        file_name_entry.grid(row=0, column=1, sticky=tk.W + tk.E, padx=(0, 5), pady=2)
-        file_path_entry = ttk.Entry(
+        ).grid(row=0, column=1, sticky=tk.W + tk.E, padx=(0, 5), pady=2)
+        ttk.Entry(
             file_frame, textvariable=self.file_path_var, state="readonly", width=28
+        ).grid(row=1, column=1, sticky=tk.W + tk.E, padx=(0, 5), pady=(0, 2))
+        ttk.Button(file_frame, text="Browse...", command=self.browse_file).grid(
+            row=0, column=2, rowspan=2, sticky=tk.NS + tk.E, padx=(5, 0), pady=2
         )
-        file_path_entry.grid(row=1, column=1, sticky=tk.W + tk.E, padx=(0, 5), pady=(0, 2))
-        browse_button = ttk.Button(file_frame, text="Browse...", command=self.browse_file)
-        browse_button.grid(row=0, column=2, rowspan=2, sticky=tk.NS + tk.E, padx=(5, 0), pady=2)
         file_frame.columnconfigure(1, weight=1)
-        
+
+        # --- Chat assistant (hidden by default) ---
+        self._chat_panel_outer, chat_body = GUIHelper.create_collapsible(
+            container,
+            "Show chat assistant",
+            start_open=False,
+            pack_kwargs={"side": tk.RIGHT, "fill": tk.BOTH, "expand": False, "padx": (5, 0), "pady": 5},
+        )
+        left_panel = ttk.LabelFrame(chat_body, text="Car Rental Assistant", padding=(10, 5))
+        left_panel.pack(fill=tk.BOTH, expand=True)
+
+        chat_frame = ttk.Frame(left_panel)
+        chat_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.chat_display = tk.Text(
+            chat_frame, wrap=tk.WORD, state=tk.DISABLED, font=("Segoe UI", 10),
+            bg="white", relief=tk.SUNKEN, borderwidth=1, width=36
+        )
+        chat_scrollbar = ttk.Scrollbar(chat_frame, orient=tk.VERTICAL, command=self.chat_display.yview)
+        self.chat_display.configure(yscrollcommand=chat_scrollbar.set)
+        self.chat_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        chat_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        input_frame = ttk.Frame(left_panel)
+        input_frame.pack(fill=tk.X, padx=5, pady=(5, 0))
+        self.message_var = tk.StringVar()
+        self.message_entry = ttk.Entry(
+            input_frame, textvariable=self.message_var, font=("Segoe UI", 10), state="normal"
+        )
+        self.message_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        ttk.Button(
+            input_frame, text="Send", command=self.send_message, style="Accent.TButton"
+        ).pack(side=tk.RIGHT)
+        self.message_entry.bind("<Return>", lambda e: self.send_message())
+
+        self.chat_state = {
+            "waiting_for_timing": False,
+            "waiting_for_distance": False,
+            "waiting_for_duration": False,
+            "waiting_for_passengers": False,
+            "waiting_for_space": False,
+            "rental_date": None,
+            "rental_time": None,
+            "rental_timing": None,
+            "distance": None,
+            "duration": None,
+            "passenger_count": 2,
+            "space_requirements": "little",
+            "conversation_started": False,
+            "conversation_history": [],
+            "last_recommendations": None,
+            "user_preferences": {},
+            "trip_context": {},
+        }
+        self.start_chat()
+
+    def get_trip_form_recommendations(self):
+        """Run recommendations from the trip form (MVP path when AI off)."""
+        ok_d, distance, err_d = validate_numeric_input(
+            self.trip_distance_var.get(), "Distance",
+            min_value=0.01, max_value=10000, allow_zero=False, allow_negative=False, required=True,
+        )
+        if not ok_d:
+            self._show_user_friendly_error("Invalid Distance", err_d, "Distance")
+            return
+        ok_h, duration, err_h = validate_numeric_input(
+            self.trip_duration_var.get(), "Duration",
+            min_value=0.01, max_value=720, allow_zero=False, allow_negative=False, required=True,
+        )
+        if not ok_h:
+            self._show_user_friendly_error("Invalid Duration", err_h, "Duration")
+            return
+        self.chat_state["distance"] = distance
+        self.chat_state["duration"] = duration
+        self.chat_state["passenger_count"] = int(self.passenger_count_var.get() or 2)
+        self.chat_state["space_requirements"] = self.space_requirements_var.get() or "little"
+        self.get_chat_recommendations()
+
     def check_ollama_port(self, host="localhost", port=11434, timeout=2):
         """
         Check if Ollama service port is accessible.
@@ -691,65 +719,57 @@ class CarRentalRecommenderApp:
     
     def refresh_ollama_models(self):
         """Refresh the list of available Ollama models"""
-        def _refresh_in_thread():
-            loading = LoadingDialog(self.root, "Checking Ollama", "Detecting available models...")
-            loading.show()
-            
-            try:
-                models, error_info = self.detect_available_ollama_models()
-                
-                def _update_ui():
-                    loading.hide()
-                    if models:
-                        self.available_ollama_models = models
-                        current_value = self.ollama_model_var.get()
-                        self.ollama_model_combobox['values'] = models
-                        # Keep current selection if still available, otherwise use first
-                        if current_value in models:
-                            self.ollama_model_var.set(current_value)
-                        else:
-                            self.ollama_model_var.set(models[0] if models else "llama3.1:3b")
-                        self.ollama_available = True
-                        self.ollama_status_label.config(foreground="green")
-                        self.ollama_status_tooltip = "Ollama status: Connected"
-                        self.add_success_message(f"Found {len(models)} Ollama model(s)")
+        def work():
+            return self.detect_available_ollama_models()
+
+        def on_success(result):
+            models, error_info = result
+            if models:
+                self.available_ollama_models = models
+                current_value = self.ollama_model_var.get()
+                self.ollama_model_combobox['values'] = models
+                if current_value in models:
+                    self.ollama_model_var.set(current_value)
+                else:
+                    self.ollama_model_var.set(models[0] if models else "llama3.1:3b")
+                self.ollama_available = True
+                self.ollama_status_label.config(foreground="green")
+                self.ollama_status_tooltip = "Ollama status: Connected"
+                self.add_success_message(f"Found {len(models)} Ollama model(s)")
+            else:
+                self.ollama_available = False
+                self.ollama_status_label.config(foreground="red")
+                self.ollama_status_tooltip = "Ollama status: Not available"
+                if error_info:
+                    reason = error_info.get("reason", "Unknown error")
+                    suggestion = error_info.get("suggestion", "")
+                    package_installed = error_info.get("package_installed", False)
+                    if not package_installed:
+                        error_msg = f"Ollama Python package not installed. {suggestion}"
                     else:
-                        self.ollama_available = False
-                        self.ollama_status_label.config(foreground="red")
-                        self.ollama_status_tooltip = "Ollama status: Not available"
-                        
-                        # Provide diagnostic and actionable error message
-                        if error_info:
-                            reason = error_info.get("reason", "Unknown error")
-                            suggestion = error_info.get("suggestion", "")
-                            package_installed = error_info.get("package_installed", False)
-                            
-                            if not package_installed:
-                                error_msg = f"Ollama Python package not installed. {suggestion}"
-                            else:
-                                error_msg = f"Ollama not available: {reason}"
-                                if suggestion:
-                                    error_msg += f" | {suggestion}"
-                            
-                            self.add_error_message(error_msg)
-                        else:
-                            self.add_error_message("Ollama not available. Using default model list.")
-                
-                self.root.after(0, _update_ui)
-            except Exception as e:
-                def _update_ui_error():
-                    loading.hide()
-                    self.ollama_available = False
-                    self.ollama_status_label.config(foreground="red")
-                    self.ollama_status_tooltip = "Ollama status: Error"
-                    error_msg = f"Error detecting Ollama models: {str(e)}"
+                        error_msg = f"Ollama not available: {reason}"
+                        if suggestion:
+                            error_msg += f" | {suggestion}"
                     self.add_error_message(error_msg)
-                    print(f"Ollama detection error: {str(e)}")  # Log for debugging
-                self.root.after(0, _update_ui_error)
-        
-        thread = threading.Thread(target=_refresh_in_thread, daemon=True)
-        thread.start()
-    
+                else:
+                    self.add_error_message("Ollama not available. Using default model list.")
+
+        def on_error(exc):
+            self.ollama_available = False
+            self.ollama_status_label.config(foreground="red")
+            self.ollama_status_tooltip = "Ollama status: Error"
+            error_msg = f"Error detecting Ollama models: {str(exc)}"
+            self.add_error_message(error_msg)
+            print(f"Ollama detection error: {str(exc)}")
+
+        run_with_loading(
+            self.root,
+            work,
+            on_success,
+            on_error=on_error,
+            title="Checking Ollama",
+            message="Detecting available models...",
+        )
     def _prepare_dataset_context_for_llm(self):
         """
         Prepare dataset context summary for LLM system messages.
@@ -1574,131 +1594,106 @@ class CarRentalRecommenderApp:
             )
             return
 
-        def _get_recommendations_in_thread():
-            loading = LoadingDialog(self.root, "Generating Recommendations", "Analyzing data and generating recommendations...")
-            loading.show()
-            
-            try:
-                # Determine weekend from rental timing or checkbox
-                is_weekend = False
-                if self.chat_state.get("rental_timing"):
-                    is_weekend = self.chat_state["rental_timing"].get("is_weekend", False)
-                else:
-                    is_weekend = self.is_weekend_var.get()
-                
-                selected_cat = self.car_cat_var.get()
-                use_ml = self.use_ml_var.get() if hasattr(self, "use_ml_var") else False
-                use_ollama = (
-                    self.use_ollama_var.get() if hasattr(self, "use_ollama_var") else False
-                )
-                ollama_model = (
-                    self.ollama_model_var.get()
-                    if hasattr(self, "use_ollama_var")
-                    else "llama3.1:3b"
-                )
-                
-                # Get passenger count and space requirements from settings if set, otherwise from chat state, with defaults
-                passenger_count = None
-                if hasattr(self, "passenger_count_var") and self.passenger_count_var.get():
-                    try:
-                        passenger_count = int(self.passenger_count_var.get())
-                    except:
-                        passenger_count = self.chat_state.get("passenger_count", 2)
-                else:
+        def work():
+            is_weekend = False
+            if self.chat_state.get("rental_timing"):
+                is_weekend = self.chat_state["rental_timing"].get("is_weekend", False)
+            else:
+                is_weekend = self.is_weekend_var.get()
+
+            selected_cat = self.car_cat_var.get()
+            use_ml = self.use_ml_var.get() if hasattr(self, "use_ml_var") else False
+            use_ollama = (
+                self.use_ollama_var.get() if hasattr(self, "use_ollama_var") else False
+            )
+            ollama_model = (
+                self.ollama_model_var.get()
+                if hasattr(self, "use_ollama_var")
+                else "llama3.1:3b"
+            )
+
+            if hasattr(self, "passenger_count_var") and self.passenger_count_var.get():
+                try:
+                    passenger_count = int(self.passenger_count_var.get())
+                except Exception:
                     passenger_count = self.chat_state.get("passenger_count", 2)
-                
-                space_requirements = None
-                if hasattr(self, "space_requirements_var") and self.space_requirements_var.get().strip():
-                    space_requirements = self.space_requirements_var.get().strip()
-                else:
-                    space_requirements = self.chat_state.get("space_requirements", "little")
+            else:
+                passenger_count = self.chat_state.get("passenger_count", 2)
 
-                # Default to configured prices; AI paths retain their existing behavior.
-                region = self.current_region_var.get() if hasattr(self, "current_region_var") else "Singapore"
-                if region not in VALID_REGIONS:
-                    region = "Singapore"
-                loading.update_message("Generating recommendations...")
-                cost_analysis = self.cost_analysis
-                if not use_ml and not use_ollama:
-                    recommendations = get_mvp_recommendations(
-                        distance, duration, is_weekend, region
+            if hasattr(self, "space_requirements_var") and self.space_requirements_var.get().strip():
+                space_requirements = self.space_requirements_var.get().strip()
+            else:
+                space_requirements = self.chat_state.get("space_requirements", "little")
+
+            region = self.current_region_var.get() if hasattr(self, "current_region_var") else "Singapore"
+            if region not in VALID_REGIONS:
+                region = "Singapore"
+
+            cost_analysis = self.cost_analysis
+            if not use_ml and not use_ollama:
+                recommendations = get_mvp_recommendations(
+                    distance, duration, is_weekend, region
+                )
+            else:
+                if cost_analysis is None:
+                    cost_analysis = create_complete_cost_analysis(self.df, region=region)
+                try:
+                    with open("pricing_config.json", "r") as f:
+                        pricing_config = json.load(f)
+                except Exception:
+                    pricing_config = None
+                try:
+                    recommendations = get_ollama_enhanced_recommendations(
+                        distance, duration, self.df, cost_analysis, is_weekend,
+                        top_n=10, use_ollama=use_ollama, ollama_model=ollama_model,
+                        use_ml=use_ml, passenger_count=passenger_count,
+                        space_requirements=space_requirements,
+                        rental_timing=self.chat_state.get("rental_timing"),
+                        pricing_config=pricing_config,
                     )
-                else:
-                    if cost_analysis is None:
-                        loading.update_message("Creating cost analysis...")
-                        cost_analysis = create_complete_cost_analysis(self.df, region=region)
-                    try:
-                        with open("pricing_config.json", "r") as f:
-                            pricing_config = json.load(f)
-                    except:
-                        pricing_config = None
-                    try:
-                        recommendations = get_ollama_enhanced_recommendations(
-                            distance, duration, self.df, cost_analysis, is_weekend,
-                            top_n=10, use_ollama=use_ollama, ollama_model=ollama_model,
-                            use_ml=use_ml, passenger_count=passenger_count,
-                            space_requirements=space_requirements,
-                            rental_timing=self.chat_state.get("rental_timing"),
-                            pricing_config=pricing_config,
-                        )
-                        print(f"Generated {len(recommendations)} recommendations")
-                    except Exception as e:
-                        error_msg = f"Ollama LLM is not available: {str(e)}"
-                        print(f"Recommendation error: {error_msg}")
-                        if not use_ollama:
-                            raise
-                        recommendations = get_ollama_enhanced_recommendations(
-                            distance,
-                            duration,
-                            self.df,
-                            cost_analysis,
-                            is_weekend,
-                            top_n=10,
-                            use_ollama=False,
-                            ollama_model=ollama_model,
-                            use_ml=use_ml,
-                            passenger_count=passenger_count,
-                            space_requirements=space_requirements,
-                            rental_timing=self.chat_state.get("rental_timing"),
-                            pricing_config=pricing_config
-                        )
-                # Filter recommendations by selected category if not "All"
-                if selected_cat != "All":
-                    recommendations = [
-                        rec for rec in recommendations if rec["provider"] == selected_cat
-                    ]
+                except Exception as e:
+                    print(f"Recommendation error: {e}")
+                    if not use_ollama:
+                        raise
+                    recommendations = get_ollama_enhanced_recommendations(
+                        distance, duration, self.df, cost_analysis, is_weekend,
+                        top_n=10, use_ollama=False, ollama_model=ollama_model,
+                        use_ml=use_ml, passenger_count=passenger_count,
+                        space_requirements=space_requirements,
+                        rental_timing=self.chat_state.get("rental_timing"),
+                        pricing_config=pricing_config,
+                    )
 
-                def _update_ui():
-                    loading.hide()
-                    # Update cost_analysis if it was created
-                    if self.cost_analysis is None:
-                        self.cost_analysis = cost_analysis
-                    
-                    # Display recommendations in chat
-                    self.display_chat_recommendations(recommendations, distance, duration)
+            if selected_cat != "All":
+                recommendations = [
+                    rec for rec in recommendations if rec["provider"] == selected_cat
+                ]
+            return recommendations, cost_analysis
 
-                    # Update the results treeview
-                    self.update_results_tree(recommendations)
+        def on_success(payload):
+            recommendations, cost_analysis = payload
+            if self.cost_analysis is None:
+                self.cost_analysis = cost_analysis
+            self.display_chat_recommendations(recommendations, distance, duration)
+            self.update_results_tree(recommendations)
+            self.show_recommendation_chart(recommendations)
+            self.add_success_message(
+                f"Generated {len(recommendations)} recommendations for {distance} km, {duration} hours"
+            )
 
-                    # Show comparison chart
-                    self.show_recommendation_chart(recommendations)
+        def on_error(exc):
+            error_msg = f"An error occurred while getting recommendations: {str(exc)}"
+            self.add_error_message(error_msg)
+            self.add_bot_message(f"❌ {error_msg}")
 
-                    # Show success message
-                    success_msg = f"Generated {len(recommendations)} recommendations for {distance} km, {duration} hours"
-                    self.add_success_message(success_msg)
-                
-                self.root.after(0, _update_ui)
-
-            except Exception as e:
-                def _update_ui_error():
-                    loading.hide()
-                    error_msg = f"An error occurred while getting recommendations: {str(e)}"
-                    self.add_error_message(error_msg)
-                    self.add_bot_message(f"❌ {error_msg}")
-                self.root.after(0, _update_ui_error)
-        
-        thread = threading.Thread(target=_get_recommendations_in_thread, daemon=True)
-        thread.start()
+        run_with_loading(
+            self.root,
+            work,
+            on_success,
+            on_error=on_error,
+            title="Generating Recommendations",
+            message="Analyzing data and generating recommendations...",
+        )
 
     def display_chat_recommendations(self, recommendations, distance, duration):
         """Display recommendations in the chat interface, using Ollama for summary if available."""
@@ -2799,8 +2794,54 @@ class CarRentalRecommenderApp:
         }
         return defaults.get(category, 45.0)
 
+    def seed_tank_capacities_from_dataframe(self, df=None, only_if_empty=False):
+        """
+        Fill car_model_tank_capacities from rental data (category defaults).
+        Returns (models_seen, added_count).
+        """
+        source = self.df if df is None else df
+        if source is None or source.empty or "Car model" not in source.columns:
+            return 0, 0
+
+        if "car_model_tank_capacities" not in self.settings:
+            self.settings["car_model_tank_capacities"] = {}
+        capacities = self.settings["car_model_tank_capacities"]
+        if only_if_empty and capacities:
+            return len(capacities), 0
+
+        unique_models = source[
+            (source["Car model"].notna())
+            & (source["Car model"] != "Calculator Generated")
+        ]["Car model"].unique()
+        if len(unique_models) == 0:
+            return 0, 0
+
+        model_categories = {}
+        if "Car Cat" in source.columns:
+            for model in unique_models:
+                model_data = source[source["Car model"] == model]
+                categories = model_data["Car Cat"].dropna().unique()
+                if len(categories) > 0:
+                    model_categories[model] = categories[0]
+
+        added = 0
+        for model in unique_models:
+            if model not in capacities:
+                capacities[model] = self.get_default_tank_capacity(
+                    model_categories.get(model, "")
+                )
+                added += 1
+
+        if hasattr(self, "tank_capacity_model_combo"):
+            self.tank_capacity_model_combo["values"] = sorted(unique_models)
+        if hasattr(self, "tank_capacity_tree"):
+            self.refresh_tank_capacity_tree()
+        return len(unique_models), added
+
     def refresh_tank_capacity_tree(self):
         """Refresh the tank capacity treeview with current settings"""
+        if not hasattr(self, "tank_capacity_tree"):
+            return
         # Clear existing items
         for item in self.tank_capacity_tree.get_children():
             self.tank_capacity_tree.delete(item)
@@ -2808,8 +2849,12 @@ class CarRentalRecommenderApp:
         # Add items from settings
         capacities = self.settings.get("car_model_tank_capacities", {})
         for car_model, capacity in sorted(capacities.items()):
+            try:
+                capacity_text = f"{float(capacity):.1f}"
+            except (TypeError, ValueError):
+                capacity_text = str(capacity)
             self.tank_capacity_tree.insert(
-                "", "end", values=(car_model, f"{capacity:.1f}")
+                "", "end", values=(car_model, capacity_text)
             )
 
     def on_tank_capacity_select(self, event):
@@ -2964,55 +3009,16 @@ class CarRentalRecommenderApp:
         
         if not self._check_column_exists("Car model"):
             return
-        
-        # Get unique car models (excluding "Calculator Generated")
-        unique_models = self.df[
-            (self.df["Car model"].notna()) & 
-            (self.df["Car model"] != "Calculator Generated")
-        ]["Car model"].unique()
-        
-        if len(unique_models) == 0:
+
+        models_seen, added_count = self.seed_tank_capacities_from_dataframe(only_if_empty=False)
+        if models_seen == 0:
             messagebox.showinfo("Info", "No car models found in the loaded data.")
             return
-        
-        # Update combobox values
-        self.tank_capacity_model_combo["values"] = sorted(unique_models)
-        
-        # Get car categories for default values
-        if "Car Cat" in self.df.columns:
-            model_categories = {}
-            for model in unique_models:
-                model_data = self.df[self.df["Car model"] == model]
-                if not model_data.empty:
-                    # Get most common category for this model
-                    categories = model_data["Car Cat"].dropna().unique()
-                    if len(categories) > 0:
-                        model_categories[model] = categories[0]
-        else:
-            model_categories = {}
-        
-        # Add models with default capacities if not already configured
-        if "car_model_tank_capacities" not in self.settings:
-            self.settings["car_model_tank_capacities"] = {}
-        
-        capacities = self.settings["car_model_tank_capacities"]
-        added_count = 0
-        
-        for model in unique_models:
-            if model not in capacities:
-                # Use default based on category
-                category = model_categories.get(model, "")
-                default_capacity = self.get_default_tank_capacity(category)
-                capacities[model] = default_capacity
-                added_count += 1
-        
-        # Refresh treeview
-        self.refresh_tank_capacity_tree()
-        
+
         messagebox.showinfo(
-            "Success", 
-            f"Loaded {len(unique_models)} car models from CSV.\n"
-            f"Added {added_count} new entries with default capacities."
+            "Success",
+            f"Loaded {models_seen} car models from CSV.\n"
+            f"Added {added_count} new entries with default capacities.",
         )
 
     def set_default_tank_capacities(self):
@@ -3089,6 +3095,8 @@ class CarRentalRecommenderApp:
             "Distance",
             "Duration",
             "Total Cost",
+            "Collected",
+            "Dist. rating",
             "Fuel Used",
             "Consumption",
         )
@@ -3104,6 +3112,8 @@ class CarRentalRecommenderApp:
             "Distance": 70,
             "Duration": 70,
             "Total Cost": 80,
+            "Collected": 100,
+            "Dist. rating": 70,
             "Fuel Used": 70,
             "Consumption": 80,
         }
@@ -3373,6 +3383,37 @@ class CarRentalRecommenderApp:
             row=1, column=2, padx=2, pady=5, sticky="w"
         )
 
+        ttk.Label(rental_details_frame, text="📍 Collected from:").grid(
+            row=2, column=0, padx=5, pady=5, sticky="w"
+        )
+        collection_entry = ttk.Entry(
+            rental_details_frame, textvariable=self.record_collection_location_var, width=22
+        )
+        collection_entry.grid(row=2, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
+        collection_entry.bind("<KeyRelease>", lambda e: setattr(self, "_form_dirty", True))
+
+        ttk.Label(rental_details_frame, text="🚶 Distance rating:").grid(
+            row=3, column=0, padx=5, pady=5, sticky="w"
+        )
+        self.record_distance_rating_combo = GUIHelper.create_combobox(
+            parent=rental_details_frame,
+            textvariable=self.record_distance_rating_var,
+            values=rating_choice_labels(),
+            width=28,
+            row=3,
+            column=1,
+            columnspan=2,
+            padx=5,
+            pady=5,
+            sticky="w",
+        )
+        ttk.Label(
+            rental_details_frame,
+            text="0 = beside house · 3 = OK by bus/MRT · 5 = only if urgent",
+            foreground="#555555",
+            wraplength=260,
+        ).grid(row=4, column=0, columnspan=3, padx=5, pady=(0, 5), sticky="w")
+
         # Enhanced Fuel Information with better organization
         fuel_frame = ttk.LabelFrame(left_form_frame, text="⛽ Fuel Information")
         fuel_frame.pack(fill="both", expand=True, padx=5, pady=5)
@@ -3391,26 +3432,18 @@ class CarRentalRecommenderApp:
             row=1, column=1, padx=5, pady=5, sticky="w"
         )
 
-        ttk.Label(fuel_frame, text="📈 Consumption (KM/L):").grid(
-            row=2, column=0, padx=5, pady=5, sticky="w"
-        )
-        ttk.Entry(fuel_frame, textvariable=self.record_consumption_var, width=15).grid(
-            row=2, column=1, padx=5, pady=5, sticky="w"
-        )
-
         # Auto-calculate fuel usage button
         ttk.Button(
             fuel_frame,
             text="Auto-calc Usage",
             command=self.auto_calculate_fuel_usage,
             width=12,
-        ).grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        ).grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
-        # Enhanced Cost Information with Excel integration
+        # Enhanced Cost Information — core field only
         cost_frame = ttk.LabelFrame(right_form_frame, text="💰 Cost Information")
-        cost_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        cost_frame.pack(fill="x", expand=False, padx=5, pady=5)
 
-        # First column of costs
         ttk.Label(cost_frame, text="💵 Total Cost ($):").grid(
             row=0, column=0, padx=5, pady=5, sticky="w"
         )
@@ -3418,96 +3451,124 @@ class CarRentalRecommenderApp:
             row=0, column=1, padx=5, pady=5, sticky="w"
         )
 
-        ttk.Label(cost_frame, text="⛽ Pumped Fuel Cost ($):").grid(
-            row=1, column=0, padx=5, pady=5, sticky="w"
-        )
-        ttk.Entry(
-            cost_frame,
-            textvariable=self.record_pumped_cost_var,
-            width=15,
-            state="readonly",
-            background="#f0f0f0",
-            foreground="black",
-        ).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-
-        # Second column of costs
-        ttk.Label(cost_frame, text="📏 Cost per KM ($):").grid(
-            row=0, column=2, padx=5, pady=5, sticky="w"
-        )
-        ttk.Entry(
-            cost_frame,
-            textvariable=self.record_cost_per_km_var,
-            width=15,
-            state="readonly",
-            background="#f0f0f0",
-            foreground="black",
-        ).grid(row=0, column=3, padx=5, pady=5, sticky="w")
-
-        ttk.Label(cost_frame, text="⏰ Duration Cost ($):").grid(
-            row=1, column=2, padx=5, pady=5, sticky="w"
-        )
-        ttk.Entry(
-            cost_frame, textvariable=self.record_duration_cost_var, width=15
-        ).grid(row=1, column=3, padx=5, pady=5, sticky="w")
-
-        # Additional cost fields
-        ttk.Label(cost_frame, text="💰 Cost per Hour ($):").grid(
-            row=2, column=0, padx=5, pady=5, sticky="w"
-        )
-        ttk.Entry(
-            cost_frame,
-            textvariable=self.record_cost_per_hr_var,
-            width=15,
-            state="readonly",
-            background="#f0f0f0",
-            foreground="black",
-        ).grid(row=2, column=1, padx=5, pady=5, sticky="w")
-
-        ttk.Label(cost_frame, text="💸 Fuel Savings ($):").grid(
-            row=2, column=2, padx=5, pady=5, sticky="w"
-        )
-        ttk.Entry(
-            cost_frame,
-            textvariable=self.record_fuel_savings_var,
-            width=15,
-            state="readonly",
-            background="#f0f0f0",
-            foreground="black",
-        ).grid(row=2, column=3, padx=5, pady=5, sticky="w")
-
-        # Improved layout: align buttons horizontally, add spacers for clarity
-
-        # Create a frame to hold the action buttons for better layout
         button_row = ttk.Frame(cost_frame)
-        button_row.grid(row=3, column=0, columnspan=4, padx=0, pady=5, sticky="ew")
+        button_row.grid(row=1, column=0, columnspan=4, padx=0, pady=5, sticky="ew")
 
-        # Auto-calc button (left)
-        auto_calc_btn = ttk.Button(
+        ttk.Button(
             button_row,
             text="Auto-calc Total",
             command=self.auto_calculate_total_cost,
             width=14,
-        )
-        auto_calc_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
-
-        # Smart calculation button (middle)
-        smart_calc_btn = ttk.Button(
+        ).pack(side="left", fill="x", expand=True, padx=(0, 5))
+        ttk.Button(
             button_row,
             text="Get smart calculation",
             command=self.smart_auto_calc,
             width=16,
-        )
-        smart_calc_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
-
-        # LLM Assistance button (right, robot emoji)
-        llm_btn = ttk.Button(
+        ).pack(side="left", fill="x", expand=True, padx=(0, 5))
+        ttk.Button(
             button_row,
             text="🤖 Get LLM Assistance",
             command=self.llm_assisted_form_fill,
             width=18,
-        )
-        llm_btn.pack(side="left", fill="x", expand=True)
+        ).pack(side="left", fill="x", expand=True)
 
+        # Auto-calc / readonly details — collapsed by default
+        _, calc_body = GUIHelper.create_collapsible(
+            right_form_frame,
+            "Calculated details",
+            start_open=False,
+            pack_kwargs={"fill": "both", "expand": True, "padx": 5, "pady": 5},
+        )
+        calc_frame = ttk.Frame(calc_body)
+        calc_frame.pack(fill="both", expand=True)
+
+        ttk.Label(calc_frame, text="⛽ Pumped Fuel Cost ($):").grid(
+            row=0, column=0, padx=5, pady=3, sticky="w"
+        )
+        ttk.Entry(
+            calc_frame,
+            textvariable=self.record_pumped_cost_var,
+            width=15,
+            state="readonly",
+        ).grid(row=0, column=1, padx=5, pady=3, sticky="w")
+
+        ttk.Label(calc_frame, text="📏 Cost per KM ($):").grid(
+            row=0, column=2, padx=5, pady=3, sticky="w"
+        )
+        ttk.Entry(
+            calc_frame,
+            textvariable=self.record_cost_per_km_var,
+            width=15,
+            state="readonly",
+        ).grid(row=0, column=3, padx=5, pady=3, sticky="w")
+
+        ttk.Label(calc_frame, text="⏰ Duration Cost ($):").grid(
+            row=1, column=0, padx=5, pady=3, sticky="w"
+        )
+        ttk.Entry(
+            calc_frame, textvariable=self.record_duration_cost_var, width=15
+        ).grid(row=1, column=1, padx=5, pady=3, sticky="w")
+
+        ttk.Label(calc_frame, text="💰 Cost per Hour ($):").grid(
+            row=1, column=2, padx=5, pady=3, sticky="w"
+        )
+        ttk.Entry(
+            calc_frame,
+            textvariable=self.record_cost_per_hr_var,
+            width=15,
+            state="readonly",
+        ).grid(row=1, column=3, padx=5, pady=3, sticky="w")
+
+        ttk.Label(calc_frame, text="💸 Fuel Savings ($):").grid(
+            row=2, column=0, padx=5, pady=3, sticky="w"
+        )
+        ttk.Entry(
+            calc_frame,
+            textvariable=self.record_fuel_savings_var,
+            width=15,
+            state="readonly",
+        ).grid(row=2, column=1, padx=5, pady=3, sticky="w")
+
+        ttk.Label(calc_frame, text="🛣 Mileage Cost ($):").grid(
+            row=2, column=2, padx=5, pady=3, sticky="w"
+        )
+        ttk.Entry(
+            calc_frame,
+            textvariable=self.record_mileage_cost_var,
+            width=15,
+            state="readonly",
+        ).grid(row=2, column=3, padx=5, pady=3, sticky="w")
+
+        ttk.Label(calc_frame, text="📈 Consumption (KM/L):").grid(
+            row=3, column=0, padx=5, pady=3, sticky="w"
+        )
+        ttk.Entry(calc_frame, textvariable=self.record_consumption_var, width=15).grid(
+            row=3, column=1, padx=5, pady=3, sticky="w"
+        )
+
+        fuel_economy_frame = ttk.LabelFrame(calc_body, text="📈 Fuel Economy Comparison")
+        fuel_economy_frame.pack(fill="both", expand=True, padx=0, pady=(6, 0))
+        self.fuel_economy_comparison_text = tk.Text(
+            fuel_economy_frame,
+            height=6,
+            width=60,
+            state="disabled",
+            background="#f8f9fa",
+            font=("Consolas", 9),
+        )
+        fuel_economy_scrollbar = ttk.Scrollbar(
+            fuel_economy_frame,
+            orient="vertical",
+            command=self.fuel_economy_comparison_text.yview,
+        )
+        self.fuel_economy_comparison_text.configure(
+            yscrollcommand=fuel_economy_scrollbar.set
+        )
+        self.fuel_economy_comparison_text.pack(
+            side="left", fill="both", expand=True, padx=5, pady=5
+        )
+        fuel_economy_scrollbar.pack(side="right", fill="y")
 
         # Malaysia NormalRental breakdown (shown when Provider = NormalRental)
         self.normal_rental_frame = ttk.LabelFrame(left_form_frame, text="🇲🇾 NormalRental (RM)")
@@ -3538,41 +3599,10 @@ class CarRentalRecommenderApp:
             textvariable=self.record_electricity_cost_var,
             width=15,
             state="readonly",
-            background="#f0f0f0",
-            foreground="black",
         ).grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
         # Initially hide the EV frame (will be shown when EV provider is selected)
         self.ev_frame.pack_forget()
-
-        # Enhanced Fuel Economy Comparison Frame
-        fuel_economy_frame = ttk.LabelFrame(
-            right_form_frame, text="📈 Fuel Economy Comparison"
-        )
-        fuel_economy_frame.pack(fill="both", expand=True, padx=5, pady=5)
-
-        # Create text widget for fuel economy comparison
-        self.fuel_economy_comparison_text = tk.Text(
-            fuel_economy_frame,
-            height=8,
-            width=60,
-            state="disabled",
-            background="#f8f9fa",
-            font=("Consolas", 9),
-        )
-        fuel_economy_scrollbar = ttk.Scrollbar(
-            fuel_economy_frame,
-            orient="vertical",
-            command=self.fuel_economy_comparison_text.yview,
-        )
-        self.fuel_economy_comparison_text.configure(
-            yscrollcommand=fuel_economy_scrollbar.set
-        )
-
-        self.fuel_economy_comparison_text.pack(
-            side="left", fill="both", expand=True, padx=5, pady=5
-        )
-        fuel_economy_scrollbar.pack(side="right", fill="y")
 
         # Enhanced Button frame for CRUD operations
         crud_frame = ttk.Frame(scrollable_frame)
@@ -4765,69 +4795,70 @@ class CarRentalRecommenderApp:
             self.add_error_message(error_msg)
             messagebox.showerror("Error", error_msg)
             return
-        
-        def _load_in_thread():
-            loading = None
+
+        def work():
+            df, quality_report = run_cleaning_pipeline(file_path)
+            cost_analysis = create_complete_cost_analysis(df, region=self._get_current_region())
+            print("[Data cleaning pipeline]", quality_report)
+            return df, quality_report, cost_analysis
+
+        def on_success(payload):
+            df, quality_report, cost_analysis = payload
+            self._last_quality_report = quality_report
+            self.df = df
+            self.cost_analysis = cost_analysis
+            self.data_file_var.set(os.path.basename(file_path))
+            self.file_path_var.set(file_path)
+
+            success_msg = f"Data loaded successfully from {os.path.basename(file_path)}"
+            r_in = quality_report.get("rows_in", 0)
+            r_out = quality_report.get("rows_out", 0)
+            dup = quality_report.get("duplicates_removed", 0)
+            if dup > 0 or r_in != r_out:
+                success_msg += f" — {r_out} rows"
+                if dup > 0:
+                    success_msg += f", {dup} duplicate(s) removed"
+            if not quality_report.get("schema_valid", True):
+                success_msg += " (schema warnings — some columns missing)"
+            self.add_success_message(success_msg)
             if show_dialog:
-                loading = LoadingDialog(self.root, "Loading Data", f"Loading and processing {os.path.basename(file_path)}...")
-                loading.show()
-            
-            try:
-                # Run automated data cleaning pipeline (schema -> load -> enhance -> deduplicate)
-                df, quality_report = run_cleaning_pipeline(file_path)
-                cost_analysis = create_complete_cost_analysis(df, region=self._get_current_region())
-                self._last_quality_report = quality_report
-                # Log pipeline report for data management visibility
-                print("[Data cleaning pipeline]", quality_report)
-                
-                def _update_ui():
-                    if loading:
-                        loading.hide()
-                    self.df = df
-                    self.cost_analysis = cost_analysis
-                    
-                    # Update file path display
-                    self.data_file_var.set(os.path.basename(file_path))
-                    self.file_path_var.set(file_path)
-                    
-                    success_msg = f"Data loaded successfully from {os.path.basename(file_path)}"
-                    # Append pipeline summary (rows, duplicates removed, schema)
-                    r_in = quality_report.get("rows_in", 0)
-                    r_out = quality_report.get("rows_out", 0)
-                    dup = quality_report.get("duplicates_removed", 0)
-                    if dup > 0 or r_in != r_out:
-                        success_msg += f" — {r_out} rows"
-                        if dup > 0:
-                            success_msg += f", {dup} duplicate(s) removed"
-                    if not quality_report.get("schema_valid", True):
-                        success_msg += " (schema warnings — some columns missing)"
-                    self.add_success_message(success_msg)
-                    if show_dialog:
-                        messagebox.showinfo("Success", success_msg)
+                messagebox.showinfo("Success", success_msg)
 
-                    # Remove message labels once data is loaded
-                    if hasattr(self, "message_label"):
-                        self.message_label.place_forget()
-                    if hasattr(self, "analysis_label"):
-                        self.analysis_label.place_forget()
+            if hasattr(self, "message_label"):
+                self.message_label.place_forget()
+            if hasattr(self, "analysis_label"):
+                self.analysis_label.place_forget()
+            if hasattr(self, "records_tree"):
+                self.refresh_records()
+            # Auto-fill empty tank capacity table from loaded car models
+            _, added = self.seed_tank_capacities_from_dataframe(df, only_if_empty=True)
+            if added:
+                self.save_settings()
 
-                    # Refresh records if tab exists
-                    if hasattr(self, "records_tree"):
-                        self.refresh_records()
-                
-                self.root.after(0, _update_ui)
-                
-            except Exception as e:
-                def _update_ui_error():
-                    if loading:
-                        loading.hide()
-                    error_msg = f"Failed to load data: {str(e)}"
-                    self.add_error_message(error_msg)
-                    messagebox.showerror("Error", error_msg)
-                self.root.after(0, _update_ui_error)
-        
-        thread = threading.Thread(target=_load_in_thread, daemon=True)
-        thread.start()
+        def on_error(exc):
+            error_msg = f"Failed to load data: {str(exc)}"
+            self.add_error_message(error_msg)
+            messagebox.showerror("Error", error_msg)
+
+        if show_dialog:
+            run_with_loading(
+                self.root,
+                work,
+                on_success,
+                on_error=on_error,
+                title="Loading Data",
+                message=f"Loading and processing {os.path.basename(file_path)}...",
+            )
+        else:
+            # Startup load: still off the UI thread, but no modal dialog.
+            def silent_worker():
+                try:
+                    payload = work()
+                    self.root.after(0, lambda: on_success(payload))
+                except Exception as exc:
+                    self.root.after(0, lambda: on_error(exc))
+
+            threading.Thread(target=silent_worker, daemon=True).start()
 
     def browse_upload_file(self):
         """Open file browser to select file for upload"""
@@ -5391,6 +5422,14 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         if "apply_esso_sg_discount" in self.settings:
             self.apply_esso_sg_discount_var.set(bool(self.settings["apply_esso_sg_discount"]))
 
+        # Settings load after Settings tab build — refresh UI that depends on settings
+        if "fuel_cost_per_liter" in self.settings and hasattr(self, "fuel_price_var"):
+            self.fuel_price_var.set(str(self.settings["fuel_cost_per_liter"]))
+        if "full_tank_cost" in self.settings and hasattr(self, "full_tank_cost_var"):
+            self.full_tank_cost_var.set(str(self.settings["full_tank_cost"]))
+        if hasattr(self, "tank_capacity_tree"):
+            self.refresh_tank_capacity_tree()
+
     def _on_esso_discount_toggled(self):
         """When Esso Singapore discount checkbox is toggled, refresh record form calculations."""
         if hasattr(self, "auto_update_fields"):
@@ -5442,6 +5481,19 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                             else ""
                         ),
                         f"${row['Total']:.2f}" if pd.notna(row["Total"]) else "",
+                        (
+                            str(row[COLLECTION_LOCATION_COL]).strip()
+                            if COLLECTION_LOCATION_COL in row.index
+                            and pd.notna(row.get(COLLECTION_LOCATION_COL))
+                            and str(row.get(COLLECTION_LOCATION_COL)).strip() not in ("", "nan")
+                            else ""
+                        ),
+                        (
+                            str(int(row[DISTANCE_RATING_COL]))
+                            if DISTANCE_RATING_COL in row.index
+                            and pd.notna(row.get(DISTANCE_RATING_COL))
+                            else ""
+                        ),
                         (
                             f"{row['Estimated fuel usage']:.2f}"
                             if pd.notna(row["Estimated fuel usage"])
@@ -5539,6 +5591,15 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         self.record_cost_per_hr_var.set(
             f"{row['Cost/HR']}".replace("$", "") if pd.notna(row["Cost/HR"]) else ""
         )
+        if COLLECTION_LOCATION_COL in row.index and pd.notna(row.get(COLLECTION_LOCATION_COL)):
+            loc = str(row[COLLECTION_LOCATION_COL]).strip()
+            self.record_collection_location_var.set("" if loc in ("nan", "None") else loc)
+        else:
+            self.record_collection_location_var.set("")
+        if DISTANCE_RATING_COL in row.index:
+            self.record_distance_rating_var.set(format_rating_choice(row.get(DISTANCE_RATING_COL)))
+        else:
+            self.record_distance_rating_var.set("")
         # NormalRental (Malaysia) optional fields
         for col, var in (
             ("Deposit (RM)", self.record_deposit_rm_var),
@@ -5609,6 +5670,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         self.record_deposit_rm_var.set("")
         self.record_rental_fee_rm_var.set("")
         self.record_additional_fee_rm_var.set("")
+        self.record_collection_location_var.set("")
+        self.record_distance_rating_var.set("")
 
         # Clear fuel economy comparison
         if hasattr(self, "fuel_economy_comparison_text"):
@@ -5844,6 +5907,16 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
 
             weekend = self.record_weekend_var.get()
 
+            rating_ok, distance_rating, rating_error = parse_rating_choice(
+                self.record_distance_rating_var.get()
+            )
+            if not rating_ok:
+                self._show_user_friendly_error(
+                    "Invalid Distance Rating", rating_error, "Distance rating"
+                )
+                return None
+            collection_location = (self.record_collection_location_var.get() or "").strip()
+
             # Create record dict
             record = {
                 "Region": region,
@@ -5866,6 +5939,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                 "Cost/HR": cost_per_hr,
                 "kWh Used": kwh_used,
                 "Electricity Cost": electricity_cost,
+                COLLECTION_LOCATION_COL: collection_location,
+                DISTANCE_RATING_COL: distance_rating,
             }
             if provider == "NormalRental":
                 record["Deposit (RM)"] = deposit_rm_val
@@ -6099,11 +6174,25 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             date_str = row["Date"].strftime("%d/%m/%Y") if pd.notna(row["Date"]) else ""
             car_model = str(row["Car model"]) if pd.notna(row["Car model"]) else ""
             provider = str(row["Car Cat"]) if pd.notna(row["Car Cat"]) else ""
+            collected = (
+                str(row[COLLECTION_LOCATION_COL]).strip()
+                if COLLECTION_LOCATION_COL in row.index
+                and pd.notna(row.get(COLLECTION_LOCATION_COL))
+                and str(row.get(COLLECTION_LOCATION_COL)).strip() not in ("", "nan")
+                else ""
+            )
+            dist_rating = (
+                str(int(row[DISTANCE_RATING_COL]))
+                if DISTANCE_RATING_COL in row.index and pd.notna(row.get(DISTANCE_RATING_COL))
+                else ""
+            )
 
             if (
                 search_text in date_str.lower()
                 or search_text in car_model.lower()
                 or search_text in provider.lower()
+                or search_text in collected.lower()
+                or search_text in dist_rating
             ):
                 self.records_tree.insert(
                     "",
@@ -6124,6 +6213,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                             else ""
                         ),
                         f"${row['Total']:.2f}" if pd.notna(row["Total"]) else "",
+                        collected,
+                        dist_rating,
                         (
                             f"{row['Estimated fuel usage']:.2f}"
                             if pd.notna(row["Estimated fuel usage"])
@@ -6150,6 +6241,21 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         # Main container
         main_frame = ttk.Frame(self.cost_planning_tab)
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Top verdict: can I afford this month?
+        verdict_frame = ttk.LabelFrame(main_frame, text="Can I afford this month?")
+        verdict_frame.pack(fill="x", padx=5, pady=(0, 8))
+        self.budget_verdict_var = tk.StringVar(
+            value="Set a budget and click Generate to see if you can afford it."
+        )
+        self.budget_verdict_label = ttk.Label(
+            verdict_frame,
+            textvariable=self.budget_verdict_var,
+            font=("Segoe UI", 12, "bold"),
+            wraplength=900,
+            justify="left",
+        )
+        self.budget_verdict_label.pack(anchor="w", padx=10, pady=10)
 
         # Split into left and right panes
         left_frame = ttk.Frame(main_frame)
@@ -6203,7 +6309,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         # Generate prediction button
         ttk.Button(
             budget_input_frame,
-            text="🔮 Generate Prediction",
+            text="🔮 Generate",
             command=self.generate_budget_prediction,
             style="Accent.TButton",
         ).grid(row=3, column=0, columnspan=2, pady=10)
@@ -6398,30 +6504,30 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         self.ml_model = None
 
     def setup_predictions_tab(self):
-        """Set up the predictions tab with pattern and possibility prediction"""
-        # Main container with horizontal split
+        """Set up a decision-first prediction tab with a secondary range forecast."""
+        # Main container with the date decision first and range tools below.
         main_frame = ttk.Frame(self.predictions_tab)
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Title
         ttk.Label(
-            main_frame, text="Rental Predictions", font=("Arial", 16, "bold")
+            main_frame, text="Will I rent?", font=("Arial", 16, "bold")
         ).pack(pady=(0, 10))
         
         # Create paned window for resizable split
-        paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
+        paned = ttk.PanedWindow(main_frame, orient=tk.VERTICAL)
         paned.pack(fill="both", expand=True)
         
-        # Left pane - Pattern Prediction
+        # Top pane - date-specific decision
+        possibility_frame = ttk.Frame(paned)
+        paned.add(possibility_frame, weight=1)
+
+        # Bottom pane - secondary range forecast
         pattern_frame = ttk.Frame(paned)
         paned.add(pattern_frame, weight=1)
         
-        # Right pane - Possibility Prediction
-        possibility_frame = ttk.Frame(paned)
-        paned.add(possibility_frame, weight=1)
-        
-        # ========== Pattern Prediction Section ==========
-        pattern_title = ttk.LabelFrame(pattern_frame, text="📊 Rental Pattern Prediction")
+        # ========== Pattern Forecast Section ==========
+        pattern_title = ttk.LabelFrame(pattern_frame, text="Pattern range forecast")
         pattern_title.pack(fill="both", expand=True, padx=5, pady=5)
         
         # Input section
@@ -6429,8 +6535,11 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         pattern_input_frame.pack(fill="x", padx=10, pady=10)
         
         # Date range inputs side by side (Start left, End right)
-        self.pattern_start_date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
-        self.pattern_end_date_var = tk.StringVar(value=(datetime.now() + pd.Timedelta(days=30)).strftime("%Y-%m-%d"))
+        today = datetime.today()
+        self.pattern_start_date_var = tk.StringVar(value=today.strftime("%Y-%m-%d"))
+        self.pattern_end_date_var = tk.StringVar(
+            value=(today + pd.Timedelta(days=30)).strftime("%Y-%m-%d")
+        )
 
         # Create a frame for row layout
         date_row_frame = ttk.Frame(pattern_input_frame)
@@ -6462,13 +6571,15 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         )
         granularity_combo.grid(row=2, column=1, padx=5, pady=5, sticky="w")
         
-        # Ollama reasoning option
+        # Ollama remains opt-in and out of the main forecast flow.
         self.pattern_use_ollama_var = tk.BooleanVar(value=False)
+        pattern_advanced_frame = ttk.LabelFrame(pattern_input_frame, text="Advanced")
+        pattern_advanced_frame.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
         ttk.Checkbutton(
-            pattern_input_frame,
-            text="Use AI Reasoning (Ollama)",
+            pattern_advanced_frame,
+            text="Use AI reasoning (Ollama)",
             variable=self.pattern_use_ollama_var
-        ).grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+        ).pack(anchor="w", padx=5, pady=3)
         
         # Generate button
         ttk.Button(
@@ -6502,9 +6613,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             label.grid(row=i, column=1, padx=5, pady=2, sticky="w")
             self.pattern_summary_labels[key] = label
         
-        # AI Reasoning section
+        # AI reasoning appears only after an opt-in response is available.
         self.pattern_reasoning_frame = ttk.LabelFrame(pattern_results_frame, text="🤖 AI Reasoning & Insights")
-        self.pattern_reasoning_frame.pack(fill="both", expand=False, padx=5, pady=5)
         
         self.pattern_reasoning_text = tk.Text(
             self.pattern_reasoning_frame,
@@ -6556,36 +6666,35 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         
         self.pattern_table.pack(side="left", fill="both", expand=True)
         
-        # ========== Possibility Prediction Section ==========
-        possibility_title = ttk.LabelFrame(possibility_frame, text="🎯 Date-Specific Rental Possibility")
+        # ========== Date Decision Section ==========
+        possibility_title = ttk.LabelFrame(possibility_frame, text="Will I rent on this date?")
         possibility_title.pack(fill="both", expand=True, padx=5, pady=5)
         
         # Input section
         possibility_input_frame = ttk.Frame(possibility_title)
         possibility_input_frame.pack(fill="x", padx=10, pady=10)
         
-        # Target date
-        ttk.Label(possibility_input_frame, text="Target Date:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.possibility_date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
+        ttk.Label(possibility_input_frame, text="Date:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.possibility_date_var = tk.StringVar(value=today.strftime("%Y-%m-%d"))
         possibility_date_entry = ttk.Entry(possibility_input_frame, textvariable=self.possibility_date_var, width=15)
         possibility_date_entry.grid(row=0, column=1, padx=5, pady=5)
         ttk.Button(possibility_input_frame, text="📅", command=lambda: self.select_date(self.possibility_date_var)).grid(row=0, column=2, padx=2)
         
-        # Combine "Trip Details" (left) and "Contextual Factors" (right) in a single horizontal frame
+        # Optional inputs are deliberately secondary to the date decision.
         details_context_outer = ttk.Frame(possibility_input_frame)
         details_context_outer.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
         details_context_outer.columnconfigure(0, weight=1)
         details_context_outer.columnconfigure(1, weight=1)
 
         # Trip details frame (left)
-        trip_details_frame = ttk.LabelFrame(details_context_outer, text="Trip Details (Optional)")
+        trip_details_frame = ttk.LabelFrame(details_context_outer, text="Advanced trip details (optional)")
         trip_details_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=0)
 
         ttk.Label(trip_details_frame, text="Distance (km):").grid(row=0, column=0, padx=5, pady=2, sticky="w")
         self.possibility_distance_var = tk.StringVar()
         ttk.Entry(trip_details_frame, textvariable=self.possibility_distance_var, width=12).grid(row=0, column=1, padx=5, pady=2)
 
-        ttk.Label(trip_details_frame, text="Duration (hours):").grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(trip_details_frame, text="Duration (hrs):").grid(row=1, column=0, padx=5, pady=2, sticky="w")
         self.possibility_duration_var = tk.StringVar()
         ttk.Entry(trip_details_frame, textvariable=self.possibility_duration_var, width=12).grid(row=1, column=1, padx=5, pady=2)
 
@@ -6594,7 +6703,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         ttk.Checkbutton(trip_details_frame, variable=self.possibility_weekend_var).grid(row=2, column=1, padx=5, pady=2, sticky="w")
 
         # Contextual factors frame (right)
-        context_frame = ttk.LabelFrame(details_context_outer, text="Contextual Factors (Optional)")
+        context_frame = ttk.LabelFrame(details_context_outer, text="Advanced context (optional)")
         context_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=0)
 
         self.possibility_holiday_var = tk.BooleanVar()
@@ -6628,12 +6737,12 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         # Generate button
         ttk.Button(
             possibility_input_frame,
-            text="🔮 Predict Possibility",
+            text="Predict Possibility",
             command=self.generate_possibility_prediction
         ).grid(row=3, column=0, columnspan=3, pady=10)
         
         # Results section
-        possibility_results_frame = ttk.LabelFrame(possibility_title, text="Prediction Results")
+        possibility_results_frame = ttk.LabelFrame(possibility_title, text="Decision")
         possibility_results_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
         # Possibility score display (large)
@@ -6647,6 +6756,14 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             foreground="#0078d7"
         )
         self.possibility_score_label.pack()
+        self.possibility_verdict_label = ttk.Label(
+            self.possibility_score_frame, text="Choose a date to predict.", font=("Arial", 11, "bold")
+        )
+        self.possibility_verdict_label.pack(pady=(0, 4))
+        self.possibility_cost_hint_label = ttk.Label(
+            self.possibility_score_frame, text="", font=("Arial", 10)
+        )
+        self.possibility_cost_hint_label.pack()
         
         # Details frame
         self.possibility_details_frame = ttk.Frame(possibility_results_frame)
@@ -6668,7 +6785,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             label.grid(row=i, column=1, padx=5, pady=2, sticky="w")
             self.possibility_details_labels[key] = label
         
-        # Reasoning text
+        # Keep supporting diagnostics available to the controller without
+        # showing empty panes in the MVP decision experience.
         reasoning_frame = ttk.LabelFrame(possibility_results_frame, text="Reasoning")
         reasoning_frame.pack(fill="both", expand=True, padx=5, pady=5)
         
@@ -6689,6 +6807,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             historical_frame, wrap=tk.WORD, height=4, width=40
         )
         self.possibility_historical_text.pack(fill="x", padx=5, pady=5)
+        reasoning_frame.pack_forget()
+        historical_frame.pack_forget()
 
     def setup_calculator_tab(self):
         """Set up the calculator tab for price comparison between providers"""
@@ -7018,7 +7138,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                 self.user_profile_text.delete(1.0, tk.END)
                 self.user_profile_text.insert(tk.END, f"Error: {error_msg}")
         finally:
-            loading.hide()
+            loading.hide(min_visible_ms=450)
 
     def display_user_preferences(self, preferences):
         """Display user preferences in the text widget with clear, readable format"""
@@ -7939,7 +8059,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                     monthly_budget, prediction_period, confidence_level
                 )
             finally:
-                loading.hide()
+                loading.hide(min_visible_ms=450)
 
             # Update UI with results
             self.update_budget_status(prediction_result)
@@ -7970,7 +8090,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         )
 
     def update_budget_status(self, prediction_result):
-        """Update budget status labels"""
+        """Update budget status labels and top affordability verdict."""
         self.budget_status_labels["budget_set"].config(
             text=f"${prediction_result['monthly_budget']:.2f}"
         )
@@ -8001,6 +8121,38 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         # Confidence score
         confidence = prediction_result["confidence_score"]
         self.budget_status_labels["confidence"].config(text=f"{confidence:.1%}")
+
+        self._update_budget_verdict(prediction_result)
+
+    def _update_budget_verdict(self, prediction_result):
+        """Prominent Affordable / Tight / Over budget summary."""
+        remaining = prediction_result["budget_remaining"]
+        predicted = prediction_result["predicted_spending"]
+        budget = prediction_result["monthly_budget"]
+        risk = prediction_result.get("risk_level", "medium")
+
+        if remaining < 0:
+            verdict = "Over budget"
+            reason = f"Predicted spend ${predicted:.0f} exceeds budget ${budget:.0f}."
+            color = "#b00020"
+            rem_txt = f"-${abs(remaining):.0f}"
+        elif risk == "medium" or remaining < predicted * 0.2:
+            verdict = "Tight"
+            reason = "Little buffer left after predicted rentals."
+            color = "#c67c00"
+            rem_txt = f"${remaining:.0f}"
+        else:
+            verdict = "Affordable"
+            reason = "Predicted spend fits comfortably under your budget."
+            color = "#1b7a3d"
+            rem_txt = f"${remaining:.0f}"
+
+        if hasattr(self, "budget_verdict_var"):
+            self.budget_verdict_var.set(
+                f"{verdict} — {rem_txt} remaining. {reason}"
+            )
+        if hasattr(self, "budget_verdict_label"):
+            self.budget_verdict_label.config(foreground=color)
 
     def update_prediction_summary(self, prediction_result):
         """Update prediction summary labels"""
@@ -10112,7 +10264,10 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         self.analysis_fig.tight_layout()
         self.analysis_canvas.draw()
 
-    def show_electric_vs_traditional_analysis(self, df):
+    def _show_electric_vs_traditional_analysis_legacy(self, df):
+        """Compatibility alias for the current EV/traditional comparison."""
+        return self.show_electric_vs_traditional_analysis(df)
+
         """Show comprehensive comparison between electric and traditional vehicles"""
         # Improved data validation
         has_ev_data = "kWh Used" in df.columns
@@ -10133,17 +10288,9 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             fuel_price = 2.51
             cost_per_kwh = 0.45
         
-        # Categorize vehicles - improved logic
+        # Retained temporarily for reference; use the shared classifier.
         df_copy = df.copy()
-        if has_ev_data:
-            df_copy["Vehicle_Type"] = df_copy["kWh Used"].apply(
-                lambda x: "Electric" if pd.notna(x) and x > 0 else None
-            )
-        else:
-            df_copy["Vehicle_Type"] = None
-        
-        # Fill in Traditional for non-EV entries
-        df_copy["Vehicle_Type"] = df_copy["Vehicle_Type"].fillna("Traditional")
+        df_copy["Vehicle_Type"] = classify_vehicle_type(df_copy)
         
         # Separate EV and Traditional data
         ev_df = df_copy[df_copy["Vehicle_Type"] == "Electric"].copy()
@@ -10472,6 +10619,74 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         # Adjust layout
         self.analysis_fig.tight_layout()
         self.analysis_canvas.draw()
+
+    def show_electric_vs_traditional_analysis(self, df):
+        """Show the shared EV and traditional rental comparison."""
+        if "Car Cat" not in df.columns and "kWh Used" not in df.columns:
+            messagebox.showwarning(
+                "Missing Data",
+                "No vehicle category or EV energy data found.",
+            )
+            return
+
+        try:
+            fuel_price = float(self.fuel_price_var.get()) if self.fuel_price_var.get() else 2.51
+            cost_per_kwh = float(self.cost_per_kwh_var.get()) if self.cost_per_kwh_var.get() else 0.45
+        except (AttributeError, TypeError, ValueError):
+            fuel_price, cost_per_kwh = 2.51, 0.45
+
+        stats = compute_ev_traditional_stats(df, fuel_price, cost_per_kwh)
+        ev_stats = stats["ev"]
+        traditional_stats = stats["traditional"]
+        self._add_ev_traditional_stats(ELECTRIC, ev_stats)
+        self._add_ev_traditional_stats(TRADITIONAL, traditional_stats)
+
+        for name, key in (
+            ("EV Cost Savings", "ev_savings"),
+            ("Traditional Cost Savings", "traditional_savings"),
+        ):
+            savings = stats["cost_savings"].get(key, 0)
+            if savings > 0:
+                self.add_stat(
+                    name,
+                    f"${savings:.2f} ({stats['cost_savings'][f'{key}_pct']:.1f}%)",
+                )
+        if ev_stats["total_co2"] > 0 and traditional_stats["total_co2"] > 0:
+            self.add_stat("EV CO2 Savings", f"{stats['co2_savings_pct']:.1f}% per km")
+
+        for vehicle_type, frame in (
+            (ELECTRIC, stats["ev_df"]),
+            (TRADITIONAL, stats["traditional_df"]),
+        ):
+            counts = stats["trip_type_counts"][vehicle_type]
+            if not counts.empty:
+                self.add_stat(
+                    f"{vehicle_type} Most Common Trip",
+                    f"{counts.idxmax()} ({counts.max()} trips)",
+                )
+
+        axes = build_comparison_figure(
+            self.analysis_fig, stats, stats["ev_df"], stats["traditional_df"]
+        )
+        self.analysis_ax = axes[0, 0]
+        self.analysis_canvas.draw()
+
+    def _add_ev_traditional_stats(self, vehicle_type, values):
+        """Add the shared comparison metrics to the analysis summary."""
+        label = "EV" if vehicle_type == ELECTRIC else TRADITIONAL
+        self.add_stat(f"{label} Trips", f"{values['trip_count']:.0f}")
+        self.add_stat(f"{label} Avg Cost", f"${values['avg_cost']:.2f}")
+        self.add_stat(f"{label} Total Cost", f"${values['total_cost']:.2f}")
+        self.add_stat(f"{label} Avg Distance", f"{values['avg_distance']:.1f} km")
+        self.add_stat(f"{label} Total Distance", f"{values['total_distance']:.1f} km")
+        if values["avg_efficiency"] > 0:
+            unit = "km/kWh" if vehicle_type == ELECTRIC else "km/L"
+            self.add_stat(f"{label} Efficiency", f"{values['avg_efficiency']:.2f} {unit}")
+        self.add_stat(f"{label} Cost/km", f"${values['avg_cost_per_km']:.3f}")
+        self.add_stat(f"{label} Cost/hr", f"${values['avg_cost_per_hour']:.2f}")
+        if values["total_co2"] > 0:
+            self.add_stat(f"{label} Total CO2", f"{values['total_co2']:.1f} kg")
+            self.add_stat(f"{label} Avg CO2/Trip", f"{values['avg_co2_per_trip']:.2f} kg")
 
     def show_cost_efficiency_analysis(self, df):
         """Show cost efficiency analysis (cost per km and cost per hour)"""
@@ -11074,51 +11289,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
     # ========== Prediction Tab Methods ==========
     
     def select_date(self, date_var):
-        """Open a calendar picker dialog; one click shows the calendar grid, clicking a day sets the date and closes."""
-        try:
-            dialog = tk.Toplevel(self.root)
-            dialog.title("Select Date")
-            dialog.transient(self.root)
-            dialog.grab_set()
-            try:
-                current = datetime.strptime(date_var.get(), "%Y-%m-%d") if date_var.get() else datetime.now()
-            except ValueError:
-                current = datetime.now()
-            year, month, day = current.year, current.month, current.day
-
-            try:
-                from tkcalendar import Calendar
-                cal = Calendar(
-                    dialog, selectmode="day", year=year, month=month, day=day,
-                    date_pattern="y-mm-dd",
-                )
-                cal.pack(padx=10, pady=10)
-
-                def on_date_selected(event=None):
-                    sel = cal.selection_get()
-                    if sel:
-                        date_var.set(sel.strftime("%Y-%m-%d"))
-                    dialog.destroy()
-
-                cal.bind("<<CalendarSelected>>", on_date_selected)
-                ttk.Button(dialog, text="Cancel", command=dialog.destroy).pack(pady=(0, 10))
-            except ImportError:
-                dialog.geometry("280x120")
-                ttk.Label(dialog, text="Enter date (YYYY-MM-DD):").pack(pady=10)
-                date_entry = ttk.Entry(dialog, width=20)
-                date_entry.insert(0, date_var.get() if date_var.get() else datetime.now().strftime("%Y-%m-%d"))
-                date_entry.pack(pady=5)
-
-                def set_date():
-                    try:
-                        test_date = pd.to_datetime(date_entry.get())
-                        date_var.set(test_date.strftime("%Y-%m-%d"))
-                        dialog.destroy()
-                    except Exception:
-                        messagebox.showerror("Invalid Date", "Please enter date in YYYY-MM-DD format")
-                ttk.Button(dialog, text="OK", command=set_date).pack(pady=10)
-        except Exception as e:
-            messagebox.showerror("Error", f"Date selection error: {e}")
+        """Open a calendar picker (tkcalendar or built-in month grid)."""
+        apply_picked_date(self.root, date_var)
     
     def generate_pattern_prediction(self):
         """Generate rental pattern prediction for date range"""
@@ -11148,17 +11320,8 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             else:
                 ollama_model = "llama2"
             
-            # Show loading indicator for long operations
-            if use_ollama:
-                loading = LoadingDialog(self.root, "Generating Prediction", "Analyzing patterns with AI reasoning... This may take a moment.")
-                loading.show()
-            else:
-                loading = LoadingDialog(self.root, "Generating Prediction", "Analyzing rental patterns...")
-                loading.show()
-            
-            try:
-                # Generate prediction
-                result = predict_rental_patterns(
+            def work():
+                return predict_rental_patterns(
                     self.df, 
                     start_date, 
                     end_date, 
@@ -11166,17 +11329,28 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                     use_ollama_reasoning=use_ollama,
                     ollama_model=ollama_model
                 )
-                
+
+            def on_success(result):
                 if "error" in result:
                     self._show_user_friendly_error("Prediction Error", result["error"])
                     return
-                
-                # Display results
                 self.display_pattern_results(result)
-                
                 self.status_var.set("Pattern prediction generated successfully!")
-            finally:
-                loading.hide()
+
+            run_with_loading(
+                self.root,
+                work,
+                on_success,
+                lambda error: self._show_user_friendly_error(
+                    "Prediction Error", f"Failed to generate prediction: {error}"
+                ),
+                title="Generating Prediction",
+                message=(
+                    "Analyzing patterns with AI reasoning..."
+                    if use_ollama
+                    else "Analyzing rental patterns..."
+                ),
+            )
             
         except ValueError as e:
             self._show_user_friendly_error("Invalid Input", f"Please enter valid dates: {e}")
@@ -11185,9 +11359,12 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
     
     def display_pattern_results(self, result):
         """Display pattern prediction results in UI"""
-        # Update summary labels
+        # Update summary labels — show expected + integer; never fake lone 0
+        freq = result.get("rental_frequency", {})
+        shown = freq.get("total", 0)
+        expected = freq.get("expected", shown)
         self.pattern_summary_labels["total_rentals"].config(
-            text=f"{int(result['rental_frequency']['total'])}"
+            text=format_predicted_rental_display(shown, expected)
         )
         self.pattern_summary_labels["total_spending"].config(
             text=f"${result['total_spending']:.2f}"
@@ -11222,8 +11399,7 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             self.pattern_reasoning_text.insert(1.0, f"{reasoning_text}\n\n[Generated using {model_used}]")
             self.pattern_reasoning_frame.pack(fill="both", expand=False, padx=5, pady=5)
         else:
-            self.pattern_reasoning_text.insert(1.0, "AI reasoning not available. Enable 'Use AI Reasoning (Ollama)' option to get insights.")
-            self.pattern_reasoning_frame.pack(fill="both", expand=False, padx=5, pady=5)
+            self.pattern_reasoning_frame.pack_forget()
         self.pattern_reasoning_text.config(state=tk.DISABLED)
         
         # Clear and populate table
@@ -11388,24 +11564,26 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             if schedule_str:
                 situation["personal_schedule"] = schedule_str
             
-            # Show loading indicator
-            loading = LoadingDialog(self.root, "Generating Prediction", "Analyzing rental possibility...")
-            loading.show()
-            
-            try:
-                # Generate prediction
-                result = predict_rental_possibility(self.df, target_date, situation)
-                
+            def work():
+                return predict_rental_possibility(self.df, target_date, situation)
+
+            def on_success(result):
                 if "error" in result:
                     self._show_user_friendly_error("Prediction Error", result["error"])
                     return
-                
-                # Display results
                 self.display_possibility_results(result, target_date)
-                
                 self.status_var.set("Possibility prediction generated successfully!")
-            finally:
-                loading.hide()
+
+            run_with_loading(
+                self.root,
+                work,
+                on_success,
+                lambda error: self._show_user_friendly_error(
+                    "Prediction Error", f"Failed to generate prediction: {error}"
+                ),
+                title="Generating Prediction",
+                message="Analyzing rental possibility...",
+            )
             
         except ValueError as e:
             self._show_user_friendly_error("Invalid Input", f"Please enter valid values: {e}")
@@ -11429,6 +11607,13 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
             text=f"{possibility_pct:.0f}%",
             foreground=color
         )
+        if possibility_pct >= 60:
+            verdict = "Likely to rent"
+        elif possibility_pct >= 35:
+            verdict = "Possible, but uncertain"
+        else:
+            verdict = "Unlikely to rent"
+        self.possibility_verdict_label.config(text=verdict)
         
         # Update details
         confidence_pct = result['confidence'] * 100
@@ -11447,6 +11632,12 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         
         self.possibility_details_labels["method"].config(
             text=result['method']
+        )
+        self.possibility_cost_hint_label.config(
+            text=(
+                f"Estimated cost: ${cost_range[0]:.2f}–${cost_range[1]:.2f} "
+                f"via {result['recommended_provider']} · {confidence_pct:.0f}% confidence"
+            )
         )
         
         # Update reasoning

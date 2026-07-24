@@ -9,7 +9,11 @@ from components.provider_pricing import (
     estimate_provider_cost,
     normalize_provider,
 )
-from mvp_cost_engine import get_mvp_recommendations, safe_predicted_rental_total
+from mvp_cost_engine import (
+    format_predicted_rental_display,
+    get_mvp_recommendations,
+    safe_predicted_rental_total,
+)
 
 
 class MVPricingPathTests(unittest.TestCase):
@@ -32,6 +36,11 @@ class MVPricingPathTests(unittest.TestCase):
     def test_non_zero_probability_cannot_round_to_zero_rentals(self):
         self.assertEqual(1, coerce_predicted_rental_total(0.4, [0.4]))
         self.assertEqual(1, safe_predicted_rental_total(0.4, [{"rental_probability": 0.4}]))
+
+    def test_predicted_rental_display_never_fakes_zero(self):
+        self.assertIn("shown as 1", format_predicted_rental_display(0, 0.4))
+        self.assertIn("0.4", format_predicted_rental_display(1, 0.4))
+        self.assertEqual("0", format_predicted_rental_display(0, 0))
 
 
 if __name__ == "__main__":

@@ -290,6 +290,10 @@ def enhance_dataframe(df):
         fillna_dict["Region"] = "Singapore"
     df = df.fillna(fillna_dict)
 
+    from components.collection_location import ensure_collection_columns
+
+    df = ensure_collection_columns(df)
+
     print(f"Enhanced dataframe: {len(df)} rows ready for analysis")
     return df
 
@@ -4177,8 +4181,12 @@ def create_time_series_model(df):
     y = daily_counts["Rentals"].values
     slope, intercept = np.polyfit(x, y, 1)
     
-    # Calculate average rental rate
-    avg_daily_rentals = daily_counts["Rentals"].mean()
+    # Include days without rentals. Averaging only rental dates overstates
+    # sparse-history forecasts.
+    observed_days = max(
+        1, (daily_counts["DateOnly"].max() - daily_counts["DateOnly"].min()).days + 1
+    )
+    avg_daily_rentals = len(df_copy) / observed_days
     avg_weekly_rentals = avg_daily_rentals * 7
     avg_monthly_rentals = avg_daily_rentals * 30
     
@@ -4466,8 +4474,15 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
         - confidence: confidence score
         - ai_reasoning: AI-generated reasoning and insights (if use_ollama_reasoning=True)
     """
-    if df.empty:
+    if df.empty or "Date" not in df.columns:
         return {"error": "No data available for prediction"}
+
+    # Ignore invalid historical dates rather than failing a whole forecast.
+    df = df.copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = df.dropna(subset=["Date"])
+    if df.empty:
+        return {"error": "No valid dated rental data available for prediction"}
     
     # Convert dates to datetime
     if isinstance(start_date, str):
@@ -4493,7 +4508,8 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
     ml_predictions = predict_with_ml_patterns(df, (start_date, end_date), granularity)
     
     # Calculate date range statistics
-    date_range_days = (end_date - start_date).days
+    # The prediction loops include both bounds, so the baseline does too.
+    date_range_days = (end_date - start_date).days + 1
     date_range_weeks = date_range_days / 7
     date_range_months = date_range_days / 30
     
@@ -4547,7 +4563,20 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
                 
                 # Keep probability-weighted totals: allocations are display-only.
         
-        avg_distance = total_predicted_distance / max(1, total_predicted_rentals) if total_predicted_rentals > 0 else 0.0
+        # A non-zero expected rental count must have a usable spend estimate.
+        # Some imported histories omit or zero-fill Total, so retain a modest
+        # fallback instead of reporting that a rental costs nothing.
+        if total_predicted_rentals_raw > 0 and total_predicted_spending <= 0:
+            historical_costs = pd.to_numeric(df.get("Total", pd.Series(dtype=float)), errors="coerce")
+            historical_costs = historical_costs[historical_costs > 0]
+            average_cost = historical_costs.mean() if not historical_costs.empty else 50.0
+            total_predicted_spending = total_predicted_rentals_raw * average_cost
+
+        avg_distance = (
+            total_predicted_distance / total_predicted_rentals_raw
+            if total_predicted_rentals_raw > 0
+            else 0.0
+        )
         
         # Find peak periods
         sorted_preds = sorted(ml_preds, key=lambda x: x["rental_probability"], reverse=True)
@@ -4567,18 +4596,26 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
         else:  # monthly
             total_predicted_rentals_raw = ts_model["avg_monthly_rentals"] * date_range_months
         
-        total_predicted_rentals = round(total_predicted_rentals_raw)
+        total_predicted_rentals = coerce_predicted_rental_total(
+            total_predicted_rentals_raw,
+            [1.0] if total_predicted_rentals_raw > 0 else [],
+        )
         
-        # Estimate spending and distance from historical averages
+        # Estimate spending and distance from historical averages (use expected count, not rounded)
         if "Total" in df.columns and "Distance (KM)" in df.columns:
             avg_cost = df[df["Car model"] != "Calculator Generated"]["Total"].mean() if "Car model" in df.columns else df["Total"].mean()
             avg_dist = df[df["Car model"] != "Calculator Generated"]["Distance (KM)"].mean() if "Car model" in df.columns else df["Distance (KM)"].mean()
+            if not pd.notna(avg_cost) or avg_cost <= 0:
+                avg_cost = 50.0
+            if not pd.notna(avg_dist) or avg_dist < 0:
+                avg_dist = 50.0
         else:
             avg_cost = 50.0  # Fallback
             avg_dist = 50.0   # Fallback
         
-        total_predicted_spending = total_predicted_rentals * avg_cost
-        total_predicted_distance = total_predicted_rentals * avg_dist
+        spend_basis = total_predicted_rentals_raw if total_predicted_rentals_raw > 0 else total_predicted_rentals
+        total_predicted_spending = spend_basis * avg_cost
+        total_predicted_distance = spend_basis * avg_dist
         avg_distance = avg_dist
         
         peak_periods = []
@@ -4668,11 +4705,18 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
     # Prepare result dictionary
     result = {
         "rental_frequency": {
-            "total": int(total_predicted_rentals),  # Return as integer
+            "total": int(total_predicted_rentals),  # Display integer (never faked to 0 when expected > 0)
+            "expected": float(total_predicted_rentals_raw),
             "per_period": float(frequency_per_period),
+            "expected_per_period": float(
+                total_predicted_rentals_raw
+                / max(1, date_range_days / {"daily": 1, "weekly": 7, "monthly": 30}.get(granularity, 7))
+            ),
             "granularity": granularity
         },
         "total_spending": float(total_predicted_spending),
+        "expected_spending": float(total_predicted_spending),
+        "spending": {"expected": float(total_predicted_spending)},
         "avg_distance": float(avg_distance),
         "provider_preferences": provider_preferences,
         "peak_periods": peak_periods,
@@ -4810,7 +4854,7 @@ def create_possibility_classifier(df):
     Returns:
         Tuple of (model, scaler) or None if insufficient data
     """
-    if df.empty or "Date" not in df.columns or len(df) < 10:
+    if df.empty or "Date" not in df.columns or len(df) < 20:
         return None, None
     
     try:
@@ -4825,7 +4869,11 @@ def create_possibility_classifier(df):
         if "Car model" in df_copy.columns:
             df_copy = df_copy[df_copy["Car model"] != "Calculator Generated"]
         
-        if df_copy.empty or len(df_copy) < 10:
+        if df_copy.empty or len(df_copy) < 20:
+            return None, None
+
+        history_days = (df_copy["Date"].max() - df_copy["Date"].min()).days
+        if df_copy["Date"].dt.date.nunique() < 15 or history_days < 90:
             return None, None
         
         # Create training data: for each rental date, create features
@@ -4862,8 +4910,8 @@ def create_possibility_classifier(df):
             if current_date not in rental_dates_set:
                 # Create a random situation for this date
                 situation = {
-                    "distance": np.random.uniform(20, 100),
-                    "duration": np.random.uniform(2, 6),
+                    "distance": df_copy["Distance (KM)"].median() if "Distance (KM)" in df_copy else 0,
+                    "duration": df_copy["Rental hour"].median() if "Rental hour" in df_copy else 0,
                     "is_weekend": pd.Timestamp(current_date).weekday() >= 5
                 }
                 features = extract_situation_features(situation, pd.Timestamp(current_date), df_copy)
@@ -4988,9 +5036,11 @@ def calculate_statistical_possibility(df, target_date, situation):
     # Normalize to 0-1 range
     possibility = min(1.0, max(0.0, base_possibility))
     
-    # Calculate confidence based on data availability
+    # Confidence needs both enough observations and enough calendar coverage.
+    # A handful of rentals all from one week should not look certain.
     data_points = len(df_copy)
-    confidence = min(1.0, data_points / 30)  # Max confidence at 30+ records
+    history_days = max(0, (df_copy["Date"].max() - df_copy["Date"].min()).days)
+    confidence = min(1.0, data_points / 50) * min(1.0, history_days / 180)
     
     # Generate reasoning
     reasoning_parts = []
@@ -5040,8 +5090,14 @@ def predict_rental_possibility(df, target_date, situation=None):
         - reasoning: str
         - method: str ("ML", "Statistical", or "Hybrid")
     """
-    if df.empty:
+    if df.empty or "Date" not in df.columns:
         return {"error": "No data available for prediction"}
+
+    df = df.copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = df.dropna(subset=["Date"])
+    if df.empty:
+        return {"error": "No valid dated rental data available for prediction"}
     
     # Convert target_date to datetime
     if isinstance(target_date, str):
@@ -5058,7 +5114,7 @@ def predict_rental_possibility(df, target_date, situation=None):
     # Get statistical possibility
     statistical_result = calculate_statistical_possibility(df, target_date, situation)
     
-    # Try ML prediction
+    # Try ML only when the classifier has enough independent calendar history.
     classifier, scaler = create_possibility_classifier(df)
     ml_possibility = None
     ml_confidence = 0.0
@@ -5068,20 +5124,33 @@ def predict_rental_possibility(df, target_date, situation=None):
             features = extract_situation_features(situation, target_date, df)
             features_scaled = scaler.transform(features)
             
-            # Get probability of rental (class 1)
+            # A one-class training set has no class-1 probability column.
             probabilities = classifier.predict_proba(features_scaled)[0]
-            ml_possibility = float(probabilities[1])  # Probability of rental
-            ml_confidence = min(1.0, len(df) / 50)  # Confidence based on data size
+            class_indices = list(classifier.classes_)
+            ml_possibility = (
+                float(probabilities[class_indices.index(1)]) if 1 in class_indices else 0.0
+            )
+            valid_history = df.copy()
+            if "Car model" in valid_history.columns:
+                valid_history = valid_history[valid_history["Car model"] != "Calculator Generated"]
+            valid_history["Date"] = pd.to_datetime(valid_history["Date"])
+            history_days = max(
+                0, (valid_history["Date"].max() - valid_history["Date"].min()).days
+            )
+            ml_confidence = min(1.0, len(valid_history) / 75) * min(
+                1.0, history_days / 365
+            )
         except Exception as e:
             print(f"ML prediction error: {e}")
             ml_possibility = None
     
     # Combine ML and Statistical (hybrid)
     if ml_possibility is not None:
-        # Weighted average: 60% ML, 40% Statistical
+        # Retain a statistical baseline so an unusual situation cannot make the
+        # model sound more certain than the available history supports.
         final_possibility = (ml_possibility * 0.6) + (statistical_result["possibility"] * 0.4)
         final_confidence = (ml_confidence * 0.6) + (statistical_result["confidence"] * 0.4)
-        method = "Hybrid"
+        method = "ML"
     else:
         # Use statistical only
         final_possibility = statistical_result["possibility"]
@@ -5092,9 +5161,12 @@ def predict_rental_possibility(df, target_date, situation=None):
     expected_cost_range = (30.0, 100.0)  # Default
     if "Total" in df.columns:
         df_filtered = df[df["Car model"] != "Calculator Generated"] if "Car model" in df.columns else df
-        if not df_filtered.empty:
-            avg_cost = df_filtered["Total"].mean()
-            std_cost = df_filtered["Total"].std()
+        costs = pd.to_numeric(df_filtered["Total"], errors="coerce").dropna()
+        costs = costs[costs > 0]
+        if not costs.empty:
+            avg_cost = costs.mean()
+            std_cost = costs.std()
+            std_cost = 0.0 if not pd.notna(std_cost) else std_cost
             expected_cost_range = (
                 float(max(0, avg_cost - std_cost)),
                 float(avg_cost + std_cost)
@@ -5103,7 +5175,8 @@ def predict_rental_possibility(df, target_date, situation=None):
     # Recommend provider based on historical patterns
     recommended_provider = "Getgo"  # Default
     if "Car Cat" in df.columns:
-        provider_counts = df["Car Cat"].value_counts()
+        provider_history = df[df["Car model"] != "Calculator Generated"] if "Car model" in df.columns else df
+        provider_counts = provider_history["Car Cat"].dropna().value_counts()
         if len(provider_counts) > 0:
             recommended_provider = provider_counts.index[0]
     
