@@ -5,6 +5,8 @@ export const connectionState = {
   userAccountStatus: null,
 };
 
+export const SETUP_WARNINGS_DISMISS_KEY = "setup-warnings-dismissed";
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -31,35 +33,129 @@ export function hasActiveInboxFilters(filters = {}) {
   );
 }
 
-function buildBotStatusLine(botStatus = connectionState.botStatus) {
-  if (botStatus?.configured && botStatus?.bot) {
-    return `Bot v0.1: @${botStatus.bot.username} — receiving`;
-  }
-  if (botStatus?.configured) {
-    return "Bot v0.1: token set — check token & webhook";
-  }
-  return "Bot v0.1: not configured — set TELEGRAM_BOT_TOKEN";
-}
-
-function buildUserStatusLine(userAccountStatus = connectionState.userAccountStatus) {
-  if (userAccountStatus?.listening) {
-    return `My account v0.2: @${userAccountStatus.user?.username || "connected"} — receiving`;
-  }
-  if (userAccountStatus?.authorized) {
-    return "My account v0.2: logged in — set MTProto_ENABLED=true & restart";
-  }
-  if (userAccountStatus?.configured) {
-    return "My account v0.2: not logged in — run scripts/mtproto_login.py";
-  }
-  return "My account v0.2: set TELEGRAM_API_ID + TELEGRAM_API_HASH";
-}
-
 function isBotReceiving(botStatus = connectionState.botStatus) {
   return Boolean(botStatus?.configured && botStatus?.bot);
 }
 
 function isUserReceiving(userAccountStatus = connectionState.userAccountStatus) {
   return Boolean(userAccountStatus?.listening);
+}
+
+export function getBotPill(botStatus = connectionState.botStatus) {
+  if (!botStatus) {
+    return { state: "loading", label: "Bot", text: "Checking…", title: "Bot: checking connection" };
+  }
+  if (isBotReceiving(botStatus)) {
+    const handle = botStatus.bot?.username ? `@${botStatus.bot.username}` : "";
+    const text = handle ? `Connected ${handle}` : "Connected";
+    return { state: "connected", label: "Bot", text, title: `Bot: ${text}` };
+  }
+  if (botStatus.configured) {
+    return {
+      state: "needs-setup",
+      label: "Bot",
+      text: "Needs setup",
+      title: "Bot: token set but not verified — check TELEGRAM_BOT_TOKEN",
+    };
+  }
+  return {
+    state: "offline",
+    label: "Bot",
+    text: "Offline",
+    title: "Bot: not configured — set TELEGRAM_BOT_TOKEN",
+  };
+}
+
+export function getUserPill(userAccountStatus = connectionState.userAccountStatus) {
+  if (!userAccountStatus) {
+    return {
+      state: "loading",
+      label: "My account",
+      text: "Checking…",
+      title: "My account: checking connection",
+    };
+  }
+  if (isUserReceiving(userAccountStatus)) {
+    const handle = userAccountStatus.user?.username
+      ? `@${userAccountStatus.user.username}`
+      : "";
+    const text = handle ? `Connected ${handle}` : "Connected";
+    return { state: "connected", label: "My account", text, title: `My account: ${text}` };
+  }
+  if (userAccountStatus.authorized) {
+    return {
+      state: "needs-setup",
+      label: "My account",
+      text: "Needs setup",
+      title: "My account: logged in — set MTProto_ENABLED=true and restart",
+    };
+  }
+  if (userAccountStatus.configured) {
+    return {
+      state: "needs-setup",
+      label: "My account",
+      text: "Needs setup",
+      title: "My account: run scripts/mtproto_login.py to log in",
+    };
+  }
+  return {
+    state: "offline",
+    label: "My account",
+    text: "Offline",
+    title: "My account: optional — set TELEGRAM_API_ID and TELEGRAM_API_HASH",
+  };
+}
+
+function renderStatusPill(pill) {
+  const modifier = pill.state === "loading" ? "loading" : pill.state;
+  return `<span class="status-pill status-pill--${modifier}" title="${escapeHtml(pill.title)}">
+    <span class="status-pill-label">${escapeHtml(pill.label)}</span>
+    <span class="status-pill-state">${escapeHtml(pill.text)}</span>
+  </span>`;
+}
+
+function buildUserStatusLine(userAccountStatus = connectionState.userAccountStatus) {
+  const pill = getUserPill(userAccountStatus);
+  if (pill.state === "connected") {
+    return userAccountStatus?.user?.username
+      ? `Logged in as @${userAccountStatus.user.username} — receiving`
+      : "Logged in — receiving";
+  }
+  if (pill.state === "needs-setup") {
+    if (userAccountStatus?.authorized) {
+      return "Logged in — enable MTProto (MTProto_ENABLED=true) and restart";
+    }
+    if (userAccountStatus?.configured) {
+      return "Not logged in — run scripts/mtproto_login.py";
+    }
+    return "Needs setup — see Tools for credentials";
+  }
+  return "Optional — not configured";
+}
+
+function buildShortEmptySteps(botStatus, userStatus) {
+  const botReceiving = isBotReceiving(botStatus);
+  const userReceiving = isUserReceiving(userStatus);
+
+  if (botReceiving || userReceiving) {
+    return ["Send a test message in Telegram, then click Refresh."];
+  }
+
+  const steps = [];
+  const botPill = getBotPill(botStatus);
+  const userPill = getUserPill(userStatus);
+
+  if (botPill.state !== "connected") {
+    steps.push("Open Tools to finish bot setup.");
+  }
+  if (userPill.state !== "connected" && userPill.state !== "offline") {
+    steps.push("Open Tools to finish personal account setup.");
+  }
+  if (steps.length === 0) {
+    steps.push("Open Tools for setup steps.");
+  }
+
+  return steps.slice(0, 2);
 }
 
 export function buildInboxEmptyHtml({ filters = {}, view = "threads", topicHint = "" } = {}) {
@@ -74,40 +170,15 @@ export function buildInboxEmptyHtml({ filters = {}, view = "threads", topicHint 
 
   const botStatus = connectionState.botStatus;
   const userStatus = connectionState.userAccountStatus;
-  const steps = [];
-  let reason = "No messages have been captured yet.";
-
   const botReceiving = isBotReceiving(botStatus);
   const userReceiving = isUserReceiving(userStatus);
 
-  if (!botStatus?.configured && !userStatus?.configured) {
-    reason = "Neither the bot nor your personal account is configured yet.";
-  } else if (!botReceiving && !userReceiving) {
-    reason = "Connections are not receiving messages yet.";
+  let reason = "No messages captured yet.";
+  if (!botReceiving && !userReceiving) {
+    reason = "Nothing is receiving messages yet — see connection pills above.";
   }
 
-  if (!botStatus?.configured) {
-    steps.push("Set TELEGRAM_BOT_TOKEN in .env, register the webhook, then restart the server.");
-  } else if (!botStatus?.bot) {
-    steps.push("Bot token is set but not verified — check TELEGRAM_BOT_TOKEN and restart.");
-  } else if (!botReceiving) {
-    steps.push("Message your bot in Telegram or add it to a group to generate bot traffic.");
-  }
-
-  if (!userStatus?.configured) {
-    steps.push(
-      "Optional: add TELEGRAM_API_ID and TELEGRAM_API_HASH from my.telegram.org for your personal inbox."
-    );
-  } else if (!userStatus?.authorized) {
-    steps.push("Run scripts/mtproto_login.py once to log in to your Telegram account.");
-  } else if (!userStatus?.listening) {
-    steps.push("Set MTProto_ENABLED=true in .env and restart the server to capture your chats.");
-  }
-
-  if (steps.length === 0) {
-    steps.push("Send a test message in Telegram, then click Refresh.");
-  }
-
+  const steps = buildShortEmptySteps(botStatus, userStatus);
   const stepsHtml = `<ul class="empty-thread-steps">${steps
     .map((step) => `<li>${escapeHtml(step)}</li>`)
     .join("")}</ul>`;
@@ -120,15 +191,72 @@ export function buildInboxEmptyHtml({ filters = {}, view = "threads", topicHint 
 }
 
 export function renderTopbarStatus() {
-  const statusEl = document.getElementById("bot-status");
-  if (statusEl) {
-    statusEl.textContent = `${buildBotStatusLine()} · ${buildUserStatusLine()}`;
+  const container = document.getElementById("connection-status");
+  if (container) {
+    const botPill = getBotPill();
+    const userPill = getUserPill();
+    container.innerHTML = `${renderStatusPill(botPill)}${renderStatusPill(userPill)}`;
   }
 
   const userStatusEl = document.getElementById("user-account-status");
   if (userStatusEl) {
     userStatusEl.textContent = buildUserStatusLine();
   }
+}
+
+export function shortenSetupWarning(text) {
+  const value = String(text || "").trim();
+  const rules = [
+    [/Telegram bot token not configured \(TELEGRAM_BOT_TOKEN\)/i, "Bot token missing — set TELEGRAM_BOT_TOKEN"],
+    [/Bot token set but verification returned no bot profile/i, "Bot token not verified — check TELEGRAM_BOT_TOKEN"],
+    [/Bot token invalid or unreachable: (.+)/i, "Bot token invalid — check TELEGRAM_BOT_TOKEN"],
+    [
+      /User account not configured \(TELEGRAM_API_ID \+ TELEGRAM_API_HASH\)/i,
+      "Personal account not configured — set API ID/hash in .env",
+    ],
+    [/User account not logged in \(run scripts\/mtproto_login\.py\)/i, "Personal account not logged in — run mtproto_login.py"],
+    [
+      /User account logged in but not listening \(set MTProto_ENABLED=true and restart\)/i,
+      "Personal account not listening — set MTProto_ENABLED=true",
+    ],
+    [
+      /No AI provider available \(configure GEMINI_API_KEY or Ollama\)/i,
+      "No AI provider — set GEMINI_API_KEY or start Ollama",
+    ],
+  ];
+  for (const [pattern, replacement] of rules) {
+    if (pattern.test(value)) {
+      return typeof replacement === "function" ? replacement(value) : replacement;
+    }
+  }
+  return value.length > 72 ? `${value.slice(0, 69)}…` : value;
+}
+
+export function renderSetupWarnings(warnings = []) {
+  const banner = document.getElementById("setup-warnings");
+  if (!banner) return;
+
+  const list = Array.isArray(warnings) ? warnings.filter(Boolean) : [];
+  if (!list.length || sessionStorage.getItem(SETUP_WARNINGS_DISMISS_KEY) === "1") {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+
+  banner.hidden = false;
+  banner.innerHTML = `
+    <div class="setup-warnings-inner">
+      <ul>${list.map((item) => `<li>${escapeHtml(shortenSetupWarning(item))}</li>`).join("")}</ul>
+      <button type="button" class="setup-warnings-dismiss btn btn-ghost btn-sm" aria-label="Dismiss setup warnings for this session">
+        Dismiss
+      </button>
+    </div>`;
+
+  banner.querySelector(".setup-warnings-dismiss")?.addEventListener("click", () => {
+    sessionStorage.setItem(SETUP_WARNINGS_DISMISS_KEY, "1");
+    banner.hidden = true;
+    banner.innerHTML = "";
+  });
 }
 
 export function updateSendFormAvailability() {

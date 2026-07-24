@@ -1,6 +1,7 @@
 import { api, connectWebSocket, ensureAuthenticated } from "./api.js";
 import { renderCommandChart } from "./chart.js";
 import {
+  renderSetupWarnings,
   renderTopbarStatus,
   setConnectionStatus,
   updateSendFormAvailability,
@@ -157,21 +158,6 @@ async function submitSend(chatTarget, text, clearFields = []) {
   await refreshDashboard();
 }
 
-function renderSetupWarnings(warnings = []) {
-  const banner = document.getElementById("setup-warnings");
-  if (!banner) return;
-  const list = Array.isArray(warnings) ? warnings.filter(Boolean) : [];
-  if (!list.length) {
-    banner.hidden = true;
-    banner.innerHTML = "";
-    return;
-  }
-  banner.hidden = false;
-  banner.innerHTML = `
-    <strong>Setup warnings</strong>
-    <ul>${list.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
-}
-
 async function refreshDashboard() {
   const [userAccountStatus, setupStatus] = await Promise.all([
     api.getUserAccountStatus(),
@@ -318,7 +304,11 @@ async function init() {
   bindInbox(
     prefillReply,
     (error) => showToast(error.message),
-    (message) => showToast(message)
+    (message) => showToast(message),
+    {
+      onOpenTools: () => state.nav?.showView("tools"),
+      onRefresh: () => refreshDashboard().catch((error) => showToast(error.message)),
+    }
   );
   bindWorkflow((message) => showToast(message), (error) => showToast(error));
   bindInsights(
