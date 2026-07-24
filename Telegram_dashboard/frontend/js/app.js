@@ -282,7 +282,8 @@ function handleRealtime(message) {
   if (
     event === "reply_mode_updated" ||
     event === "chat_reply_updated" ||
-    event === "chat_relationship_updated"
+    event === "chat_relationship_updated" ||
+    event === "chat_profile_learned"
   ) {
     loadWorkflowSettings().catch(() => {});
   }

@@ -183,6 +183,25 @@ def _parse_message_filters(
     return parsed_user_ids, chat_type, direction, date_from, date_to, ingestion_source
 
 
+async def _expand_topics_filter(topics: str | None) -> str | None:
+    """Use AI to expand a free-text topic filter into related tags + keywords."""
+    if not topics or not topics.strip():
+        return topics
+    available = [item["name"] for item in store.list_topics()]
+    try:
+        expanded = await ai_service.expand_filter_query(topics.strip(), available)
+    except Exception:
+        return topics
+    terms: list[str] = []
+    seen: set[str] = set()
+    for term in [*expanded.get("topics", []), *expanded.get("keywords", [])]:
+        cleaned = str(term).strip().lower()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            terms.append(cleaned)
+    return ",".join(terms) if terms else topics
+
+
 @router.get("/messages", dependencies=[Depends(verify_operator)])
 async def messages(
     user_ids: str = "",
@@ -201,6 +220,7 @@ async def messages(
             user_ids, chat_type, direction, date_from, date_to, ingestion_source
         )
     )
+    topics = await _expand_topics_filter(topics)
     return store.query_messages(
         user_ids=parsed_user_ids,
         chat_type=chat_type,
@@ -233,6 +253,7 @@ async def inbox_threads(
             user_ids, chat_type, direction, date_from, date_to, ingestion_source
         )
     )
+    topics = await _expand_topics_filter(topics)
     return store.query_threads(
         user_ids=parsed_user_ids,
         chat_type=chat_type,
@@ -415,6 +436,91 @@ async def regenerate_chat_relationship(chat_id: int) -> dict[str, Any]:
     return saved
 
 
+@router.post(
+    "/settings/chat-replies/{chat_id}/learn",
+    dependencies=[Depends(verify_operator)],
+)
+async def learn_from_chat(chat_id: int) -> dict[str, Any]:
+    messages = store.get_messages_by_chat_id(chat_id)
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages for this chat")
+    recent = messages[-80:]
+    chat_type = recent[-1].get("chat_type")
+    chat_title = recent[-1].get("chat_title")
+    learned = await ai_service.learn_from_thread(
+        recent, chat_type=chat_type, chat_title=chat_title
+    )
+    saved = store.update_chat_settings(
+        chat_id,
+        relationship=learned["relationship"],
+        relationship_source=learned.get("source", "ai"),
+        ai_context=learned.get("ai_context", ""),
+    )
+    await ws_manager.broadcast("chat_reply_updated", saved)
+    return {
+        "settings": saved,
+        "learn": {
+            "message_count": len(recent),
+            "facts": learned.get("facts", []),
+            "source": learned.get("source", "ai"),
+            "degraded": bool(learned.get("degraded")),
+        },
+    }
+
+
+@router.get("/chats/{chat_id}/memories", dependencies=[Depends(verify_operator)])
+async def list_chat_memories(chat_id: int, limit: int = 10) -> dict[str, Any]:
+    if not store.get_chat_setting(chat_id):
+        store.sync_chat_settings_from_messages()
+    if not store.get_chat_setting(chat_id):
+        raise HTTPException(status_code=404, detail="Chat not found")
+    memories = store.list_chat_memories(chat_id, limit=min(limit, 50))
+    return {"chat_id": chat_id, "memories": memories}
+
+
+@router.post("/chats/{chat_id}/learn", dependencies=[Depends(verify_operator)])
+async def learn_chat_profile(chat_id: int) -> dict[str, Any]:
+    messages = store.get_messages_by_chat_id(chat_id)
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages for this chat")
+    chat_type = messages[-1].get("chat_type")
+    chat_title = messages[-1].get("chat_title")
+    existing = store.list_chat_memories(chat_id, limit=12)
+    try:
+        learned = await ai_service.learn_profile_from_thread(
+            messages,
+            chat_type=chat_type,
+            chat_title=chat_title,
+            existing_memories=existing,
+        )
+    except RateLimitExceeded as exc:
+        _raise_ai_http_error(exc)
+
+    store.clear_ai_memories(chat_id)
+    saved_memories = store.add_chat_memories(
+        chat_id, learned.get("memories", []), source="ai"
+    )
+    saved_settings = store.update_chat_settings(
+        chat_id,
+        relationship=learned.get("relationship", ""),
+        relationship_source="ai",
+        ai_context=learned.get("ai_context", ""),
+    )
+    payload = {
+        "chat_id": chat_id,
+        "memories": saved_memories,
+        "relationship": saved_settings.get("relationship", ""),
+        "ai_context": saved_settings.get("ai_context", ""),
+        "settings": saved_settings,
+        "source": learned.get("source", "ai"),
+    }
+    if learned.get("degraded"):
+        payload["degraded"] = True
+        payload["failure_reason"] = learned.get("failure_reason")
+    await ws_manager.broadcast("chat_profile_learned", payload)
+    return payload
+
+
 @router.get("/settings/topic-mode", dependencies=[Depends(verify_operator)])
 async def get_topic_mode() -> dict[str, str]:
     return {"mode": store.get_topic_mode()}
@@ -446,6 +552,11 @@ async def backfill_topics(body: TopicBackfillRequest) -> dict[str, Any]:
                 "Switch to AI assign in Workflow settings, or pass enable_ai_mode: true."
             ),
         )
+
+    # Persist AI assign so future inbound messages keep getting tags.
+    if body.enable_ai_mode and current_mode != "ai_assign":
+        current_mode = store.set_topic_mode("ai_assign")
+        await ws_manager.broadcast("topic_mode_updated", {"mode": current_mode})
 
     untagged = store.list_recent_untagged_messages(body.limit)
     tagged = 0

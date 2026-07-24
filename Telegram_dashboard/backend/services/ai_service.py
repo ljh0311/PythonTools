@@ -35,11 +35,55 @@ RELATIONSHIP_SYSTEM = (
     "For group chats, the group title is the chat name, not a participant who spoke."
 )
 
+LEARN_FROM_THREAD_SYSTEM = (
+    "You analyze a Telegram conversation to build context for a user dashboard assistant. "
+    "Return ONLY valid JSON with no markdown fences. "
+    "Schema: {\"relationship\": string, \"ai_context\": string, \"facts\": [string]}. "
+    "relationship: 2-3 concise English sentences — who they are, their role or relationship, "
+    "communication style if evident, what they typically need. "
+    "ai_context: bullet-style notes (aliases, nicknames, preferences, how to address them, "
+    "topics they care about) useful when drafting replies — short lines, not prose. "
+    "facts: optional list of 0-8 short standalone facts worth remembering. "
+    "For group chats, the group title is the chat name, not a participant who spoke."
+)
+
+LEARN_FROM_THREAD_CAP = 80
+
+PROFILE_LEARN_SYSTEM = (
+    "You analyze Telegram conversations to build a durable contact profile for an operator dashboard. "
+    "Return ONLY valid JSON with no markdown fences. "
+    "Schema: {"
+    "\"memories\": [{\"type\": \"fact\"|\"preference\"|\"relationship\"|\"habit\"|\"voice\", \"content\": string}], "
+    "\"relationship\": string, "
+    "\"ai_context\": string"
+    "}. "
+    "memories: 3-8 concise English items capturing stable facts, preferences, relationship cues, habits, "
+    "and communication style (voice). Skip one-off logistics unless they reveal a pattern. "
+    "relationship: 2-3 sentences describing who they are and how they relate to the operator. "
+    "ai_context: short bullet-style notes the AI should remember when drafting replies "
+    "(names, topics, tone, constraints). "
+    "Only attribute speech to usernames in the transcript. "
+    "Group or channel titles are never speakers."
+)
+
+CHAT_MEMORY_TYPES = frozenset({"fact", "preference", "relationship", "habit", "voice"})
+
 TOPIC_SYSTEM = (
     "You classify Telegram messages for an user dashboard. "
     "Return ONLY valid JSON with no markdown fences. "
     "Schema: {\"topics\": [string]} — 1-3 short lowercase topic tags "
     "(e.g. billing, support, scheduling, budget, etc.)."
+)
+
+FILTER_EXPAND_SYSTEM = (
+    "You expand a search phrase into related topic tags and keywords for filtering Telegram messages. "
+    "Return ONLY valid JSON with no markdown fences. "
+    "Schema: {\"topics\": [string], \"keywords\": [string]}. "
+    "topics: up to 8 short lowercase tags (prefer names from the available list when relevant, "
+    "plus close synonyms). "
+    "keywords: up to 8 lowercase words or short phrases to match in message text "
+    "(synonyms, related concepts). "
+    "Always include the original query terms. Do not invent long sentences."
 )
 
 SUGGEST_SYSTEM = (
@@ -73,6 +117,7 @@ class AIService:
     def __init__(self):
         self.gemini = GeminiProvider()
         self.ollama = OllamaProvider()
+        self._filter_expand_cache: dict[str, tuple[float, dict[str, list[str]]]] = {}
 
     @property
     def configured(self) -> bool:
@@ -556,6 +601,262 @@ class AIService:
                 "failure_reason": f"{type(exc).__name__}: {exc}",
             }
 
+    def _merge_learn_facts(self, ai_context: str, facts: list[Any]) -> str:
+        lines = [str(f).strip() for f in facts if str(f).strip()]
+        if not lines:
+            return ai_context.strip()
+        facts_block = "\n".join(f"- {line}" for line in lines)
+        base = ai_context.strip()
+        return f"{base}\n\n{facts_block}".strip() if base else facts_block
+
+    async def learn_from_thread(
+        self,
+        messages: list[dict],
+        *,
+        chat_type: str | None = None,
+        chat_title: str | None = None,
+    ) -> dict[str, Any]:
+        capped = messages[-LEARN_FROM_THREAD_CAP:]
+        if not capped:
+            return {
+                "relationship": "No messages yet.",
+                "ai_context": "",
+                "facts": [],
+                "source": "ai",
+            }
+
+        fallback = {
+            "relationship": self._fallback_relationship(capped, chat_type, chat_title),
+            "ai_context": "",
+            "facts": [],
+            "source": "fallback",
+            "degraded": True,
+        }
+
+        if not self.configured:
+            return {
+                "relationship": fallback["relationship"],
+                "ai_context": "",
+                "facts": [],
+                "source": "ai",
+            }
+
+        redacted, _, _ = self._prepare_messages(capped)
+        transcript = self._format_transcript(redacted)
+        label = chat_title or chat_type or "chat"
+        prompt = (
+            f"Learn who the other party is and useful drafting context from this {label} "
+            f"conversation:\n\n{transcript}"
+        )
+
+        try:
+            raw, _provider, gen_meta = await self._generate_text(
+                prompt, LEARN_FROM_THREAD_SYSTEM
+            )
+            parsed = self._parse_json_response(raw)
+            relationship = str(parsed.get("relationship", "")).strip()
+            if not relationship:
+                raise ValueError("Empty relationship")
+            ai_context = str(parsed.get("ai_context", "")).strip()
+            facts_raw = parsed.get("facts") or []
+            facts = [str(f).strip() for f in facts_raw if str(f).strip()]
+            result: dict[str, Any] = {
+                "relationship": relationship,
+                "ai_context": self._merge_learn_facts(ai_context, facts),
+                "facts": facts,
+                "source": "ai",
+            }
+            self._apply_generation_meta(result, gen_meta)
+            return result
+        except Exception as exc:
+            logger.warning(
+                "learn_from_thread AI failed, using heuristic fallback: %s",
+                exc,
+                exc_info=True,
+            )
+            fallback["failure_reason"] = f"{type(exc).__name__}: {exc}"
+            return fallback
+
+    def _normalize_learned_memories(
+        self, raw_memories: list[Any] | None
+    ) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in raw_memories or []:
+            if not isinstance(item, dict):
+                continue
+            mem_type = str(item.get("type", "fact")).strip().lower()
+            content = str(item.get("content", "")).strip()
+            if mem_type not in CHAT_MEMORY_TYPES or not content:
+                continue
+            key = f"{mem_type}:{content.lower()}"
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append({"type": mem_type, "content": content})
+        return normalized
+
+    def _fallback_profile_memories(
+        self, messages: list[dict], chat_type: str | None, chat_title: str | None
+    ) -> list[dict[str, str]]:
+        if not messages:
+            return []
+
+        incoming = [m for m in messages if m.get("direction") == "incoming"]
+        latest = sorted(incoming or messages, key=lambda m: m.get("created_at", ""))[-1]
+        user = latest.get("username") or f"User {latest.get('user_id')}"
+        snippet = (latest.get("text") or "").strip()[:160]
+
+        memories: list[dict[str, str]] = []
+        if chat_type == "group":
+            label = chat_title or "this group"
+            memories.append(
+                {
+                    "type": "relationship",
+                    "content": f"Group chat ({label}) used for team coordination.",
+                }
+            )
+        else:
+            memories.append(
+                {
+                    "type": "relationship",
+                    "content": f"Private contact {user} who messages directly.",
+                }
+            )
+
+        if snippet:
+            memories.append(
+                {"type": "fact", "content": f"Recent topic: {snippet}"}
+            )
+
+        avg_len = sum(len((m.get("text") or "")) for m in messages[-10:]) / max(
+            len(messages[-10:]), 1
+        )
+        if avg_len < 40:
+            memories.append(
+                {
+                    "type": "voice",
+                    "content": "Keeps messages short and direct.",
+                }
+            )
+        elif avg_len > 120:
+            memories.append(
+                {
+                    "type": "voice",
+                    "content": "Writes longer, detailed messages.",
+                }
+            )
+
+        return memories[:6]
+
+    def _synthesize_ai_context(self, memories: list[dict[str, str]]) -> str:
+        if not memories:
+            return ""
+        lines = []
+        for item in memories:
+            label = item["type"].replace("_", " ").title()
+            lines.append(f"- {label}: {item['content']}")
+        return "\n".join(lines)
+
+    async def learn_profile_from_thread(
+        self,
+        messages: list[dict],
+        *,
+        chat_type: str | None = None,
+        chat_title: str | None = None,
+        existing_memories: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        if not messages:
+            return {
+                "memories": [],
+                "relationship": "No messages yet.",
+                "ai_context": "",
+                "source": "ai",
+            }
+
+        if not self.configured:
+            memories = self._fallback_profile_memories(
+                messages, chat_type, chat_title
+            )
+            relationship = self._fallback_relationship(
+                messages, chat_type, chat_title
+            )
+            return {
+                "memories": memories,
+                "relationship": relationship,
+                "ai_context": self._synthesize_ai_context(memories),
+                "source": "ai",
+            }
+
+        redacted, _, _ = self._prepare_messages(messages)
+        transcript = self._format_transcript(redacted)
+        metadata = self._thread_metadata_block(redacted)
+        label = chat_title or chat_type or "chat"
+        existing_block = ""
+        if existing_memories:
+            lines = [
+                f"- [{m.get('type', 'fact')}] {m.get('content', '')}"
+                for m in existing_memories[:12]
+                if m.get("content")
+            ]
+            if lines:
+                existing_block = (
+                    "Existing profile memories (update or replace as needed):\n"
+                    + "\n".join(lines)
+                    + "\n\n"
+                )
+        prompt = (
+            f"{existing_block}"
+            f"Extract a durable profile from this {label} conversation:\n\n"
+            f"{metadata}{transcript}"
+        )
+
+        try:
+            raw, _provider, gen_meta = await self._generate_text(
+                prompt, PROFILE_LEARN_SYSTEM
+            )
+            parsed = self._parse_json_response(raw)
+            memories = self._normalize_learned_memories(parsed.get("memories"))
+            if not memories:
+                memories = self._fallback_profile_memories(
+                    messages, chat_type, chat_title
+                )
+            relationship = str(parsed.get("relationship", "")).strip()
+            if not relationship:
+                relationship = self._fallback_relationship(
+                    messages, chat_type, chat_title
+                )
+            ai_context = str(parsed.get("ai_context", "")).strip()
+            if not ai_context:
+                ai_context = self._synthesize_ai_context(memories)
+            result: dict[str, Any] = {
+                "memories": memories,
+                "relationship": relationship,
+                "ai_context": ai_context,
+                "source": "ai",
+            }
+            self._apply_generation_meta(result, gen_meta)
+            return result
+        except Exception as exc:
+            logger.warning(
+                "learn_profile_from_thread AI failed, using heuristic fallback: %s",
+                exc,
+                exc_info=True,
+            )
+            memories = self._fallback_profile_memories(
+                messages, chat_type, chat_title
+            )
+            return {
+                "memories": memories,
+                "relationship": self._fallback_relationship(
+                    messages, chat_type, chat_title
+                ),
+                "ai_context": self._synthesize_ai_context(memories),
+                "source": "fallback",
+                "degraded": True,
+                "failure_reason": f"{type(exc).__name__}: {exc}",
+            }
+
     def _fallback_suggestions(
         self,
         messages: list[dict],
@@ -778,6 +1079,61 @@ class AIService:
         except Exception as exc:
             logger.warning("assign_topics AI failed, using keyword fallback: %s", exc)
             return ["general"]
+
+    async def expand_filter_query(
+        self, query: str, available_topics: list[str] | None = None
+    ) -> dict[str, list[str]]:
+        """Expand a free-text filter into related topic tags + text keywords."""
+        cleaned = (query or "").strip()
+        if not cleaned:
+            return {"topics": [], "keywords": []}
+
+        cache_key = cleaned.lower()
+        cached = self._filter_expand_cache.get(cache_key)
+        if cached and (datetime.utcnow().timestamp() - cached[0]) < 300:
+            return cached[1]
+
+        seed_terms = [t.strip().lower() for t in cleaned.replace(",", " ").split() if t.strip()]
+        fallback = {
+            "topics": seed_terms[:8],
+            "keywords": seed_terms[:8],
+        }
+
+        if not self.configured:
+            self._filter_expand_cache[cache_key] = (datetime.utcnow().timestamp(), fallback)
+            return fallback
+
+        topic_list = ", ".join((available_topics or [])[:80]) or "(none yet)"
+        prompt = (
+            f"Search phrase: {cleaned}\n"
+            f"Available topic tags: {topic_list}\n"
+            "Expand into related topics and keywords for message search."
+        )
+        try:
+            raw, _provider, _gen_meta = await self._generate_text(prompt, FILTER_EXPAND_SYSTEM)
+            parsed = self._parse_json_response(raw)
+            topics = [
+                str(t).strip().lower()
+                for t in (parsed.get("topics") or [])
+                if str(t).strip()
+            ][:8]
+            keywords = [
+                str(k).strip().lower()
+                for k in (parsed.get("keywords") or [])
+                if str(k).strip()
+            ][:8]
+            for term in seed_terms:
+                if term not in topics:
+                    topics.insert(0, term)
+                if term not in keywords:
+                    keywords.insert(0, term)
+            result = {"topics": topics[:8], "keywords": keywords[:8]}
+            self._filter_expand_cache[cache_key] = (datetime.utcnow().timestamp(), result)
+            return result
+        except Exception as exc:
+            logger.warning("expand_filter_query failed, using seed terms: %s", exc)
+            self._filter_expand_cache[cache_key] = (datetime.utcnow().timestamp(), fallback)
+            return fallback
 
     async def process_message(self, user_text: str, store) -> str:
         errors: list[str] = []

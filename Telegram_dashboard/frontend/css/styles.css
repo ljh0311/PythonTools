@@ -403,6 +403,10 @@ body.sidebar-drawer-open {
   border: 1px solid var(--border);
 }
 
+.advanced-filters[hidden] {
+  display: none !important;
+}
+
 .ai-toggle-btn.active {
   border-color: var(--accent);
   color: var(--accent);
@@ -1591,6 +1595,40 @@ h2 {
   display: flex;
   justify-content: flex-end;
   margin-top: 0.5rem;
+}
+
+.chat-memories {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.chat-memories strong {
+  display: block;
+  font-size: 0.78rem;
+  margin: 0.65rem 0 0.35rem;
+  color: var(--text-muted);
+}
+
+.memory-list {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.memory-list li + li {
+  margin-top: 0.25rem;
+}
+
+.memory-type {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  margin-right: 0.25rem;
 }
 
 .topic-chips {

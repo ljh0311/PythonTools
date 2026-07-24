@@ -159,6 +159,14 @@ export const api = {
     request(`/api/settings/chat-replies/${chatId}/regenerate-relationship`, {
       method: "POST",
     }),
+  learnFromChat: (chatId) =>
+    request(`/api/settings/chat-replies/${chatId}/learn`, {
+      method: "POST",
+    }),
+  getChatMemories: (chatId, limit = 5) =>
+    request(`/api/chats/${chatId}/memories${buildQuery({ limit })}`),
+  learnChatProfile: (chatId) =>
+    request(`/api/chats/${chatId}/learn`, { method: "POST" }),
   getTopicMode: () => request("/api/settings/topic-mode"),
   setTopicMode: (mode) =>
     request("/api/settings/topic-mode", {

@@ -9,6 +9,9 @@ from typing import Any
 
 from backend.config import AUTO_REPLY_MODE, DATABASE_PATH, TOPIC_MODE
 
+CHAT_MEMORY_TYPES = frozenset({"fact", "preference", "relationship", "habit", "voice"})
+CHAT_MEMORY_SOURCES = frozenset({"ai", "manual"})
+
 MESSAGE_COLUMNS = (
     "id",
     "user_id",
@@ -89,6 +92,26 @@ class DashboardStore:
         for column, col_type in additions.items():
             if column not in existing:
                 conn.execute(f"ALTER TABLE chat_settings ADD COLUMN {column} {col_type}")
+
+    def _migrate_chat_memories(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_memories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'ai',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_memories_chat_id ON chat_memories(chat_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_memories_created_at ON chat_memories(created_at)"
+        )
 
     def _migrate_thread_summaries(self, conn: sqlite3.Connection) -> None:
         conn.execute(
@@ -277,6 +300,7 @@ class DashboardStore:
             )
             self._migrate_messages(conn)
             self._migrate_chat_settings(conn)
+            self._migrate_chat_memories(conn)
             self._migrate_thread_summaries(conn)
             self._seed_defaults(conn)
             count = conn.execute("SELECT COUNT(*) FROM quick_actions").fetchone()[0]
@@ -541,6 +565,66 @@ class DashboardStore:
 
     def set_chat_auto_reply(self, chat_id: int, enabled: bool) -> dict[str, Any]:
         return self.update_chat_settings(chat_id, enabled=enabled)
+
+    def add_chat_memories(
+        self,
+        chat_id: int,
+        memories: list[dict[str, str]],
+        *,
+        source: str = "ai",
+    ) -> list[dict[str, Any]]:
+        if source not in CHAT_MEMORY_SOURCES:
+            raise ValueError("source must be ai or manual")
+        created_at = datetime.utcnow().isoformat()
+        saved: list[dict[str, Any]] = []
+        with self._conn() as conn:
+            for item in memories:
+                mem_type = str(item.get("type", "fact")).strip().lower()
+                content = str(item.get("content", "")).strip()
+                if mem_type not in CHAT_MEMORY_TYPES or not content:
+                    continue
+                cur = conn.execute(
+                    """
+                    INSERT INTO chat_memories (chat_id, type, content, source, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (chat_id, mem_type, content, source, created_at),
+                )
+                saved.append(
+                    {
+                        "id": int(cur.lastrowid),
+                        "chat_id": chat_id,
+                        "type": mem_type,
+                        "content": content,
+                        "source": source,
+                        "created_at": created_at,
+                    }
+                )
+        return saved
+
+    def list_chat_memories(
+        self, chat_id: int, *, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, chat_id, type, content, source, created_at
+                FROM chat_memories
+                WHERE chat_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (chat_id, max(1, min(limit, 100))),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def clear_ai_memories(self, chat_id: int) -> int:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "DELETE FROM chat_memories WHERE chat_id = ? AND source = 'ai'",
+                (chat_id,),
+            )
+        return int(cur.rowcount)
 
     def _get_or_create_topic(self, conn: sqlite3.Connection, name: str, source: str) -> int:
         normalized = name.strip().lower()
@@ -1080,37 +1164,24 @@ class DashboardStore:
 
         if topics:
             topic_terms = [t.strip().lower() for t in topics.split(",") if t.strip()]
-            mode = topic_mode or self.get_topic_mode()
             if topic_terms:
                 topic_clauses = []
                 for term in topic_terms:
-                    if mode == "ai_assign":
-                        topic_clauses.append(
-                            """
-                            EXISTS (
+                    # Match AI/manual topic tags OR message text (semantic filter expansion
+                    # supplies related terms via the topics query param).
+                    topic_clauses.append(
+                        """
+                        (
+                            LOWER(m.text) LIKE ?
+                            OR EXISTS (
                                 SELECT 1 FROM message_topics mt
                                 JOIN topics t ON t.id = mt.topic_id
-                                WHERE mt.message_id = m.id
-                                  AND mt.source = 'ai'
-                                  AND t.name LIKE ?
+                                WHERE mt.message_id = m.id AND t.name LIKE ?
                             )
-                            """
                         )
-                        params.append(f"%{term}%")
-                    else:
-                        topic_clauses.append(
-                            """
-                            (
-                                LOWER(m.text) LIKE ?
-                                OR EXISTS (
-                                    SELECT 1 FROM message_topics mt
-                                    JOIN topics t ON t.id = mt.topic_id
-                                    WHERE mt.message_id = m.id AND t.name LIKE ?
-                                )
-                            )
-                            """
-                        )
-                        params.extend([f"%{term}%", f"%{term}%"])
+                        """
+                    )
+                    params.extend([f"%{term}%", f"%{term}%"])
                 clauses.append(f"({' OR '.join(topic_clauses)})")
 
         if date_from:
