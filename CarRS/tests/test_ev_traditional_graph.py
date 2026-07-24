@@ -54,7 +54,7 @@ class EVTraditionalGraphTests(unittest.TestCase):
             stats["ev"]["total_kwh"],
         )
 
-    def test_renders_four_comparable_metrics_without_layout_warning(self):
+    def test_renders_six_comparison_charts_without_layout_warning(self):
         stats = compute_ev_traditional_stats(self.df, fuel_price=2.51, cost_per_kwh=0.45)
         figure = Figure(figsize=(10, 6))
 
@@ -65,9 +65,16 @@ class EVTraditionalGraphTests(unittest.TestCase):
             )
             figure.canvas.draw()
 
-        self.assertEqual(4, len(figure.axes))
+        self.assertEqual(6, len(figure.axes))
         self.assertEqual(
-            ["Average Cost", "Trip Count", "Cost per km", "CO2 per km"],
+            [
+                "Average Cost",
+                "Trip Count",
+                "Energy Efficiency",
+                "Cost per km",
+                "Distance Distribution",
+                "CO2 per km",
+            ],
             [axis.get_title() for axis in axes.flat],
         )
         self.assertFalse(

@@ -183,13 +183,12 @@ def _add_value_labels(ax, bars, values, prefix: str = "", precision: int = 2) ->
 
 
 def build_comparison_figure(fig, stats: dict[str, object], ev_df, traditional_df):
-    """Draw four comparable EV/traditional metrics without ``tight_layout``."""
+    """Draw six EV/traditional charts without ``tight_layout``."""
     fig.clear()
-    try:
-        axes = fig.subplots(2, 2, constrained_layout=True)
-    except TypeError:
-        fig.set_constrained_layout(True)
-        axes = fig.subplots(2, 2)
+    fig.subplots_adjust(
+        left=0.07, right=0.98, bottom=0.10, top=0.92, wspace=0.35, hspace=0.40
+    )
+    axes = fig.subplots(2, 3)
 
     summaries = [(ELECTRIC, stats["ev"]), (TRADITIONAL, stats["traditional"])]
     colors = {ELECTRIC: "#00CED1", TRADITIONAL: "#FF6347"}
@@ -208,7 +207,7 @@ def build_comparison_figure(fig, stats: dict[str, object], ev_df, traditional_df
         (axes[0, 0], "Average Cost", "Average Cost ($)", "avg_cost", "$", 2),
         (axes[0, 1], "Trip Count", "Trips", "trip_count", "", 0),
         (axes[1, 0], "Cost per km", "Cost per km ($)", "avg_cost_per_km", "$", 3),
-        (axes[1, 1], "CO2 per km", "CO2 per km (kg)", "total_co2", "", 3),
+        (axes[1, 2], "CO2 per km", "CO2 per km (kg)", "total_co2", "", 3),
     )
     for ax, title, ylabel, key, prefix, precision in metrics:
         if key == "total_co2":
@@ -224,4 +223,39 @@ def build_comparison_figure(fig, stats: dict[str, object], ev_df, traditional_df
                 values[key] for _, values in summaries if values["trip_count"] > 0
             ]
         bar_chart(ax, values, title, ylabel, prefix, precision)
+
+    efficiency_labels, efficiency_values, efficiency_colors = [], [], []
+    for name, values in summaries:
+        if values["avg_efficiency"] > 0:
+            unit = "km/kWh" if name == ELECTRIC else "km/L"
+            efficiency_labels.append(f"{name}\n({unit})")
+            efficiency_values.append(values["avg_efficiency"])
+            efficiency_colors.append(colors[name])
+    if efficiency_values:
+        bars = axes[0, 2].bar(
+            efficiency_labels, efficiency_values, color=efficiency_colors, alpha=0.7
+        )
+        _add_value_labels(axes[0, 2], bars, efficiency_values)
+    axes[0, 2].set_title("Energy Efficiency", fontsize=10)
+    axes[0, 2].set_ylabel("Efficiency", fontsize=9)
+    axes[0, 2].grid(axis="y", linestyle="--", alpha=0.3)
+
+    distance_sets = [
+        _numeric_series(frame, "Distance (KM)").dropna().tolist()
+        for frame in (ev_df, traditional_df)
+    ]
+    present = [(label, values) for label, values in zip(labels, distance_sets) if values]
+    if present:
+        axes[1, 1].hist(
+            [values for _, values in present],
+            bins=15,
+            label=[label for label, _ in present],
+            color=[colors[label] for label, _ in present],
+            alpha=0.6,
+        )
+        if len(present) > 1:
+            axes[1, 1].legend(fontsize=8)
+    axes[1, 1].set_title("Distance Distribution", fontsize=10)
+    axes[1, 1].set_xlabel("Distance (km)", fontsize=9)
+    axes[1, 1].set_ylabel("Frequency", fontsize=9)
     return axes
