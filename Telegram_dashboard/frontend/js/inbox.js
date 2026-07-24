@@ -168,6 +168,7 @@ export function syncFilterForm() {
     option.selected = inboxState.filters.userIds.includes(option.value);
   });
   updateTopicsFilterBadge();
+  renderTopicFilterChips(cachedTopics);
 }
 
 function updateTopicsFilterBadge() {
@@ -208,6 +209,30 @@ function updateBackfillTopicsButton(topics = []) {
   const btn = document.getElementById("inbox-backfill-topics");
   if (!btn) return;
   btn.textContent = topics.length ? "Refresh tags" : "Generate AI tags";
+}
+
+export async function runTopicBackfill({ onError, onNotify, limit = 50 } = {}) {
+  const btn = document.getElementById("inbox-backfill-topics");
+  const originalLabel = btn?.textContent || "Generate AI tags";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Tagging…";
+  }
+  try {
+    const result = await api.backfillTopics({ limit, enable_ai_mode: true });
+    await loadTopicSuggestions();
+    onNotify?.(`Tagged ${result.tagged} of ${result.processed} messages.`);
+    return result;
+  } catch (error) {
+    onError?.(error);
+    throw error;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+      updateBackfillTopicsButton(cachedTopics);
+    }
+  }
 }
 
 export async function loadTopicSuggestions() {
@@ -685,23 +710,8 @@ export function bindInbox(onReply, onError, onNotify, { onOpenTools, onRefresh }
     applyFiltersNow(onError);
   });
 
-  document.getElementById("inbox-backfill-topics")?.addEventListener("click", async () => {
-    const btn = document.getElementById("inbox-backfill-topics");
-    if (!btn || btn.disabled) return;
-    const originalLabel = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Tagging…";
-    try {
-      const result = await api.backfillTopics({ limit: 50, enable_ai_mode: true });
-      await loadTopicSuggestions();
-      onNotify?.(`Tagged ${result.tagged} of ${result.processed} messages.`);
-    } catch (error) {
-      onError(error);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = originalLabel;
-      updateBackfillTopicsButton(cachedTopics);
-    }
+  document.getElementById("inbox-backfill-topics")?.addEventListener("click", () => {
+    runTopicBackfill({ onError, onNotify }).catch(onError);
   });
 
   document.getElementById("inbox-view").addEventListener("change", () => {
