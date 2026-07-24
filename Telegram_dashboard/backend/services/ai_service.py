@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Any
@@ -6,40 +7,65 @@ from typing import Any
 from backend.services.providers.gemini import GeminiProvider
 from backend.services.providers.ollama import OllamaProvider
 from backend.services.redaction_service import redaction_service
+from backend.services.ai_rate_limiter import ai_rate_limiter
 from backend.services.summary_cache import summary_cache
+from backend.services.summary_corrector import align_summary_with_context
+
+logger = logging.getLogger(__name__)
+
+AI_SUGGEST_MESSAGE_CAP = 60
+AI_SUGGEST_RETRY_CAP = 25
 
 SUMMARY_PROMPTS = {
     "brief": "Write a brief English summary in 2-3 sentences.",
     "detailed": "Write a detailed English summary covering all key points.",
     "bullets": "Write an English bullet-point summary with one bullet per key topic.",
     "unanswered": (
-        "List unanswered questions or requests that still need the operator's attention. "
+        "List unanswered questions or requests that still need the user's attention. "
         "Use English bullet points."
     ),
 }
 
 RELATIONSHIP_SYSTEM = (
-    "You describe who the other party is in a Telegram conversation for an operator dashboard. "
+    "You describe who the other party is in a Telegram conversation for an user dashboard. "
     "Return ONLY valid JSON with no markdown fences. "
     "Schema: {\"relationship\": string} — 2-3 concise English sentences covering: "
-    "who they are, their role or relationship to the operator, communication style if evident, "
-    "and what they typically need help with."
+    "who they are, their role or relationship to the user, communication style if evident, "
+    "and what they typically need help with or contact for. "
+    "For group chats, the group title is the chat name, not a participant who spoke."
 )
 
 TOPIC_SYSTEM = (
-    "You classify Telegram messages for an operator dashboard. "
+    "You classify Telegram messages for an user dashboard. "
     "Return ONLY valid JSON with no markdown fences. "
     "Schema: {\"topics\": [string]} — 1-3 short lowercase topic tags "
-    "(e.g. billing, support, scheduling, budget)."
+    "(e.g. billing, support, scheduling, budget, etc.)."
 )
 
 SUGGEST_SYSTEM = (
-    "You are an assistant for a Telegram operator dashboard. "
+    "You are an assistant for a Telegram user dashboard. "
     "Analyze conversations and return ONLY valid JSON with no markdown fences. "
     "Write summary and drafts in English. "
+    "Only attribute speech to usernames in the transcript. "
+    "A group or channel title is never a person who spoke. "
     "Schema: {\"summary\": string, \"suggestions\": [{\"type\": \"reply\"|\"next_action\", "
     "\"chat_id\": number|null, \"user\": string, \"draft\": string, \"action\": string, "
     "\"priority\": \"high\"|\"medium\"|\"low\", \"confidence\": number, \"due_hint\": string}]}"
+)
+
+THREAD_SUMMARY_SYSTEM = (
+    "You summarize Telegram conversations for a user dashboard. "
+    "Write 1-3 clear English sentences about what was actually discussed. "
+    "Only attribute statements to usernames shown before each colon in the transcript. "
+    "Never treat a group chat title or channel name as a person who spoke or replied. "
+    "When referring to the chat, use the exact group/channel name from the metadata block. "
+    "Do not invent a different group name. Be concise."
+)
+
+FILTERED_SUMMARY_SYSTEM = (
+    "You summarize Telegram messages for a user dashboard. "
+    "Only attribute speech to usernames in the transcript. "
+    "Bracketed chat labels are group/channel titles, not speakers."
 )
 
 
@@ -64,44 +90,159 @@ class AIService:
                 "available": await self.ollama.is_available(),
                 "base_url": self.ollama.base_url,
             },
+            "primary": "gemini" if self.gemini.configured else "ollama",
+            "fallback": "ollama" if self.gemini.configured and self.ollama.configured else None,
             "fallback_commands": True,
+            "rate_limit": ai_rate_limiter.status(),
         }
 
+    def _speaker_label(self, msg: dict) -> str:
+        if msg.get("username"):
+            return f"@{msg['username']}"
+        return f"User {msg.get('user_id')}"
+
+    def _chat_label(self, msg: dict) -> str:
+        chat_type = msg.get("chat_type") or "chat"
+        chat_title = (msg.get("chat_title") or "").strip()
+        if chat_type == "group" and chat_title:
+            return f'Group "{chat_title}"'
+        if chat_type == "channel" and chat_title:
+            return f'Channel "{chat_title}"'
+        if chat_title:
+            return f'Chat "{chat_title}"'
+        return chat_type
+
+    def _thread_metadata_block(self, messages: list[dict]) -> str:
+        if not messages:
+            return ""
+
+        first = messages[0]
+        chat_type = first.get("chat_type") or "chat"
+        chat_title = (first.get("chat_title") or "").strip()
+        participants = sorted(
+            {
+                self._speaker_label(m)
+                for m in messages
+                if m.get("username") or m.get("user_id")
+            }
+        )
+
+        lines = ["Conversation metadata:"]
+        if chat_type == "group" and chat_title:
+            lines.append(
+                f'- Group name: "{chat_title}" '
+                "(chat title only - not a participant who spoke)"
+            )
+        elif chat_type == "channel" and chat_title:
+            lines.append(
+                f'- Channel name: "{chat_title}" '
+                "(channel title only - not a participant who spoke)"
+            )
+        elif chat_title:
+            lines.append(f'- Chat: "{chat_title}"')
+        if participants:
+            lines.append(f"- Speakers in this thread: {', '.join(participants)}")
+        lines.append(
+            "- In the transcript, only the @username before the colon is the speaker."
+        )
+        return "\n".join(lines) + "\n\n"
+
     def _format_transcript(self, messages: list[dict], *, use_redacted: bool = True) -> str:
+        if not messages:
+            return ""
+
+        single_chat = len({m.get("chat_id") for m in messages if m.get("chat_id") is not None}) <= 1
+        chat_type = messages[0].get("chat_type")
+        omit_chat_prefix = single_chat and chat_type in ("group", "channel")
+
         lines = []
         for msg in sorted(messages, key=lambda m: m.get("created_at", "")):
-            name = msg.get("username") or f"User {msg.get('user_id')}"
+            speaker = self._speaker_label(msg)
             text = msg.get("text_redacted") if use_redacted and msg.get("text_redacted") else msg.get("text", "")
-            chat = msg.get("chat_title") or msg.get("chat_type") or "chat"
-            lines.append(f"[{chat}] {name}: {text}")
+            if omit_chat_prefix:
+                lines.append(f"{speaker}: {text}")
+            else:
+                chat = self._chat_label(msg)
+                lines.append(f"[{chat}] {speaker}: {text}")
         return "\n".join(lines)
 
     def _prepare_messages(self, messages: list[dict]) -> tuple[list[dict], int, bool]:
         redacted, count, applied = redaction_service.redact_messages(messages)
         return redacted, count, applied
 
-    async def _generate_text(self, prompt: str, system: str) -> tuple[str, str]:
+    def _apply_generation_meta(
+        self, result: dict[str, Any], meta: dict[str, Any]
+    ) -> None:
+        if meta.get("degraded"):
+            result["degraded"] = True
+        if meta.get("failure_reason"):
+            result["failure_reason"] = meta["failure_reason"]
+
+    async def _generate_text(
+        self, prompt: str, system: str
+    ) -> tuple[str, str, dict[str, Any]]:
+        ai_rate_limiter.check()
+        meta: dict[str, Any] = {}
+        gemini_error: str | None = None
+
         if self.gemini.configured:
             try:
-                return await self.gemini.generate_text(prompt, system=system), "gemini"
-            except Exception:
-                pass
+                text = await self.gemini.generate_text(prompt, system=system)
+                return text, "gemini", meta
+            except Exception as exc:
+                gemini_error = f"{type(exc).__name__}: {exc}"
+                logger.warning(
+                    "Gemini text generation failed, trying fallback: %s",
+                    gemini_error,
+                    exc_info=True,
+                )
+
         if self.ollama.configured and await self.ollama.is_available():
-            return await self.ollama.generate_text(prompt, system=system), "ollama"
+            text = await self.ollama.generate_text(prompt, system=system)
+            if gemini_error:
+                meta["degraded"] = True
+                meta["failure_reason"] = (
+                    f"Gemini failed ({gemini_error}); using Ollama fallback"
+                )
+            return text, "ollama", meta
+
+        if gemini_error:
+            raise RuntimeError(
+                f"Gemini failed ({gemini_error}); no fallback provider available"
+            )
         raise RuntimeError("No AI provider available")
 
     def _parse_json_response(self, raw: str) -> dict[str, Any]:
         cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-            cleaned = re.sub(r"\s*```$", "", cleaned)
-        return json.loads(cleaned)
+        fence = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
+        if fence:
+            cleaned = fence.group(1).strip()
+        elif cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned).strip()
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            start = cleaned.find("{")
+            if start < 0:
+                raise
+            depth = 0
+            for index, char in enumerate(cleaned[start:], start):
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return json.loads(cleaned[start : index + 1])
+            raise
 
     async def summarize_messages(
         self,
         messages: list[dict],
         summary_type: str = "brief",
         filters: dict[str, Any] | None = None,
+        relationship_map: dict[int, str] | None = None,
+        ai_context_map: dict[int, str] | None = None,
     ) -> dict[str, Any]:
         if not messages:
             return {
@@ -122,18 +263,29 @@ class AIService:
 
         redacted, redaction_count, redaction_applied = self._prepare_messages(messages)
         instruction = SUMMARY_PROMPTS.get(summary_type, SUMMARY_PROMPTS["brief"])
-        system = (
-            "You summarize Telegram messages for an operator dashboard. "
-            f"{instruction} Keep the original language context in mind but output in English."
-        )
+        system = f"{FILTERED_SUMMARY_SYSTEM} {instruction} Output in English."
         transcript = self._format_transcript(redacted)
-        prompt = f"Summarize these {len(messages)} messages:\n\n{transcript}"
+        context_block = self._chat_context_block(relationship_map, ai_context_map)
+        metadata_block = self._thread_metadata_block(redacted) if len(redacted) else ""
+        prompt = (
+            f"{context_block}{metadata_block}"
+            f"Summarize these {len(messages)} messages:\n\n{transcript}"
+        )
 
+        gen_meta: dict[str, Any] = {}
         try:
-            summary, provider = await self._generate_text(prompt, system)
-        except RuntimeError:
+            summary, provider, gen_meta = await self._generate_text(prompt, system)
+        except RuntimeError as exc:
             summary = self._fallback_thread_summary(messages)
             provider = "fallback"
+            gen_meta = {"degraded": True, "failure_reason": str(exc)}
+
+        summary, name_corrections = self._align_summary_names(
+            summary,
+            messages,
+            relationship_map=relationship_map,
+            ai_context_map=ai_context_map,
+        )
 
         originals = [
             {
@@ -150,55 +302,181 @@ class AIService:
             "summary": summary,
             "message_count": len(messages),
             "originals": originals,
+            "message_highlights": self._fallback_message_highlights(messages)
+            if provider == "fallback"
+            else [],
             "provider": provider,
+            "name_corrections": name_corrections,
             "summary_type": summary_type,
             "redaction_applied": redaction_applied,
             "redaction_count": redaction_count,
             "generated_at": datetime.utcnow().isoformat(),
             "cached": False,
         }
+        self._apply_generation_meta(result, gen_meta)
         summary_cache.set(filters, summary_type, result)
         return result
 
-    async def summarize_thread(self, messages: list[dict]) -> dict:
+    def get_cached_thread_summary(
+        self, chat_id: int, message_ids: list[int]
+    ) -> dict[str, Any] | None:
+        from backend.models.store import store
+
+        cached = store.get_thread_summary(chat_id)
+        if not cached:
+            return None
+
+        current_hash = store.thread_content_hash(message_ids)
+        cached["stale"] = cached.get("content_hash") != current_hash
+        return cached
+
+    async def summarize_thread(
+        self,
+        messages: list[dict],
+        *,
+        chat_id: int | None = None,
+        force: bool = False,
+        relationship: str = "",
+        ai_context: str = "",
+    ) -> dict[str, Any]:
+        from backend.models.store import store
+
         if not messages:
-            return {"summary": "No messages in this conversation.", "provider": "none"}
+            return {
+                "summary": "No messages in this conversation.",
+                "provider": "none",
+                "cached": False,
+                "stale": False,
+            }
+
+        message_ids = [int(m["id"]) for m in messages if m.get("id") is not None]
+        content_hash = store.thread_content_hash(message_ids)
+
+        if chat_id is not None and not force:
+            cached = store.get_thread_summary(chat_id)
+            if cached:
+                cached = dict(cached)
+                cached["stale"] = cached.get("content_hash") != content_hash
+                cached["cached"] = True
+                return cached
 
         redacted, redaction_count, redaction_applied = self._prepare_messages(messages)
-        system = (
-            "You summarize Telegram conversations for an operator dashboard. "
-            "Write 1-3 clear English sentences. Explain who said what, "
-            "note any updates, conflicts, or action items. Be concise."
-        )
         transcript = self._format_transcript(redacted)
-        prompt = f"Summarize this conversation:\n\n{transcript}"
+        metadata_block = self._thread_metadata_block(redacted)
+        context_block = self._chat_context_block(
+            {chat_id: relationship} if chat_id is not None and relationship else None,
+            {chat_id: ai_context} if chat_id is not None and ai_context else None,
+        )
+        prompt = (
+            f"{context_block}{metadata_block}"
+            f"Summarize this conversation:\n\n{transcript}"
+        )
 
+        gen_meta: dict[str, Any] = {}
         try:
-            summary, provider = await self._generate_text(prompt, system)
-        except RuntimeError:
+            summary, provider, gen_meta = await self._generate_text(
+                prompt, THREAD_SUMMARY_SYSTEM
+            )
+        except RuntimeError as exc:
             summary = self._fallback_thread_summary(messages)
             provider = "fallback"
+            gen_meta = {"degraded": True, "failure_reason": str(exc)}
 
-        return {
+        summary, name_corrections = self._align_summary_names(
+            summary,
+            messages,
+            relationship=relationship,
+            ai_context=ai_context,
+        )
+
+        result = {
             "summary": summary,
             "provider": provider,
+            "name_corrections": name_corrections,
             "redaction_applied": redaction_applied,
             "redaction_count": redaction_count,
+            "content_hash": content_hash,
+            "cached": False,
+            "stale": False,
+            "generated_at": datetime.utcnow().isoformat(),
         }
+        self._apply_generation_meta(result, gen_meta)
+
+        if chat_id is not None:
+            saved = store.save_thread_summary(
+                chat_id,
+                content_hash,
+                summary=summary,
+                provider=provider,
+                redaction_applied=redaction_applied,
+                redaction_count=redaction_count,
+            )
+            result["generated_at"] = saved["generated_at"]
+
+        return result
+
+    def _align_summary_names(
+        self,
+        summary: str,
+        messages: list[dict],
+        *,
+        relationship: str = "",
+        ai_context: str = "",
+        relationship_map: dict[int, str] | None = None,
+        ai_context_map: dict[int, str] | None = None,
+    ) -> tuple[str, list[dict[str, str]]]:
+        if relationship_map:
+            relationship = "\n".join(
+                part for part in relationship_map.values() if part and str(part).strip()
+            )
+        if ai_context_map:
+            ai_context = "\n".join(
+                part for part in ai_context_map.values() if part and str(part).strip()
+            )
+        corrected, corrections = align_summary_with_context(
+            summary,
+            messages,
+            ai_context=ai_context,
+            relationship=relationship,
+        )
+        return corrected, corrections
+
+    def _chat_context_block(
+        self,
+        relationship_map: dict[int, str] | None = None,
+        ai_context_map: dict[int, str] | None = None,
+    ) -> str:
+        chat_ids: set[int] = set()
+        if relationship_map:
+            chat_ids.update(relationship_map.keys())
+        if ai_context_map:
+            chat_ids.update(ai_context_map.keys())
+
+        sections: list[str] = []
+        for chat_id in sorted(chat_ids):
+            parts: list[str] = []
+            relationship = (relationship_map or {}).get(chat_id, "").strip()
+            notes = (ai_context_map or {}).get(chat_id, "").strip()
+            if relationship:
+                parts.append(f"Who they are: {relationship}")
+            if notes:
+                parts.append(f"Operator notes: {notes}")
+            if parts:
+                sections.append(f"- Chat {chat_id}:\n  " + "\n  ".join(parts))
+
+        if not sections:
+            return ""
+        return (
+            "Background context from the operator "
+            "(use when interpreting names, aliases, and topics):\n"
+            + "\n".join(sections)
+            + "\n\n"
+        )
 
     def _relationship_context_block(
         self, relationship_map: dict[int, str] | None
     ) -> str:
-        if not relationship_map:
-            return ""
-        lines = [
-            f"- Chat {chat_id}: {relationship}"
-            for chat_id, relationship in relationship_map.items()
-            if relationship
-        ]
-        if not lines:
-            return ""
-        return "Relationship context (who each receiving party is):\n" + "\n".join(lines) + "\n\n"
+        return self._chat_context_block(relationship_map=relationship_map)
 
     def _fallback_relationship(
         self, messages: list[dict], chat_type: str | None, chat_title: str | None
@@ -253,16 +531,29 @@ class AIService:
             }
 
         try:
-            raw, _provider = await self._generate_text(prompt, RELATIONSHIP_SYSTEM)
+            raw, _provider, gen_meta = await self._generate_text(
+                prompt, RELATIONSHIP_SYSTEM
+            )
             parsed = self._parse_json_response(raw)
             relationship = str(parsed.get("relationship", "")).strip()
             if not relationship:
                 raise ValueError("Empty relationship")
-            return {"relationship": relationship, "source": "ai"}
-        except Exception:
+            result = {"relationship": relationship, "source": "ai"}
+            self._apply_generation_meta(result, gen_meta)
+            return result
+        except Exception as exc:
+            logger.warning(
+                "generate_relationship AI failed, using heuristic fallback: %s",
+                exc,
+                exc_info=True,
+            )
             return {
-                "relationship": self._fallback_relationship(messages, chat_type, chat_title),
-                "source": "ai",
+                "relationship": self._fallback_relationship(
+                    messages, chat_type, chat_title
+                ),
+                "source": "fallback",
+                "degraded": True,
+                "failure_reason": f"{type(exc).__name__}: {exc}",
             }
 
     def _fallback_suggestions(
@@ -314,14 +605,102 @@ class AIService:
 
         return {
             "summary": self._fallback_thread_summary(messages),
+            "message_highlights": self._fallback_message_highlights(messages),
             "suggestions": suggestions,
             "provider": "fallback",
         }
+
+    def _fallback_message_highlights(
+        self, messages: list[dict], *, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        highlights = []
+        for msg in sorted(messages, key=lambda m: m.get("created_at", ""), reverse=True)[:limit]:
+            highlights.append(
+                {
+                    "username": msg.get("username"),
+                    "user_id": msg.get("user_id"),
+                    "text": msg.get("text", ""),
+                    "created_at": msg.get("created_at"),
+                    "chat_title": msg.get("chat_title"),
+                    "chat_type": msg.get("chat_type"),
+                    "direction": msg.get("direction"),
+                }
+            )
+        return list(reversed(highlights))
+
+    def _fallback_thread_summary(self, messages: list[dict]) -> str:
+        if not messages:
+            return "No messages to summarize."
+        if len(messages) == 1:
+            m = messages[0]
+            name = m.get("username") or f"User {m.get('user_id')}"
+            return f"Latest from {name}: \"{(m.get('text') or '')[:120]}\""
+
+        speakers = {
+            m.get("username") or f"User {m.get('user_id')}"
+            for m in messages
+            if m.get("username") or m.get("user_id")
+        }
+        chats = {m.get("chat_title") or m.get("chat_type") for m in messages if m.get("chat_id")}
+        chat_part = f" across {len(chats)} chat{'s' if len(chats) != 1 else ''}" if chats else ""
+        return (
+            f"{len(messages)} messages from {len(speakers)} contact{'s' if len(speakers) != 1 else ''}"
+            f"{chat_part}. AI summary unavailable - see recent messages below."
+        )
+
+    def _cap_messages_for_ai(
+        self, messages: list[dict], limit: int = AI_SUGGEST_MESSAGE_CAP
+    ) -> list[dict]:
+        sorted_msgs = sorted(messages, key=lambda m: m.get("created_at", ""))
+        if len(sorted_msgs) <= limit:
+            return sorted_msgs
+        return sorted_msgs[-limit:]
+
+    async def _suggest_from_batch(
+        self,
+        messages: list[dict],
+        relationship_map: dict[int, str] | None,
+        ai_context_map: dict[int, str] | None,
+        *,
+        strict_json: bool = False,
+    ) -> dict[str, Any]:
+        redacted, redaction_count, redaction_applied = self._prepare_messages(messages)
+        transcript = self._format_transcript(redacted)
+        metadata_block = self._thread_metadata_block(redacted)
+        context_block = self._chat_context_block(relationship_map, ai_context_map)
+        prompt = (
+            "Analyze these Telegram messages. Suggest reply drafts for chats needing a response "
+            "and next actions for the user. "
+            "Only attribute speech to usernames in the transcript. "
+            "Group or channel titles are not speakers.\n\n"
+            f"{context_block}{metadata_block}{transcript}"
+        )
+        system = SUGGEST_SYSTEM
+        if strict_json:
+            system += (
+                " Return ONLY a single JSON object matching the schema. "
+                "No prose, no markdown fences, no text before or after the JSON."
+            )
+        raw, provider, gen_meta = await self._generate_text(prompt, system)
+        parsed = self._parse_json_response(raw)
+        suggestions = parsed.get("suggestions", [])
+        if not isinstance(suggestions, list):
+            raise ValueError("AI response missing suggestions array")
+        result = {
+            "summary": parsed.get("summary", ""),
+            "suggestions": suggestions,
+            "provider": provider,
+            "redaction_applied": redaction_applied,
+            "redaction_count": redaction_count,
+        }
+        self._apply_generation_meta(result, gen_meta)
+        return result
 
     async def suggest_actions(
         self,
         messages: list[dict],
         relationship_map: dict[int, str] | None = None,
+        ai_context_map: dict[int, str] | None = None,
     ) -> dict[str, Any]:
         if not messages:
             return {
@@ -332,38 +711,46 @@ class AIService:
                 "redaction_count": 0,
             }
 
-        redacted, redaction_count, redaction_applied = self._prepare_messages(messages)
-        transcript = self._format_transcript(redacted)
-        context_block = self._relationship_context_block(relationship_map)
-        prompt = (
-            "Analyze these Telegram messages. Suggest reply drafts for chats needing a response "
-            "and next actions for the operator. "
-            "Use the relationship context to tailor tone and content to who the receiving party is.\n\n"
-            f"{context_block}{transcript}"
-        )
-
         if not self.configured:
             result = self._fallback_suggestions(messages, relationship_map)
-            result["redaction_applied"] = redaction_applied
-            result["redaction_count"] = redaction_count
+            result["messages_total"] = len(messages)
             return result
 
-        try:
-            raw, provider = await self._generate_text(prompt, SUGGEST_SYSTEM)
-            parsed = self._parse_json_response(raw)
-            suggestions = parsed.get("suggestions", [])
-            return {
-                "summary": parsed.get("summary", ""),
-                "suggestions": suggestions,
-                "provider": provider,
-                "redaction_applied": redaction_applied,
-                "redaction_count": redaction_count,
-            }
-        except Exception:
-            result = self._fallback_suggestions(messages, relationship_map)
-            result["redaction_applied"] = redaction_applied
-            result["redaction_count"] = redaction_count
-            return result
+        total = len(messages)
+        last_error: Exception | None = None
+        for limit, strict in (
+            (AI_SUGGEST_MESSAGE_CAP, False),
+            (AI_SUGGEST_RETRY_CAP, True),
+        ):
+            batch = self._cap_messages_for_ai(messages, limit)
+            try:
+                result = await self._suggest_from_batch(
+                    batch,
+                    relationship_map,
+                    ai_context_map,
+                    strict_json=strict,
+                )
+                result["messages_analyzed"] = len(batch)
+                result["messages_total"] = total
+                result["truncated_for_ai"] = len(batch) < total
+                return result
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "suggest_actions failed (limit=%s, strict=%s): %s",
+                    limit,
+                    strict,
+                    exc,
+                )
+
+        result = self._fallback_suggestions(messages, relationship_map)
+        result["redaction_applied"] = False
+        result["redaction_count"] = 0
+        result["messages_total"] = total
+        result["degraded"] = True
+        if last_error:
+            result["failure_reason"] = str(last_error)
+        return result
 
     async def assign_topics(self, text: str) -> list[str]:
         redacted_text = redaction_service.redact(text).text
@@ -384,11 +771,12 @@ class AIService:
             return tags[:3] or ["general"]
 
         try:
-            raw, _provider = await self._generate_text(prompt, TOPIC_SYSTEM)
+            raw, _provider, _gen_meta = await self._generate_text(prompt, TOPIC_SYSTEM)
             parsed = self._parse_json_response(raw)
             topics = parsed.get("topics", [])
             return [str(t).strip().lower() for t in topics if str(t).strip()][:3]
-        except Exception:
+        except Exception as exc:
+            logger.warning("assign_topics AI failed, using keyword fallback: %s", exc)
             return ["general"]
 
     async def process_message(self, user_text: str, store) -> str:
@@ -417,17 +805,6 @@ class AIService:
             )
 
         return self._fallback_response(user_text, store)
-
-    def _fallback_thread_summary(self, messages: list[dict]) -> str:
-        if len(messages) == 1:
-            m = messages[0]
-            name = m.get("username") or f"User {m.get('user_id')}"
-            return f"{name} sent a message: {m.get('text', '')}"
-        parts = []
-        for msg in sorted(messages, key=lambda m: m.get("created_at", "")):
-            name = msg.get("username") or f"User {msg.get('user_id')}"
-            parts.append(f"{name} said \"{msg.get('text', '')}\"")
-        return "Conversation summary: " + " Then, ".join(parts)
 
     def _fallback_response(self, user_text: str, store) -> str:
         lowered = user_text.lower().strip()

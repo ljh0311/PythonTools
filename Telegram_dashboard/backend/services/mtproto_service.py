@@ -15,12 +15,18 @@ from backend.config import (
 )
 from backend.services.user_account_handler import handle_mtproto_message
 from backend.services.ws_manager import ws_manager
+from backend.models.store import store
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MtprotoService:
     def __init__(self) -> None:
         self._client: TelegramClient | None = None
         self._me_id: int | None = None
+        self._me_user: dict[str, Any] | None = None
         self._phone_code_hash: str | None = None
         self._handler_registered = False
 
@@ -50,7 +56,17 @@ class MtprotoService:
         if self._client is None:
             self._client = self._build_client()
         if not self._client.is_connected():
-            await self._client.connect()
+            import sqlite3
+            import asyncio
+            for attempt in range(3):
+                try:
+                    await self._client.connect()
+                    break
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e) and attempt < 2:
+                        await asyncio.sleep(1)
+                        continue
+                    raise
 
     async def disconnect(self) -> None:
         if self._client and self._client.is_connected():
@@ -85,6 +101,8 @@ class MtprotoService:
                 "last_name": me.last_name,
                 "phone": me.phone,
             }
+            self._me_user = user
+            self._register_account_user(user)
         return {
             "configured": True,
             "enabled": self.enabled,
@@ -95,6 +113,18 @@ class MtprotoService:
             "session_path": str(MTProto_SESSION_PATH),
         }
 
+    def _register_account_user(self, user: dict[str, Any] | None) -> None:
+        if not user or not user.get("id"):
+            return
+        store.upsert_user(user)
+        updated = store.backfill_message_usernames(user["id"], user.get("username"))
+        if updated:
+            logger.info(
+                "MTProto: Backfilled username on %s outgoing message(s) for user %s",
+                updated,
+                user["id"],
+            )
+
     def _register_handlers(self) -> None:
         if not self._client or self._handler_registered:
             return
@@ -103,7 +133,7 @@ class MtprotoService:
         async def on_new_message(event: events.NewMessage.Event) -> None:
             if not self.enabled or self._me_id is None:
                 return
-            result = await handle_mtproto_message(event, self._me_id)
+            result = await handle_mtproto_message(event, self._me_id, self._me_user)
             if result:
                 await ws_manager.broadcast("telegram_update", result)
 
@@ -112,12 +142,33 @@ class MtprotoService:
     async def start_listening(self) -> None:
         if not self.enabled:
             return
-        await self.connect()
-        if not await self.is_authorized():
-            return
-        me = await self._client.get_me()
-        self._me_id = me.id
-        self._register_handlers()
+        try:
+            await self.connect()
+            if not await self.is_authorized():
+                logger.info("MTProto: Not authorized. Run scripts/mtproto_login.py")
+                return
+            me = await self._client.get_me()
+            self._me_id = me.id
+            self._me_user = {
+                "id": me.id,
+                "username": me.username,
+                "first_name": me.first_name,
+                "last_name": me.last_name,
+            }
+            self._register_account_user(self._me_user)
+            self._register_handlers()
+            logger.info(f"MTProto: Listening as @{me.username or me.first_name}")
+        except Exception as e:
+            logger.error(f"MTProto: Failed to start listener: {e}")
+            if self._client:
+                try:
+                    await self._client.disconnect()
+                except Exception as disconnect_exc:
+                    logger.warning(
+                        "MTProto: disconnect after failed start raised: %s",
+                        disconnect_exc,
+                    )
+                self._client = None
 
     async def send_code(self, phone: str | None = None) -> dict[str, Any]:
         if not self.configured:
@@ -151,6 +202,12 @@ class MtprotoService:
         self._phone_code_hash = None
         me = await self._client.get_me()
         self._me_id = me.id
+        self._me_user = {
+            "id": me.id,
+            "username": me.username,
+            "first_name": me.first_name,
+        }
+        self._register_account_user(self._me_user)
         if self.enabled:
             self._register_handlers()
         return {

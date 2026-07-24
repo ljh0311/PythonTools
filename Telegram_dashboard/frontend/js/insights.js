@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { collectFiltersFromForm, inboxState } from "./inbox.js";
+import { collectFiltersFromForm, displayName, inboxState } from "./inbox.js";
 
 function escapeHtml(value) {
   return String(value)
@@ -59,6 +59,88 @@ function renderOriginals(container, originals, visible) {
   container.appendChild(block);
 }
 
+function truncateText(text, max = 220) {
+  const value = String(text || "").trim();
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 1)}…`;
+}
+
+function providerBadge(provider) {
+  const normalized = provider || "none";
+  const cls =
+    normalized === "fallback"
+      ? "provider-badge provider-fallback"
+      : normalized === "ollama" || normalized === "gemini"
+        ? "provider-badge provider-ai"
+        : "provider-badge";
+  return `<span class="${cls}">via ${escapeHtml(normalized)}</span>`;
+}
+
+function renderMessageHighlights(messages = [], { title = "Recent messages" } = {}) {
+  if (!messages.length) return "";
+  return `
+    <section class="message-highlights" aria-label="${escapeHtml(title)}">
+      <div class="highlights-header">
+        <strong>${escapeHtml(title)}</strong>
+        <span class="highlights-count">${messages.length} shown</span>
+      </div>
+      <ul class="highlight-list">
+        ${messages
+          .map(
+            (item) => `
+          <li class="highlight-item highlight-${escapeHtml(item.direction || "incoming")}">
+            <div class="highlight-meta">
+              <strong>${escapeHtml(displayName(item))}</strong>
+              ${
+                item.chat_title
+                  ? `<span class="highlight-chat">${escapeHtml(item.chat_title)}</span>`
+                  : ""
+              }
+              <time>${formatTime(item.created_at)}</time>
+            </div>
+            <p class="highlight-text">${escapeHtml(truncateText(item.text))}</p>
+          </li>`
+          )
+          .join("")}
+      </ul>
+    </section>`;
+}
+
+function renderFallbackNotice() {
+  return `
+    <p class="fallback-notice">
+      AI is off or failed. Showing a short overview and recent messages instead of a full summary.
+    </p>`;
+}
+
+function renderDegradationNotice(result) {
+  if (!result?.degraded && !result?.failure_reason) return "";
+  const text = result.failure_reason || "Using fallback provider";
+  return `<p class="degradation-notice">${escapeHtml(text)}</p>`;
+}
+
+function renderSummaryBody(result) {
+  const isFallback = result.provider === "fallback";
+  const highlights = result.message_highlights || result.originals || [];
+
+  if (isFallback && highlights.length) {
+    return `
+      ${renderFallbackNotice()}
+      ${renderDegradationNotice(result)}
+      <p class="insight-lead">${escapeHtml(result.summary || "")}</p>
+      ${renderMessageHighlights(highlights)}`;
+  }
+
+  if (isFallback) {
+    return `
+      ${renderFallbackNotice()}
+      ${renderDegradationNotice(result)}
+      <p class="insight-lead">${escapeHtml(result.summary || "")}</p>`;
+  }
+
+  return `<p class="insight-text">${escapeHtml(result.summary || "")}</p>`;
+}
+
 function renderSummary(result) {
   const panel = document.getElementById("summary-panel");
   panel.hidden = false;
@@ -67,22 +149,35 @@ function renderSummary(result) {
       <strong>Filtered summary</strong>
       <span class="badge">${escapeHtml(result.summary_type || "brief")}</span>
       ${result.cached ? '<span class="badge">cached</span>' : ""}
+      ${providerBadge(result.provider)}
       <button type="button" class="btn btn-ghost btn-sm" id="copy-summary">Copy</button>
     </div>
-    <p class="insight-text">${escapeHtml(result.summary)}</p>
-    <p class="summary-meta">${result.message_count} messages · via ${escapeHtml(result.provider)}</p>
-    <label class="toggle-originals">
+    ${renderDegradationNotice(result)}
+    ${
+      result.name_corrections?.length
+        ? `<p class="summary-corrections">Names corrected: ${result.name_corrections
+            .map((item) => `${escapeHtml(item.from)} → ${escapeHtml(item.to)}`)
+            .join(", ")}</p>`
+        : ""
+    }
+    ${renderSummaryBody(result)}
+    <p class="summary-meta">${result.message_count} messages</p>
+    ${
+      !result.message_highlights?.length && (result.originals || []).length
+        ? `<label class="toggle-originals">
       <input type="checkbox" id="toggle-originals" />
       View original messages
-    </label>`;
+    </label>`
+        : ""
+    }`;
 
   renderRedactionNotice(panel, result);
   renderOriginals(panel, result.originals || [], false);
 
-  panel.querySelector("#copy-summary").addEventListener("click", () => {
+  panel.querySelector("#copy-summary")?.addEventListener("click", () => {
     navigator.clipboard.writeText(result.summary).catch(() => {});
   });
-  panel.querySelector("#toggle-originals").addEventListener("change", (event) => {
+  panel.querySelector("#toggle-originals")?.addEventListener("change", (event) => {
     renderOriginals(panel, result.originals || [], event.target.checked);
   });
 }
@@ -96,17 +191,29 @@ function statusBadge(status) {
   return `<span class="badge status-${status}">${escapeHtml(status)}</span>`;
 }
 
+function renderTruncationNotice(result) {
+  if (!result.truncated_for_ai) return "";
+  return `<p class="summary-meta">Analyzed ${result.messages_analyzed} of ${result.messages_total} filtered messages (most recent).</p>`;
+}
+
 function renderSuggestions(result, onSent) {
   const panel = document.getElementById("suggestions-panel");
   panel.hidden = false;
 
   const suggestions = (result.suggestions || []).filter((item) => item.status !== "dismissed");
+  const isFallback = result.provider === "fallback";
   panel.innerHTML = `
     <div class="insight-header">
       <strong>Suggested actions</strong>
-      <span class="summary-meta">via ${escapeHtml(result.provider)}</span>
+      ${providerBadge(result.provider)}
     </div>
-    <p class="insight-text">${escapeHtml(result.summary || "")}</p>
+    ${renderTruncationNotice(result)}
+    ${renderDegradationNotice(result)}
+    ${
+      isFallback
+        ? `${renderFallbackNotice()}<p class="insight-lead">${escapeHtml(result.summary || "")}</p>${renderMessageHighlights(result.message_highlights || [])}`
+        : `<p class="insight-text">${escapeHtml(result.summary || "")}</p>`
+    }
     <div class="suggestion-cards">
       ${
         suggestions.length

@@ -1,6 +1,10 @@
 import { api } from "./api.js";
+import { buildInboxEmptyHtml } from "./connection-status.js";
+import { workflowState } from "./workflow.js";
 
 const DEFAULT_LIMIT = 10;
+const FILTER_DEBOUNCE_MS = 350;
+let filterDebounceTimer = null;
 
 export const inboxState = {
   users: [],
@@ -20,6 +24,8 @@ export const inboxState = {
     dateFrom: "",
     dateTo: "",
   },
+  expandedContextChatIds: new Set(),
+  operatorUser: null,
 };
 
 function escapeHtml(value) {
@@ -36,8 +42,22 @@ function formatTime(iso) {
   return date.toLocaleString();
 }
 
-function displayName(item) {
-  return item.username ? `@${item.username}` : `User ${item.user_id}`;
+export function setOperatorUser(user) {
+  inboxState.operatorUser = user || null;
+}
+
+export function displayName(item) {
+  if (item.username) return `@${item.username}`;
+  const me = inboxState.operatorUser;
+  if (
+    me?.username &&
+    item.direction === "outgoing" &&
+    item.ingestion_source === "user_account" &&
+    String(item.user_id) === String(me.id)
+  ) {
+    return `@${me.username}`;
+  }
+  return `User ${item.user_id}`;
 }
 
 function threadTitle(thread) {
@@ -164,10 +184,22 @@ function renderThreadMessages(messages) {
     .join("");
 }
 
+function emptyInboxHtml(view = "threads") {
+  const topicHint =
+    inboxState.filters.topics && workflowState.topicMode === "ai_assign"
+      ? " AI assign mode only matches AI topic tags — switch to User type in Workflow, or use the message search box."
+      : "";
+  return buildInboxEmptyHtml({
+    filters: inboxState.filters,
+    view,
+    topicHint,
+  });
+}
+
 function renderFlatMessages(messages = []) {
   const feed = document.getElementById("messages-feed");
   if (!messages.length) {
-    feed.innerHTML = `<div class="empty-thread">No messages match your filters.</div>`;
+    feed.innerHTML = emptyInboxHtml("flat");
     return;
   }
 
@@ -191,12 +223,48 @@ function renderFlatMessages(messages = []) {
     .join("")}</ul>`;
 }
 
+function renderThreadContext(thread) {
+  if (!thread.chat_id) return "";
+
+  const expanded = inboxState.expandedContextChatIds.has(Number(thread.chat_id));
+  const notes = thread.ai_context || "";
+  const preview = notes
+    ? escapeHtml(notes.length > 120 ? `${notes.slice(0, 120)}…` : notes)
+    : "<em>No extra context yet.</em>";
+
+  return `
+    <div class="thread-context" data-chat-id="${thread.chat_id}">
+      <div class="thread-context-toolbar">
+        <strong>Your context</strong>
+        <button type="button" class="btn btn-ghost btn-sm toggle-thread-context" data-chat-id="${thread.chat_id}">
+          ${expanded ? "Hide" : notes ? "Edit" : "Add"}
+        </button>
+      </div>
+      <p class="thread-context-preview" ${expanded ? "hidden" : ""}>${preview}</p>
+      <div class="thread-context-editor" ${expanded ? "" : "hidden"}>
+        <textarea
+          class="thread-context-input"
+          rows="3"
+          data-chat-id="${thread.chat_id}"
+          placeholder="Notes for the AI: aliases (y4ppy = yappy/yappie), people, topics, background…"
+        >${escapeHtml(notes)}</textarea>
+        <div class="thread-context-actions">
+          <button type="button" class="btn btn-primary btn-sm save-thread-context" data-chat-id="${thread.chat_id}">
+            Save context
+          </button>
+          <span class="thread-context-hint">Used by Summarize and AI suggestions</span>
+        </div>
+      </div>
+    </div>`;
+}
+
 export function renderInboxThreads(threads = [], total = 0) {
   inboxState.threads = threads;
+  inboxState.total = total;
 
   const feed = document.getElementById("messages-feed");
   if (!threads.length) {
-    feed.innerHTML = `<div class="empty-thread">No conversations match your filters.</div>`;
+    feed.innerHTML = emptyInboxHtml("threads");
   } else {
     feed.innerHTML = threads
       .map((thread, index) => {
@@ -224,8 +292,17 @@ export function renderInboxThreads(threads = [], total = 0) {
                 : ""
             }
           </header>
-          <div class="thread-summary" id="summary-${chatId}">
-            <span class="summary-loading">Generating AI summary…</span>
+          ${renderThreadContext(thread)}
+          <div class="thread-summary" id="summary-${chatId}" data-chat-id="${thread.chat_id ?? ""}">
+            <div class="summary-toolbar">
+              <strong>AI Summary</strong>
+              ${
+                thread.chat_id
+                  ? `<button type="button" class="btn btn-ghost btn-sm summarize-thread-btn" data-chat-id="${thread.chat_id}" data-message-ids="${thread.messages.map((m) => m.id).join(",")}">Summarize</button>`
+                  : ""
+              }
+            </div>
+            <div class="summary-body"><em>No summary yet.</em></div>
           </div>
           <ul class="thread-messages">${renderThreadMessages(thread.messages)}</ul>
         </article>`;
@@ -234,6 +311,19 @@ export function renderInboxThreads(threads = [], total = 0) {
   }
 
   updateInboxCount(total, threads.length);
+}
+
+export function refreshInboxEmptyStateIfNeeded() {
+  if (inboxState.view === "flat") {
+    if (!inboxState.messages.length) {
+      renderFlatMessages([]);
+      updateInboxCount(inboxState.total || 0, 0);
+    }
+    return;
+  }
+  if (!inboxState.threads.length) {
+    renderInboxThreads([], inboxState.total || 0);
+  }
 }
 
 function updateInboxCount(total, shownCount) {
@@ -249,34 +339,111 @@ function updateInboxCount(total, shownCount) {
   loadMoreBtn.hidden = inboxState.offset + shownCount >= total;
 }
 
-async function loadThreadSummary(thread, index) {
+function renderNameCorrections(corrections = []) {
+  if (!corrections?.length) return "";
+  const items = corrections
+    .map((item) => `${escapeHtml(item.from)} → ${escapeHtml(item.to)}`)
+    .join(", ");
+  return `<p class="summary-corrections">Names corrected: ${items}</p>`;
+}
+
+function renderThreadSummaryPanel(summaryEl, result) {
+  const body = summaryEl.querySelector(".summary-body");
+  const btn = summaryEl.querySelector(".summarize-thread-btn");
+  if (!body) return;
+
+  if (!result?.summary) {
+    body.innerHTML = "<em>Click Summarize to generate an AI summary.</em>";
+    if (btn) {
+      btn.textContent = "Summarize";
+      btn.disabled = false;
+    }
+    return;
+  }
+
+  const redaction = result.redaction_applied
+    ? `<p class="redaction-notice">Sensitive data redacted (${result.redaction_count}) before AI.</p>`
+    : "";
+  const stale = result.stale
+    ? `<p class="summary-stale">New messages since this summary — click Refresh to update.</p>`
+    : "";
+  const meta = result.cached
+    ? `<span class="summary-cached">Saved summary</span>`
+    : `<span class="summary-cached">Just generated</span>`;
+
+  body.innerHTML = `
+    ${redaction}
+    ${stale}
+    ${renderNameCorrections(result.name_corrections)}
+    ${
+      result.provider === "fallback"
+        ? `<p class="fallback-notice">AI unavailable — showing basic overview.</p>`
+        : ""
+    }
+    ${
+      result.degraded || result.failure_reason
+        ? `<p class="degradation-notice">${escapeHtml(result.failure_reason || "Using fallback provider")}</p>`
+        : ""
+    }
+    <p>${escapeHtml(result.summary)}</p>
+    <span class="summary-provider">${meta} · via ${escapeHtml(result.provider || "ai")}</span>`;
+
+  if (btn) {
+    btn.textContent = result.summary ? "Refresh summary" : "Summarize";
+    btn.disabled = false;
+  }
+}
+
+async function loadCachedThreadSummary(thread, index) {
   const chatId = thread.chat_id ?? `thread-${index}`;
   const summaryEl = document.getElementById(`summary-${chatId}`);
   if (!summaryEl || !thread.chat_id || thread.messages.length < 1) {
     if (summaryEl) {
-      summaryEl.innerHTML = "<em>No summary available.</em>";
+      summaryEl.querySelector(".summary-body").innerHTML = "<em>No summary available.</em>";
     }
     return;
   }
 
   try {
     const messageIds = thread.messages.map((m) => m.id);
-    const result = await api.summarizeThread(thread.chat_id, messageIds);
-    const redaction = result.redaction_applied
-      ? `<p class="redaction-notice">Sensitive data redacted (${result.redaction_count}) before AI.</p>`
-      : "";
-    summaryEl.innerHTML = `
-      <strong>AI Summary</strong>
-      ${redaction}
-      <p>${escapeHtml(result.summary)}</p>
-      <span class="summary-provider">via ${escapeHtml(result.provider)}</span>`;
+    const result = await api.getThreadSummary(thread.chat_id, messageIds);
+    if (result.summary) {
+      renderThreadSummaryPanel(summaryEl, result);
+    }
   } catch {
-    summaryEl.innerHTML = "<em>Could not generate summary.</em>";
+    /* keep default placeholder */
   }
 }
 
-async function loadSummariesForThreads(threads) {
-  await Promise.all(threads.map((thread, index) => loadThreadSummary(thread, index)));
+async function requestThreadSummary(chatId, messageIds, { force = false, summaryEl } = {}) {
+  const btn = summaryEl?.querySelector(".summarize-thread-btn");
+  const body = summaryEl?.querySelector(".summary-body");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = force ? "Refreshing…" : "Summarizing…";
+  }
+  if (body) {
+    body.innerHTML = `<p class="summary-loading">${force ? "Refreshing" : "Generating"} AI summary…</p>`;
+  }
+
+  try {
+    const result = await api.summarizeThread(chatId, messageIds, { force });
+    renderThreadSummaryPanel(summaryEl, result);
+    return result;
+  } catch (error) {
+    if (body) {
+      body.innerHTML = `<p class="error-text">${escapeHtml(error.message)}</p>`;
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = force ? "Refresh summary" : "Summarize";
+    }
+    throw error;
+  }
+}
+
+async function loadCachedSummariesForThreads(threads) {
+  await Promise.all(threads.map((thread, index) => loadCachedThreadSummary(thread, index)));
 }
 
 export function collectFiltersFromForm() {
@@ -296,7 +463,10 @@ export function collectFiltersFromForm() {
 }
 
 export async function loadInbox({ append = false } = {}) {
-  if (!append) inboxState.offset = 0;
+  if (!append) {
+    collectFiltersFromForm();
+    inboxState.offset = 0;
+  }
 
   const params = buildFilterParams();
 
@@ -314,7 +484,7 @@ export async function loadInbox({ append = false } = {}) {
   const threads = append ? [...inboxState.threads, ...result.threads] : result.threads;
   renderInboxThreads(threads, result.total);
   writeFiltersToUrl();
-  await loadSummariesForThreads(append ? result.threads : threads);
+  await loadCachedSummariesForThreads(append ? result.threads : threads);
   return result;
 }
 
@@ -348,7 +518,25 @@ function applyPreset(presetId) {
   syncFilterForm();
 }
 
-export function bindInbox(onReply, onError) {
+function applyFiltersNow(onError) {
+  clearTimeout(filterDebounceTimer);
+  collectFiltersFromForm();
+  loadInbox().catch(onError);
+}
+
+function scheduleFilterApply(onError) {
+  clearTimeout(filterDebounceTimer);
+  filterDebounceTimer = setTimeout(() => applyFiltersNow(onError), FILTER_DEBOUNCE_MS);
+}
+
+function bindFilterInput(id, onError) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("search", () => applyFiltersNow(onError));
+  el.addEventListener("input", () => scheduleFilterApply(onError));
+}
+
+export function bindInbox(onReply, onError, onNotify) {
   readFiltersFromUrl();
   syncFilterForm();
   loadPresets().catch(onError);
@@ -364,10 +552,7 @@ export function bindInbox(onReply, onError) {
 
   initAiPanel();
 
-  document.getElementById("inbox-apply").addEventListener("click", () => {
-    collectFiltersFromForm();
-    loadInbox().catch(onError);
-  });
+  document.getElementById("inbox-apply").addEventListener("click", () => applyFiltersNow(onError));
 
   document.getElementById("inbox-clear").addEventListener("click", () => {
     inboxState.filters = {
@@ -384,19 +569,8 @@ export function bindInbox(onReply, onError) {
     loadInbox().catch(onError);
   });
 
-  document.getElementById("inbox-search").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      collectFiltersFromForm();
-      loadInbox().catch(onError);
-    }
-  });
-
-  document.getElementById("inbox-topics").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      collectFiltersFromForm();
-      loadInbox().catch(onError);
-    }
-  });
+  bindFilterInput("inbox-search", onError);
+  bindFilterInput("inbox-topics", onError);
 
   document.getElementById("inbox-view").addEventListener("change", () => {
     collectFiltersFromForm();
@@ -409,6 +583,55 @@ export function bindInbox(onReply, onError) {
   });
 
   document.getElementById("messages-feed").addEventListener("click", (event) => {
+    const toggleContextBtn = event.target.closest(".toggle-thread-context");
+    if (toggleContextBtn) {
+      const chatId = Number(toggleContextBtn.dataset.chatId);
+      if (inboxState.expandedContextChatIds.has(chatId)) {
+        inboxState.expandedContextChatIds.delete(chatId);
+      } else {
+        inboxState.expandedContextChatIds.add(chatId);
+      }
+      renderInboxThreads(inboxState.threads, inboxState.total);
+      return;
+    }
+
+    const saveContextBtn = event.target.closest(".save-thread-context");
+    if (saveContextBtn) {
+      const chatId = Number(saveContextBtn.dataset.chatId);
+      const textarea = document.querySelector(`.thread-context-input[data-chat-id="${chatId}"]`);
+      const aiContext = textarea?.value.trim() ?? "";
+      saveContextBtn.disabled = true;
+      api
+        .updateChatSettings(chatId, { ai_context: aiContext })
+        .then((saved) => {
+          const thread = inboxState.threads.find((item) => Number(item.chat_id) === chatId);
+          if (thread) {
+            thread.ai_context = saved.ai_context || "";
+          }
+          inboxState.expandedContextChatIds.delete(chatId);
+          renderInboxThreads(inboxState.threads, inboxState.total);
+          onNotify?.("Chat context saved.");
+        })
+        .catch(onError)
+        .finally(() => {
+          saveContextBtn.disabled = false;
+        });
+      return;
+    }
+
+    const summarizeBtn = event.target.closest(".summarize-thread-btn");
+    if (summarizeBtn) {
+      const chatId = Number(summarizeBtn.dataset.chatId);
+      const messageIds = (summarizeBtn.dataset.messageIds || "")
+        .split(",")
+        .filter(Boolean)
+        .map(Number);
+      const summaryEl = document.getElementById(`summary-${chatId}`);
+      const force = summarizeBtn.textContent.toLowerCase().includes("refresh");
+      requestThreadSummary(chatId, messageIds, { force, summaryEl }).catch(onError);
+      return;
+    }
+
     const button = event.target.closest(".reply-btn");
     if (!button) return;
     onReply(button.dataset.chatId);
