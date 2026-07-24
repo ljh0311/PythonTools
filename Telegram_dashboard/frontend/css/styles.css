@@ -1864,6 +1864,7 @@ textarea {
     flex-direction: column;
     flex-wrap: nowrap;
     border-right: 1px solid var(--border);
+    border-top: none;
     border-bottom: none;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
@@ -1875,25 +1876,53 @@ textarea {
   }
 
   .sidebar-brand {
+    display: flex;
     padding: 0 0.35rem;
   }
 
   .sidebar-nav {
     flex-direction: column;
-    flex-wrap: nowrap;
-    overflow: visible;
+    width: auto;
+    justify-content: flex-start;
+    gap: 0.35rem;
   }
 
   .nav-item {
+    flex: none;
+    flex-direction: row;
     width: 100%;
     min-width: 0;
     justify-content: flex-start;
+    padding: 0.65rem 0.75rem;
+    gap: 0.65rem;
+  }
+
+  .nav-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .nav-desc {
+    display: block;
+  }
+
+  .nav-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .nav-icon {
+    width: 24px;
+    height: 24px;
   }
 }
 
 @media (max-width: 768px) {
   .main-column {
     padding: 1rem;
+    max-width: none;
   }
 
   .compose-form {

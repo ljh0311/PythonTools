@@ -16,6 +16,7 @@ import { bindInsights } from "./insights.js";
 import { bindInbox, loadInbox, refreshInboxEmptyStateIfNeeded, renderUserFilter, setOperatorUser } from "./inbox.js";
 import { initTheme } from "./theme.js";
 import { initNavigation } from "./navigation.js";
+import { initSidebar } from "./sidebar.js";
 import { bindDevNotify } from "./dev-notify.js";
 import { bindWorkflow, loadWorkflowSettings } from "./workflow.js";
 
@@ -295,7 +296,8 @@ async function init() {
   if (!authed) return;
 
   initTheme();
-  state.nav = initNavigation();
+  const sidebar = initSidebar();
+  state.nav = initNavigation(() => sidebar.closeSidebar());
   bindForms();
   bindDevNotify(
     (message) => showToast(message),
