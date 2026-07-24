@@ -80,7 +80,8 @@ class MessageTopicsRequest(BaseModel):
 
 
 class TopicBackfillRequest(BaseModel):
-    limit: int = Field(default=40, ge=1, le=100)
+    limit: int = Field(default=50, ge=1, le=200)
+    enable_ai_mode: bool = False
 
 
 class SuggestionStatusRequest(BaseModel):
@@ -436,20 +437,22 @@ async def list_topics() -> list[dict[str, Any]]:
 
 @router.post("/topics/backfill", dependencies=[Depends(verify_operator)])
 async def backfill_topics(body: TopicBackfillRequest) -> dict[str, Any]:
-    mode = store.get_topic_mode()
-    if mode != "ai_assign":
-        mode = store.set_topic_mode("ai_assign")
-        await ws_manager.broadcast("topic_mode_updated", {"mode": mode})
+    current_mode = store.get_topic_mode()
+    if current_mode != "ai_assign" and not body.enable_ai_mode:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Topic mode is user_type — AI tagging is disabled. "
+                "Switch to AI assign in Workflow settings, or pass enable_ai_mode: true."
+            ),
+        )
 
-    message_ids = store.list_recent_untagged_message_ids(body.limit)
+    untagged = store.list_recent_untagged_messages(body.limit)
     tagged = 0
     topics_created: set[str] = set()
 
-    for msg_id in message_ids:
-        messages = store.get_messages_by_ids([msg_id])
-        if not messages:
-            continue
-        text = (messages[0].get("text") or "").strip()
+    for msg in untagged:
+        text = (msg.get("text") or "").strip()
         if not text:
             continue
         try:
@@ -460,15 +463,16 @@ async def backfill_topics(body: TopicBackfillRequest) -> dict[str, Any]:
             break
         if not topics:
             continue
-        added = store.add_message_topics(msg_id, topics, source="ai")
+        added = store.add_message_topics(msg["id"], topics, source="ai")
         if added:
             tagged += 1
             topics_created.update(added)
 
     return {
+        "processed": len(untagged),
         "tagged": tagged,
         "topics_created": sorted(topics_created),
-        "mode": mode,
+        "topic_mode": current_mode,
     }
 
 
