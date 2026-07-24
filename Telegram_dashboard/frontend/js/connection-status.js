@@ -133,29 +133,34 @@ function buildUserStatusLine(userAccountStatus = connectionState.userAccountStat
   return "Optional — not configured";
 }
 
-function buildShortEmptySteps(botStatus, userStatus) {
+function buildSetupConnectSteps(botStatus, userStatus) {
+  const steps = [];
   const botReceiving = isBotReceiving(botStatus);
   const userReceiving = isUserReceiving(userStatus);
 
-  if (botReceiving || userReceiving) {
-    return ["Send a test message in Telegram, then click Refresh."];
+  if (!botStatus?.configured) {
+    steps.push("Bot: add TELEGRAM_BOT_TOKEN to .env, register the webhook, then restart.");
+  } else if (!botStatus?.bot) {
+    steps.push("Bot: token is set but not verified — check TELEGRAM_BOT_TOKEN and restart.");
+  } else if (!botReceiving) {
+    steps.push("Bot: message your bot in Telegram or add it to a group.");
   }
 
-  const steps = [];
-  const botPill = getBotPill(botStatus);
-  const userPill = getUserPill(userStatus);
+  if (!userStatus?.configured) {
+    steps.push(
+      "My Telegram account (optional): add TELEGRAM_API_ID and TELEGRAM_API_HASH from my.telegram.org."
+    );
+  } else if (!userStatus?.authorized) {
+    steps.push("My Telegram account: run scripts/mtproto_login.py once to log in.");
+  } else if (!userReceiving) {
+    steps.push("My Telegram account: set MTProto_ENABLED=true in .env and restart.");
+  }
 
-  if (botPill.state !== "connected") {
-    steps.push("Open Tools to finish bot setup.");
-  }
-  if (userPill.state !== "connected" && userPill.state !== "offline") {
-    steps.push("Open Tools to finish personal account setup.");
-  }
   if (steps.length === 0) {
-    steps.push("Open Tools for setup steps.");
+    steps.push("Send a test message in Telegram, then click Refresh.");
   }
 
-  return steps.slice(0, 2);
+  return steps;
 }
 
 export function buildInboxEmptyHtml({ filters = {}, view = "threads", topicHint = "" } = {}) {
@@ -164,7 +169,9 @@ export function buildInboxEmptyHtml({ filters = {}, view = "threads", topicHint 
     return `<div class="empty-thread">
       <p class="empty-thread-title">No ${label} match your filters</p>
       <p class="empty-thread-reason">Try clearing filters or broadening your search.${topicHint}</p>
-      <p class="empty-thread-action">Use <strong>Clear filters</strong> or adjust the search box.</p>
+      <div class="empty-thread-actions">
+        <button type="button" class="btn btn-primary btn-sm" data-empty-action="clear-filters">Clear filters</button>
+      </div>
     </div>`;
   }
 
@@ -174,11 +181,13 @@ export function buildInboxEmptyHtml({ filters = {}, view = "threads", topicHint 
   const userReceiving = isUserReceiving(userStatus);
 
   let reason = "No messages captured yet.";
-  if (!botReceiving && !userReceiving) {
-    reason = "Nothing is receiving messages yet — see connection pills above.";
+  if (!botStatus?.configured && !userStatus?.configured) {
+    reason = "Connect your bot or personal Telegram account to start receiving messages.";
+  } else if (!botReceiving && !userReceiving) {
+    reason = "Your connections are set up but not receiving messages yet.";
   }
 
-  const steps = buildShortEmptySteps(botStatus, userStatus);
+  const steps = buildSetupConnectSteps(botStatus, userStatus);
   const stepsHtml = `<ul class="empty-thread-steps">${steps
     .map((step) => `<li>${escapeHtml(step)}</li>`)
     .join("")}</ul>`;
@@ -186,7 +195,14 @@ export function buildInboxEmptyHtml({ filters = {}, view = "threads", topicHint 
   return `<div class="empty-thread empty-thread-setup">
     <p class="empty-thread-title">Inbox is empty</p>
     <p class="empty-thread-reason">${escapeHtml(reason)}</p>
-    ${stepsHtml}
+    <div class="empty-thread-actions">
+      <button type="button" class="btn btn-primary btn-sm" data-empty-action="open-tools">Open Tools</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-empty-action="refresh-inbox">Refresh</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-empty-action="toggle-connect-details" aria-expanded="false">How to connect</button>
+    </div>
+    <div class="empty-thread-details" hidden>
+      ${stepsHtml}
+    </div>
   </div>`;
 }
 

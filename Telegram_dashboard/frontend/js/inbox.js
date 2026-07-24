@@ -446,6 +446,21 @@ async function loadCachedSummariesForThreads(threads) {
   await Promise.all(threads.map((thread, index) => loadCachedThreadSummary(thread, index)));
 }
 
+export function clearInboxFilters(onError) {
+  inboxState.filters = {
+    q: "",
+    topics: "",
+    userIds: [],
+    chatType: "",
+    direction: "",
+    ingestionSource: "",
+    dateFrom: "",
+    dateTo: "",
+  };
+  syncFilterForm();
+  return loadInbox().catch(onError);
+}
+
 export function collectFiltersFromForm() {
   const select = document.getElementById("inbox-users");
   const selected = [...select.selectedOptions].map((o) => o.value);
@@ -536,7 +551,33 @@ function bindFilterInput(id, onError) {
   el.addEventListener("input", () => scheduleFilterApply(onError));
 }
 
-export function bindInbox(onReply, onError, onNotify) {
+function handleEmptyStateAction(action, button, { onError, onOpenTools, onRefresh } = {}) {
+  if (action === "clear-filters") {
+    clearInboxFilters(onError);
+    return true;
+  }
+  if (action === "refresh-inbox") {
+    if (onRefresh) onRefresh();
+    else loadInbox().catch(onError);
+    return true;
+  }
+  if (action === "open-tools") {
+    onOpenTools?.();
+    return true;
+  }
+  if (action === "toggle-connect-details") {
+    const details = button.closest(".empty-thread-setup")?.querySelector(".empty-thread-details");
+    if (!details) return true;
+    const open = details.hidden;
+    details.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+    button.textContent = open ? "Hide details" : "How to connect";
+    return true;
+  }
+  return false;
+}
+
+export function bindInbox(onReply, onError, onNotify, { onOpenTools, onRefresh } = {}) {
   readFiltersFromUrl();
   syncFilterForm();
   loadPresets().catch(onError);
@@ -555,18 +596,7 @@ export function bindInbox(onReply, onError, onNotify) {
   document.getElementById("inbox-apply").addEventListener("click", () => applyFiltersNow(onError));
 
   document.getElementById("inbox-clear").addEventListener("click", () => {
-    inboxState.filters = {
-      q: "",
-      topics: "",
-      userIds: [],
-      chatType: "",
-      direction: "",
-      ingestionSource: "",
-      dateFrom: "",
-      dateTo: "",
-    };
-    syncFilterForm();
-    loadInbox().catch(onError);
+    clearInboxFilters(onError);
   });
 
   bindFilterInput("inbox-search", onError);
@@ -583,6 +613,16 @@ export function bindInbox(onReply, onError, onNotify) {
   });
 
   document.getElementById("messages-feed").addEventListener("click", (event) => {
+    const emptyActionBtn = event.target.closest("[data-empty-action]");
+    if (emptyActionBtn) {
+      handleEmptyStateAction(emptyActionBtn.dataset.emptyAction, emptyActionBtn, {
+        onError,
+        onOpenTools,
+        onRefresh,
+      });
+      return;
+    }
+
     const toggleContextBtn = event.target.closest(".toggle-thread-context");
     if (toggleContextBtn) {
       const chatId = Number(toggleContextBtn.dataset.chatId);
