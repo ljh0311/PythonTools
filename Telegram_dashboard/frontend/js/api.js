@@ -14,6 +14,23 @@ const baseHeaders = {
   "Content-Type": "application/json",
 };
 
+function formatApiErrorDetail(detail) {
+  if (detail == null || detail === "") return null;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          return item.msg || item.message || JSON.stringify(item);
+        }
+        return String(item);
+      })
+      .join("; ");
+  }
+  return String(detail);
+}
+
 async function request(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -30,7 +47,9 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || `Request failed: ${response.status}`);
+    throw new Error(
+      formatApiErrorDetail(error.detail) || `Request failed: ${response.status}`
+    );
   }
 
   const contentType = response.headers.get("Content-Type") || "";
@@ -73,6 +92,7 @@ export async function ensureAuthenticated() {
 export const api = {
   getMetrics: () => request("/api/metrics"),
   getUsers: () => request("/api/users"),
+  getComposeRecipients: () => request("/api/compose-recipients"),
   getMessages: (params = {}) => request(`/api/messages${buildQuery(params)}`),
   getInboxThreads: (params = {}) => request(`/api/inbox/threads${buildQuery(params)}`),
   exportMessages: (params = {}) => request(`/api/export/messages${buildQuery(params)}`),
@@ -80,11 +100,21 @@ export const api = {
   savePreset: (name, filters) =>
     request("/api/presets", { method: "POST", body: JSON.stringify({ name, filters }) }),
   deletePreset: (id) => request(`/api/presets/${id}`, { method: "DELETE" }),
-  summarizeThread: (chatId, messageIds) =>
+  summarizeThread: (chatId, messageIds, options = {}) =>
     request("/api/ai/summarize-thread", {
       method: "POST",
-      body: JSON.stringify({ chat_id: chatId, message_ids: messageIds }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_ids: messageIds,
+        force: Boolean(options.force),
+      }),
     }),
+  getThreadSummary: (chatId, messageIds = []) =>
+    request(
+      `/api/ai/thread-summary/${chatId}${buildQuery({
+        message_ids: messageIds.length ? messageIds.join(",") : undefined,
+      })}`
+    ),
   summarize: (payload) =>
     request("/api/ai/summarize", { method: "POST", body: JSON.stringify(payload) }),
   suggestActions: (payload) =>
@@ -106,6 +136,7 @@ export const api = {
       body: JSON.stringify({ chat_id: chatId, text }),
     }),
   getBotStatus: () => request("/api/bot/status"),
+  getSetupStatus: () => request("/api/setup-status"),
   getUserAccountStatus: () => request("/api/user-account/status"),
   sendUserMessage: (chatId, text) =>
     request("/api/user-account/send", {

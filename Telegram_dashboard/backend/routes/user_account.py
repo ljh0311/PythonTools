@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from backend.routes.deps import verify_operator
 from backend.services.mtproto_service import mtproto_service
+from backend.services.send_errors import raise_send_http_error
 
 
 router = APIRouter(prefix="/api/user-account", tags=["user-account"])
@@ -62,16 +63,23 @@ async def send_as_user(body: UserSendRequest) -> dict[str, Any]:
     from backend.models.store import store
     from backend.services.ws_manager import ws_manager
 
+    raw_target = str(body.chat_id).strip()
+    chat_id_int = store.resolve_compose_target(raw_target)
+    if chat_id_int is None and raw_target.lstrip("-").isdigit():
+        chat_id_int = int(raw_target)
+    if chat_id_int is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Unknown recipient. Pick @username from the list or enter a numeric chat ID.",
+        )
+
     try:
-        result = await mtproto_service.send_message(body.chat_id, body.text)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        result = await mtproto_service.send_message(chat_id_int, body.text)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise_send_http_error(exc)
 
     status = await mtproto_service.get_status()
     user = status.get("user") or {}
-    chat_id_int = int(body.chat_id)
     store.add_message(
         user.get("id", 0),
         user.get("username"),

@@ -11,6 +11,9 @@ from backend.models.store import store
 from backend.routes.deps import verify_operator
 from backend.services.ai_service import ai_service
 from backend.services.auth_service import validate_token
+from backend.services.ai_rate_limiter import RateLimitExceeded, ai_rate_limiter
+from backend.services.mtproto_service import mtproto_service
+from backend.services.send_errors import raise_send_http_error
 from backend.services.telegram_service import telegram_service
 from backend.services.ws_manager import ws_manager
 
@@ -43,6 +46,7 @@ class FeedbackRequest(BaseModel):
 class SummarizeThreadRequest(BaseModel):
     chat_id: int
     message_ids: list[int] | None = None
+    force: bool = False
 
 
 class FilteredAiRequest(BaseModel):
@@ -68,6 +72,7 @@ class TopicModeRequest(BaseModel):
 class ChatSettingsRequest(BaseModel):
     enabled: bool | None = None
     relationship: str | None = Field(default=None, max_length=2000)
+    ai_context: str | None = Field(default=None, max_length=4000)
 
 
 class MessageTopicsRequest(BaseModel):
@@ -132,6 +137,12 @@ async def metrics() -> dict[str, Any]:
 @router.get("/users", dependencies=[Depends(verify_operator)])
 async def users() -> list[dict[str, Any]]:
     return store.list_users()
+
+
+@router.get("/compose-recipients", dependencies=[Depends(verify_operator)])
+async def compose_recipients() -> list[dict[str, Any]]:
+    store.sync_chat_settings_from_messages()
+    return store.list_compose_recipients()
 
 
 def _parse_message_filters(
@@ -231,15 +242,52 @@ async def inbox_threads(
     )
 
 
+def _thread_messages(body: SummarizeThreadRequest) -> list[dict[str, Any]]:
+    if body.message_ids:
+        return store.get_messages_by_ids(body.message_ids)
+    return store.get_messages_by_chat_id(body.chat_id)
+
+
+def _raise_ai_http_error(exc: Exception) -> None:
+    if isinstance(exc, RateLimitExceeded):
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+    raise exc
+
+
+@router.get("/ai/thread-summary/{chat_id}", dependencies=[Depends(verify_operator)])
+async def get_thread_summary(
+    chat_id: int,
+    message_ids: str = "",
+) -> dict[str, Any]:
+    ids = [int(x) for x in message_ids.split(",") if x.strip()] if message_ids.strip() else []
+    if not ids:
+        messages = store.get_messages_by_chat_id(chat_id)
+        ids = [int(m["id"]) for m in messages if m.get("id") is not None]
+    cached = ai_service.get_cached_thread_summary(chat_id, ids)
+    if not cached:
+        return {"chat_id": chat_id, "cached": False, "summary": None}
+    return {"chat_id": chat_id, **cached}
+
+
 @router.post("/ai/summarize-thread", dependencies=[Depends(verify_operator)])
 async def summarize_thread(body: SummarizeThreadRequest) -> dict[str, Any]:
-    if body.message_ids:
-        messages = store.get_messages_by_ids(body.message_ids)
-    else:
-        messages = store.get_messages_by_chat_id(body.chat_id)
+    messages = _thread_messages(body)
     if not messages:
         raise HTTPException(status_code=404, detail="No messages for this chat")
-    result = await ai_service.summarize_thread(messages)
+    try:
+        result = await ai_service.summarize_thread(
+            messages,
+            chat_id=body.chat_id,
+            force=body.force,
+            relationship=store.get_relationship_map([body.chat_id]).get(body.chat_id, ""),
+            ai_context=store.get_ai_context_map([body.chat_id]).get(body.chat_id, ""),
+        )
+    except RateLimitExceeded as exc:
+        _raise_ai_http_error(exc)
     return {"chat_id": body.chat_id, **result}
 
 
@@ -248,9 +296,17 @@ async def summarize_filtered(body: FilteredAiRequest) -> dict[str, Any]:
     if body.summary_type not in ("brief", "detailed", "bullets", "unanswered"):
         raise HTTPException(status_code=400, detail="Invalid summary_type")
     messages, filters = _fetch_filtered_messages(body)
-    return await ai_service.summarize_messages(
-        messages, summary_type=body.summary_type, filters={**filters, "summary_type": body.summary_type}
-    )
+    chat_ids = list({m["chat_id"] for m in messages if m.get("chat_id") is not None})
+    try:
+        return await ai_service.summarize_messages(
+            messages,
+            summary_type=body.summary_type,
+            filters={**filters, "summary_type": body.summary_type},
+            relationship_map=store.get_relationship_map(chat_ids),
+            ai_context_map=store.get_ai_context_map(chat_ids),
+        )
+    except RateLimitExceeded as exc:
+        _raise_ai_http_error(exc)
 
 
 @router.post("/ai/suggest-actions", dependencies=[Depends(verify_operator)])
@@ -258,7 +314,13 @@ async def suggest_actions(body: FilteredAiRequest) -> dict[str, Any]:
     messages, filters = _fetch_filtered_messages(body)
     chat_ids = list({m["chat_id"] for m in messages if m.get("chat_id") is not None})
     relationship_map = store.get_relationship_map(chat_ids)
-    result = await ai_service.suggest_actions(messages, relationship_map)
+    ai_context_map = store.get_ai_context_map(chat_ids)
+    try:
+        result = await ai_service.suggest_actions(
+            messages, relationship_map, ai_context_map=ai_context_map
+        )
+    except RateLimitExceeded as exc:
+        _raise_ai_http_error(exc)
     fhash = store.filter_hash(filters)
     saved = store.save_suggestions(fhash, result.get("suggestions", []))
     return {**result, "filter_hash": fhash, "suggestions": saved}
@@ -312,7 +374,7 @@ async def get_chat_settings(chat_id: int) -> dict[str, Any]:
 
 @router.put("/settings/chat-replies/{chat_id}", dependencies=[Depends(verify_operator)])
 async def update_chat_settings(chat_id: int, body: ChatSettingsRequest) -> dict[str, Any]:
-    if body.enabled is None and body.relationship is None:
+    if body.enabled is None and body.relationship is None and body.ai_context is None:
         raise HTTPException(status_code=400, detail="No settings to update")
     try:
         saved = store.update_chat_settings(
@@ -320,6 +382,7 @@ async def update_chat_settings(chat_id: int, body: ChatSettingsRequest) -> dict[
             enabled=body.enabled,
             relationship=body.relationship,
             relationship_source="manual" if body.relationship is not None else None,
+            ai_context=body.ai_context,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -446,8 +509,20 @@ async def send_message(body: SendMessageRequest) -> dict[str, Any]:
     if not telegram_service.configured:
         raise HTTPException(status_code=400, detail="Telegram bot token not configured")
 
-    result = await telegram_service.send_message(body.chat_id, body.text)
-    chat_id_int = int(body.chat_id)
+    raw_target = str(body.chat_id).strip()
+    chat_id_int = store.resolve_compose_target(raw_target)
+    if chat_id_int is None and raw_target.lstrip("-").isdigit():
+        chat_id_int = int(raw_target)
+    if chat_id_int is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Unknown recipient. Pick @username from the list or enter a numeric chat ID.",
+        )
+
+    try:
+        result = await telegram_service.send_message(chat_id_int, body.text)
+    except Exception as exc:
+        raise_send_http_error(exc)
     store.add_message(
         0,
         "operator",
@@ -477,6 +552,60 @@ async def bot_status() -> dict[str, Any]:
         return {"configured": True, "bot": me.get("result")}
     except Exception as exc:
         return {"configured": True, "bot": None, "error": str(exc)}
+
+
+@router.get("/setup-status", dependencies=[Depends(verify_operator)])
+async def setup_status() -> dict[str, Any]:
+    warnings: list[str] = []
+
+    bot: dict[str, Any] = {
+        "configured": telegram_service.configured,
+        "verified": False,
+        "username": None,
+    }
+    if not bot["configured"]:
+        warnings.append("Telegram bot token not configured (TELEGRAM_BOT_TOKEN)")
+    else:
+        try:
+            me = await telegram_service.get_me()
+            bot_user = me.get("result")
+            if bot_user:
+                bot["verified"] = True
+                bot["username"] = bot_user.get("username")
+            else:
+                warnings.append("Bot token set but verification returned no bot profile")
+        except Exception as exc:
+            warnings.append(f"Bot token invalid or unreachable: {exc}")
+
+    ua_raw = await mtproto_service.get_status()
+    user_account = {
+        "configured": bool(ua_raw.get("configured")),
+        "authorized": bool(ua_raw.get("authorized")),
+        "listening": bool(ua_raw.get("listening")),
+    }
+    if not user_account["configured"]:
+        warnings.append(
+            "User account not configured (TELEGRAM_API_ID + TELEGRAM_API_HASH)"
+        )
+    elif not user_account["authorized"]:
+        warnings.append("User account not logged in (run scripts/mtproto_login.py)")
+    elif not user_account["listening"]:
+        warnings.append(
+            "User account logged in but not listening (set MTProto_ENABLED=true and restart)"
+        )
+
+    ai_raw = await ai_service.provider_status()
+    ai = {
+        "gemini": bool(ai_raw.get("gemini", {}).get("configured")),
+        "ollama": bool(
+            ai_raw.get("ollama", {}).get("configured")
+            and ai_raw.get("ollama", {}).get("available")
+        ),
+    }
+    if not ai["gemini"] and not ai["ollama"]:
+        warnings.append("No AI provider available (configure GEMINI_API_KEY or Ollama)")
+
+    return {"bot": bot, "user_account": user_account, "ai": ai, "warnings": warnings}
 
 
 @router.get("/export/messages", dependencies=[Depends(verify_operator)])

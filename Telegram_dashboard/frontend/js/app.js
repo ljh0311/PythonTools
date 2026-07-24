@@ -1,13 +1,18 @@
 import { api, connectWebSocket, ensureAuthenticated } from "./api.js";
 import { renderCommandChart } from "./chart.js";
 import {
+  renderTopbarStatus,
+  setConnectionStatus,
+  updateSendFormAvailability,
+} from "./connection-status.js";
+import {
   loadComposeRecipients,
   readComposeTarget,
   resolveChatTarget,
   setComposeTarget,
 } from "./compose.js";
 import { bindInsights } from "./insights.js";
-import { bindInbox, loadInbox, renderUserFilter, setOperatorUser } from "./inbox.js";
+import { bindInbox, loadInbox, refreshInboxEmptyStateIfNeeded, renderUserFilter, setOperatorUser } from "./inbox.js";
 import { initTheme } from "./theme.js";
 import { initNavigation } from "./navigation.js";
 import { bindDevNotify } from "./dev-notify.js";
@@ -152,9 +157,28 @@ async function submitSend(chatTarget, text, clearFields = []) {
   await refreshDashboard();
 }
 
+function renderSetupWarnings(warnings = []) {
+  const banner = document.getElementById("setup-warnings");
+  if (!banner) return;
+  const list = Array.isArray(warnings) ? warnings.filter(Boolean) : [];
+  if (!list.length) {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+  banner.hidden = false;
+  banner.innerHTML = `
+    <strong>Setup warnings</strong>
+    <ul>${list.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
 async function refreshDashboard() {
-  const userAccountStatus = await api.getUserAccountStatus();
+  const [userAccountStatus, setupStatus] = await Promise.all([
+    api.getUserAccountStatus(),
+    api.getSetupStatus(),
+  ]);
   setOperatorUser(userAccountStatus.user);
+  renderSetupWarnings(setupStatus.warnings);
 
   const [metrics, users, , events, analytics, quickActions, botStatus] =
     await Promise.all([
@@ -175,26 +199,10 @@ async function refreshDashboard() {
   renderCommandChart(document.getElementById("command-chart"), analytics);
   renderQuickActions(quickActions);
 
-  const status = document.getElementById("bot-status");
-  const botLine =
-    botStatus.configured && botStatus.bot
-      ? `Bot v0.1: @${botStatus.bot.username}`
-      : botStatus.configured
-        ? "Bot v0.1: token set, not verified"
-        : "Bot v0.1: not configured";
-  const userLine = userAccountStatus.listening
-    ? `My account v0.2: @${userAccountStatus.user?.username || "connected"}`
-    : userAccountStatus.authorized
-      ? "My account v0.2: logged in, listening off"
-      : userAccountStatus.configured
-        ? "My account v0.2: not logged in (run scripts/mtproto_login.py)"
-        : "My account v0.2: set TELEGRAM_API_ID + TELEGRAM_API_HASH";
-  status.textContent = `${botLine} · ${userLine}`;
-
-  const userStatusEl = document.getElementById("user-account-status");
-  if (userStatusEl) {
-    userStatusEl.textContent = userLine;
-  }
+  setConnectionStatus(botStatus, userAccountStatus);
+  renderTopbarStatus();
+  updateSendFormAvailability();
+  refreshInboxEmptyStateIfNeeded();
 }
 
 function bindForms() {
