@@ -21,7 +21,12 @@ from brightness_policy import BatteryBrightnessPolicyConfig
 from camera_devices import enumerate_camera_names, get_camera_name
 from issue_diagnostics import build_fallback_summary, format_issue_log, sanitize_summary
 from power_management_system import PowerManagementSystem
-from battery_analytics import format_duration_minutes, relative_charge_percent
+from battery_analytics import (
+    format_duration_minutes,
+    format_learned_full_status,
+    format_progress_caption,
+    relative_charge_percent,
+)
 from battery_ui_components import BatteryMonitorPanel
 from desk_presence import PresenceState
 import cv2
@@ -327,6 +332,9 @@ class BrightnessGUI:
             charging=charging,
             full_percent=full_pct,
         )
+        self.battery_panel.set_gauge_caption(
+            format_progress_caption(percent, full_pct)
+        )
 
         time_to_full = (
             format_duration_minutes(insights.time_to_full_minutes)
@@ -409,17 +417,14 @@ class BrightnessGUI:
         if snapshot is None:
             status = "Battery monitoring unavailable on this device."
         elif charging:
-            if full_pct != 100:
-                status = f"Charging • {rel_percent}% of learned full ({full_pct}%)"
-            else:
-                status = f"Charging • {rel_percent}%"
-        elif full_pct != 100:
-            status = (
-                f"On battery • {rel_percent}% of learned full "
-                f"(OS {percent}%) • {snapshot.time_left_text()} remaining"
-            )
+            charge_pct = format_learned_full_status(rel_percent, percent, full_pct)
+            status = f"Charging • {charge_pct}"
         else:
-            status = f"On battery • {snapshot.time_left_text()} remaining (OS estimate)"
+            battery_pct = format_learned_full_status(rel_percent, percent, full_pct)
+            status = (
+                f"On battery • {battery_pct} • "
+                f"{snapshot.time_left_text()} remaining"
+            )
         self.battery_panel.status_label.config(text=status)
 
         rows = self._build_cycle_history_rows()

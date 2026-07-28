@@ -10,7 +10,12 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from battery_analytics import BatteryAnalytics
+from battery_analytics import (
+    BatteryAnalytics,
+    format_learned_full_status,
+    format_progress_caption,
+    relative_charge_percent,
+)
 from battery_provider import BatterySnapshot
 
 
@@ -95,6 +100,24 @@ def main() -> int:
     )
     if analytics.estimate_time_to_full(snap_at_cap, data) != 0.0:
         failures.append("expected time_to_full=0 at effective full")
+
+    if relative_charge_percent(72, 72) != 100:
+        failures.append("expected 72/72 OS cap to show as 100% relative")
+    if relative_charge_percent(36, 72) != 50:
+        failures.append("expected 36/72 to show as 50% relative")
+    if relative_charge_percent(80, 100) != 80:
+        failures.append("expected 80/100 to stay 80% relative")
+
+    if format_progress_caption(50, 72) != "Progress to learned full (72%)":
+        failures.append("unexpected progress caption below full")
+    if format_progress_caption(72, 72) != "At learned full · OS 72%":
+        failures.append("unexpected at-full caption")
+    if format_progress_caption(80, 100) != "":
+        failures.append("expected empty caption when full is 100%")
+
+    status_at_cap = format_learned_full_status(100, 72, 72)
+    if status_at_cap != "100% of learned full (OS 72%)":
+        failures.append(f"unexpected status at cap: {status_at_cap!r}")
 
     if failures:
         for msg in failures:
