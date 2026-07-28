@@ -8,11 +8,15 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional
 
+from battery_analytics import relative_charge_percent
+
 
 class BatteryGauge(tk.Canvas):
     """Battery outline with fill level and optional charging indicator."""
 
-    def __init__(self, master, width: int = 220, height: int = 72, **kwargs):
+    FOOTER_H = 18  # room for "Learned full: N%" under the body
+
+    def __init__(self, master, width: int = 220, height: int = 88, **kwargs):
         super().__init__(
             master,
             width=width,
@@ -40,7 +44,7 @@ class BatteryGauge(tk.Canvas):
         self._draw()
 
     def _fill_color(self) -> str:
-        effective = (self._percent / self._full_percent) * 100 if self._full_percent else self._percent
+        effective = relative_charge_percent(self._percent, self._full_percent)
         if self._charging:
             return "#2E9B57"
         if effective <= 15:
@@ -52,8 +56,10 @@ class BatteryGauge(tk.Canvas):
     def _draw(self) -> None:
         self.delete("all")
         pad = 8
+        show_learned = self._full_percent != 100
+        footer = self.FOOTER_H if show_learned else 0
         body_w = self._width - pad * 2 - 12
-        body_h = self._height - pad * 2
+        body_h = max(28, self._height - pad * 2 - footer)
         x0, y0 = pad, pad
         x1, y1 = x0 + body_w, y0 + body_h
 
@@ -68,7 +74,8 @@ class BatteryGauge(tk.Canvas):
 
         inner_pad = 4
         fill_max = body_w - inner_pad * 2
-        fill_ratio = min(1.0, self._percent / max(1, self._full_percent))
+        rel = relative_charge_percent(self._percent, self._full_percent)
+        fill_ratio = min(1.0, rel / 100.0)
         fill_w = max(2, fill_max * fill_ratio)
         self.create_rectangle(
             x0 + inner_pad,
@@ -79,7 +86,7 @@ class BatteryGauge(tk.Canvas):
             fill=self._fill_color(),
         )
 
-        label = f"{self._percent}%"
+        label = f"{rel}%"
         if self._charging:
             label += " ⚡"
         self.create_text(
@@ -90,12 +97,12 @@ class BatteryGauge(tk.Canvas):
             font=("Segoe UI", 12, "bold"),
         )
 
-        if self._full_percent != 100:
+        if show_learned:
             self.create_text(
                 x0,
-                y1 + 10,
+                min(y1 + 12, self._height - 6),
                 anchor="w",
-                text=f"Learned full: {self._full_percent}%",
+                text=f"OS {self._percent}% · full at {self._full_percent}%",
                 fill="#666666",
                 font=("Segoe UI", 8),
             )

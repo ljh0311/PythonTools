@@ -20,6 +20,15 @@ def _parse_iso(value: str) -> Optional[datetime]:
         return None
 
 
+def relative_charge_percent(os_percent: int, full_percent: int) -> int:
+    """Charge as percent of effective/learned full (100 when OS hits the cap)."""
+    os_pct = max(0, min(100, int(os_percent)))
+    full_pct = max(65, min(100, int(full_percent))) if full_percent else 100
+    if full_pct <= 0:
+        return os_pct
+    return min(100, round(100 * os_pct / full_pct))
+
+
 def format_duration_minutes(minutes: float) -> str:
     """Format minutes as human-readable duration."""
     if minutes <= 0 or minutes != minutes:  # NaN guard

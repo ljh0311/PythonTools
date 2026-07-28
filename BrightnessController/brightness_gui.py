@@ -21,7 +21,7 @@ from brightness_policy import BatteryBrightnessPolicyConfig
 from camera_devices import enumerate_camera_names, get_camera_name
 from issue_diagnostics import build_fallback_summary, format_issue_log, sanitize_summary
 from power_management_system import PowerManagementSystem
-from battery_analytics import format_duration_minutes
+from battery_analytics import format_duration_minutes, relative_charge_percent
 from battery_ui_components import BatteryMonitorPanel
 from desk_presence import PresenceState
 import cv2
@@ -320,16 +320,18 @@ class BrightnessGUI:
 
         percent = snapshot.percentage if snapshot else 0
         charging = snapshot.power_plugged if snapshot else False
+        full_pct = insights.effective_full_percent
+        rel_percent = relative_charge_percent(percent, full_pct)
         self.battery_panel.gauge.update_state(
             percent,
             charging=charging,
-            full_percent=insights.effective_full_percent,
+            full_percent=full_pct,
         )
 
         time_to_full = (
             format_duration_minutes(insights.time_to_full_minutes)
             if insights.time_to_full_minutes is not None
-            else ("Full" if charging and percent >= insights.effective_full_percent else "—")
+            else ("Full" if charging and rel_percent >= 100 else "—")
         )
         self.battery_panel.time_to_full_card.set_value(
             time_to_full,
@@ -353,9 +355,17 @@ class BrightnessGUI:
         if session_kind:
             start_pct = live.get("session_start_percent")
             kind_label = "Charging" if session_kind == "charge" else "On battery"
+            if full_pct != 100 and start_pct is not None:
+                start_rel = relative_charge_percent(int(start_pct), full_pct)
+                session_detail = (
+                    f"{kind_label} {start_rel}% → {rel_percent}% "
+                    f"(OS {start_pct}%→{percent}%)"
+                )
+            else:
+                session_detail = f"{kind_label} from {start_pct}% → {percent}%"
             self.battery_panel.session_card.set_value(
                 format_duration_minutes(session_minutes),
-                f"{kind_label} from {start_pct}% → {percent}%",
+                session_detail,
             )
         else:
             self.battery_panel.session_card.set_value("—", "No active session")
@@ -399,7 +409,15 @@ class BrightnessGUI:
         if snapshot is None:
             status = "Battery monitoring unavailable on this device."
         elif charging:
-            status = f"Charging • {percent}% of {insights.effective_full_percent}% effective full"
+            if full_pct != 100:
+                status = f"Charging • {rel_percent}% of learned full ({full_pct}%)"
+            else:
+                status = f"Charging • {rel_percent}%"
+        elif full_pct != 100:
+            status = (
+                f"On battery • {rel_percent}% of learned full "
+                f"(OS {percent}%) • {snapshot.time_left_text()} remaining"
+            )
         else:
             status = f"On battery • {snapshot.time_left_text()} remaining (OS estimate)"
         self.battery_panel.status_label.config(text=status)
