@@ -19,7 +19,8 @@ import functools
 import threading
 
 import report_ai_insights
-from task_priority import TaskPriorityTab
+import task_store
+import task_tab
 
 # Constants
 DATE_FORMAT = "%d-%m-%Y"
@@ -463,7 +464,7 @@ class TimeLoggerApp:
         self.create_view_tab()
         self.create_payroll_tab()
         self.create_report_tab()
-        self.task_priority_tab = TaskPriorityTab(self)
+        self.tasks_tab = task_tab.attach_tasks_tab(self.notebook, self.conn, self.root)
         
         # Initialize date range with available dates
         self.update_date_range()
@@ -684,6 +685,7 @@ class TimeLoggerApp:
         ''')
 
         self.conn.commit()
+        task_store.ensure_tasks_table(self.conn)
         DateUtils.migrate_stored_dates_to_db_format(self.cursor, self.conn)
         
     def ensure_csv_exists(self):
