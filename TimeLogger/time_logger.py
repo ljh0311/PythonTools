@@ -460,6 +460,7 @@ class TimeLoggerApp:
         # Create tabs
         self.create_log_tab()
         self.create_view_tab()
+        self.create_tasks_tab()
         self.create_payroll_tab()
         self.create_report_tab()
         
@@ -666,7 +667,21 @@ class TimeLoggerApp:
                 is_default INTEGER DEFAULT 0
             )
         ''')
-        
+
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                notes TEXT DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'todo',
+                due_date TEXT DEFAULT '',
+                created_date TEXT NOT NULL,
+                completed_date TEXT DEFAULT '',
+                urgency INTEGER NOT NULL DEFAULT 3,
+                effort INTEGER NOT NULL DEFAULT 3
+            )
+        ''')
+
         self.conn.commit()
         DateUtils.migrate_stored_dates_to_db_format(self.cursor, self.conn)
         
@@ -712,7 +727,210 @@ class TimeLoggerApp:
         except Exception as e:
             print(f"Error adding record to CSV: {str(e)}")
             return False
-        
+
+    def create_tasks_tab(self):
+        """Create an inline task planner, priority list, and completed-work summaries."""
+        frame = ttk.Frame(self.notebook)
+        self.notebook.add(frame, text="Tasks")
+        outer = ttk.Frame(frame)
+        outer.pack(fill="both", expand=True, padx=15, pady=12)
+        self.task_id = None
+        self.task_title = tk.StringVar()
+        self.task_status = tk.StringVar(value="todo")
+        self.task_due = tk.StringVar()
+        self.task_urgency = tk.IntVar(value=3)
+        self.task_effort = tk.IntVar(value=3)
+
+        form = ttk.LabelFrame(outer, text="Task details")
+        form.pack(fill="x")
+        ttk.Label(form, text="Title *").grid(row=0, column=0, padx=5, pady=5)
+        ttk.Entry(form, textvariable=self.task_title, width=42).grid(row=0, column=1, columnspan=3, sticky="ew", padx=5, pady=5)
+        ttk.Label(form, text="Status").grid(row=0, column=4, padx=5)
+        ttk.Combobox(form, textvariable=self.task_status, values=("todo", "doing", "done"), state="readonly", width=10).grid(row=0, column=5, padx=5)
+        ttk.Label(form, text="Due date").grid(row=1, column=0, padx=5, pady=5)
+        ttk.Entry(form, textvariable=self.task_due, width=14).grid(row=1, column=1, padx=(5, 0), pady=5, sticky="w")
+        add_date_picker_button(form, self.task_due, self.root, title="Select task due date").grid(row=1, column=2, padx=3)
+        ttk.Label(form, text="Urgency").grid(row=1, column=3, padx=5)
+        tk.Spinbox(form, from_=1, to=5, textvariable=self.task_urgency, width=4).grid(row=1, column=4, padx=5)
+        ttk.Label(form, text="Effort").grid(row=1, column=5, padx=5)
+        tk.Spinbox(form, from_=1, to=5, textvariable=self.task_effort, width=4).grid(row=1, column=6, padx=5)
+        ttk.Label(form, text="Notes").grid(row=2, column=0, padx=5, pady=5, sticky="nw")
+        self.task_notes = scrolledtext.ScrolledText(form, height=3, wrap=tk.WORD)
+        self.task_notes.grid(row=2, column=1, columnspan=6, sticky="ew", padx=5, pady=5)
+        form.columnconfigure(1, weight=1)
+
+        controls = ttk.Frame(outer)
+        controls.pack(fill="x", pady=8)
+        ttk.Button(controls, text="Save task", command=self.save_task, style="Accent.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(controls, text="Complete selected", command=self.complete_task, style="Success.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(controls, text="New / clear", command=self.clear_task_form).pack(side=tk.LEFT, padx=3)
+        ttk.Button(controls, text="Delete selected", command=self.delete_task).pack(side=tk.LEFT, padx=3)
+        ttk.Button(controls, text="Plan with AI", command=self.plan_task).pack(side=tk.RIGHT, padx=3)
+
+        columns = ("title", "status", "due", "urgency", "effort", "score", "created", "completed")
+        self.task_tree = ttk.Treeview(outer, columns=columns, show="headings", height=11)
+        for col, label, width in (
+            ("title", "Title", 260), ("status", "Status", 75), ("due", "Due", 95),
+            ("urgency", "Urgency", 70), ("effort", "Effort", 65), ("score", "Score", 60),
+            ("created", "Created", 95), ("completed", "Completed", 95),
+        ):
+            self.task_tree.heading(col, text=label)
+            self.task_tree.column(col, width=width, anchor="w" if col == "title" else "center")
+        self.task_tree.pack(fill="both", expand=True)
+        self.task_tree.bind("<<TreeviewSelect>>", self.select_task)
+        self.task_summary = tk.StringVar()
+        ttk.Label(outer, textvariable=self.task_summary, justify=tk.LEFT, wraplength=1100).pack(anchor="w", pady=(8, 2))
+        self.task_plan_text = scrolledtext.ScrolledText(outer, height=6, wrap=tk.WORD, state="disabled")
+        self.task_plan_text.pack(fill="x", pady=(2, 0))
+        self.refresh_tasks()
+
+    def _task_form_data(self):
+        title = self.task_title.get().strip()
+        due_raw = self.task_due.get().strip()
+        due = DateUtils.parse_date_string(due_raw) if due_raw else None
+        urgency, effort = self.task_urgency.get(), self.task_effort.get()
+        if not title:
+            raise ValueError("A task title is required.")
+        if due_raw and not due:
+            raise ValueError("Due date must use dd-mm-yyyy.")
+        if not (1 <= urgency <= 5 and 1 <= effort <= 5):
+            raise ValueError("Urgency and effort must each be between 1 and 5.")
+        return {
+            "title": title, "notes": self.task_notes.get("1.0", tk.END).strip(),
+            "status": self.task_status.get(), "due_date": due.strftime(DB_DATE_FORMAT) if due else "",
+            "urgency": urgency, "effort": effort,
+        }
+
+    @handle_errors()
+    def save_task(self):
+        task = self._task_form_data()
+        today = DateUtils.get_today().strftime(DB_DATE_FORMAT)
+        if self.task_id is None:
+            self.cursor.execute(
+                """INSERT INTO tasks (title, notes, status, due_date, created_date, completed_date, urgency, effort)
+                VALUES (:title, :notes, :status, :due_date, :created_date, :completed_date, :urgency, :effort)""",
+                {**task, "created_date": today, "completed_date": today if task["status"] == "done" else ""},
+            )
+        else:
+            completed = today if task["status"] == "done" else ""
+            self.cursor.execute(
+                """UPDATE tasks SET title=:title, notes=:notes, status=:status, due_date=:due_date,
+                completed_date=:completed_date, urgency=:urgency, effort=:effort WHERE id=:id""",
+                {**task, "completed_date": completed, "id": self.task_id},
+            )
+        self.conn.commit()
+        self.clear_task_form()
+        self.refresh_tasks()
+
+    def clear_task_form(self):
+        self.task_id = None
+        self.task_title.set("")
+        self.task_status.set("todo")
+        self.task_due.set("")
+        self.task_urgency.set(3)
+        self.task_effort.set(3)
+        self.task_notes.delete("1.0", tk.END)
+        self.task_tree.selection_remove(self.task_tree.selection())
+
+    def select_task(self, _event=None):
+        selected = self.task_tree.selection()
+        if not selected:
+            return
+        self.task_id = int(selected[0])
+        self.cursor.execute("SELECT title, notes, status, due_date, urgency, effort FROM tasks WHERE id = ?", (self.task_id,))
+        row = self.cursor.fetchone()
+        if row:
+            self.task_title.set(row[0]); self.task_status.set(row[2])
+            self.task_due.set(DateUtils.format_date_for_display(row[3] or ""))
+            self.task_urgency.set(row[4]); self.task_effort.set(row[5])
+            self.task_notes.delete("1.0", tk.END); self.task_notes.insert("1.0", row[1] or "")
+
+    def complete_task(self):
+        if self.task_id is None:
+            messagebox.showinfo("Tasks", "Select a task to complete.")
+            return
+        self.cursor.execute("UPDATE tasks SET status='done', completed_date=? WHERE id=?", (DateUtils.get_today().strftime(DB_DATE_FORMAT), self.task_id))
+        self.conn.commit()
+        self.refresh_tasks()
+
+    def delete_task(self):
+        if self.task_id is None:
+            messagebox.showinfo("Tasks", "Select a task to delete.")
+            return
+        if messagebox.askyesno("Delete task", "Delete the selected task?"):
+            self.cursor.execute("DELETE FROM tasks WHERE id=?", (self.task_id,))
+            self.conn.commit()
+            self.clear_task_form()
+            self.refresh_tasks()
+
+    def refresh_tasks(self):
+        for item in self.task_tree.get_children():
+            self.task_tree.delete(item)
+        self.cursor.execute(
+            """SELECT id, title, status, due_date, urgency, effort, created_date, completed_date FROM tasks
+            ORDER BY urgency * effort DESC, urgency DESC,
+            CASE status WHEN 'doing' THEN 0 WHEN 'todo' THEN 1 ELSE 2 END"""
+        )
+        for task_id, title, status, due, urgency, effort, created, completed in self.cursor.fetchall():
+            self.task_tree.insert("", tk.END, iid=str(task_id), values=(title, status, due or "—", urgency, effort, urgency * effort, created, completed or "—"))
+        self.task_summary.set(self.build_task_summaries())
+
+    def build_task_summaries(self):
+        today = DateUtils.get_today()
+        periods = (("Day", today, today), ("Week", today - timedelta(days=today.weekday()), today), ("Month", today.replace(day=1), today))
+        self.cursor.execute("SELECT title, urgency, effort, completed_date FROM tasks WHERE status='done' AND completed_date != ''")
+        completed = self.cursor.fetchall()
+        summaries = []
+        for label, start, end in periods:
+            rows = [r for r in completed if (done := DateUtils.parse_date_string(r[3])) and start <= done <= end]
+            heavy, light = sum(r[2] >= 4 for r in rows), sum(r[2] <= 2 for r in rows)
+            top = max(rows, key=lambda r: (r[1], r[2]), default=None)
+            text = f"{len(rows)} completed; {heavy} heavy / {light} light."
+            if top:
+                text += f" Top urgency: {top[0]} ({top[1]}/5)."
+            summaries.append(f"{label}: {text}")
+        return "\n".join(summaries)
+
+    def plan_task(self):
+        try:
+            task = self._task_form_data()
+        except ValueError as error:
+            messagebox.showwarning("Task planning", str(error))
+            return
+        if getattr(self, "_task_planning", False):
+            return
+        self._task_planning = True
+        self._set_task_plan("Generating task plan…")
+        def worker():
+            fallback = (
+                f"## Plan: {task['title']}\n- Priority score: **{task['urgency'] * task['effort']}** "
+                f"(urgency {task['urgency']}/5 × effort {task['effort']}/5).\n"
+                f"- Due: **{task['due_date'] or 'no due date'}**. Start with one visible outcome.\n"
+                f"- Break it into {'25–45 minute subtasks' if task['effort'] >= 4 else 'one focused 25–45 minute block'}.\n"
+                "- Mark it `doing` when started and `done` after recording the outcome.\n\n"
+                "— Source: built-in task planning rules —"
+            )
+            try:
+                url = os.environ.get("TIMELOGGER_OLLAMA_URL", "http://localhost:11434/api/generate")
+                model = os.environ.get("TIMELOGGER_OLLAMA_MODEL", "llama3")
+                prompt = f"Create a concise Markdown plan for this task. Task: {task}"
+                response = report_ai_insights._ollama_generate(prompt, url, model, timeout=45)
+                text = f"{response}\n\n— Source: Ollama `{model}` @ {url} —" if response else fallback
+            except Exception:
+                text = fallback
+            self.root.after(0, lambda: self._finish_task_plan(text))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _set_task_plan(self, text):
+        self.task_plan_text.configure(state="normal")
+        self.task_plan_text.delete("1.0", tk.END)
+        self.task_plan_text.insert(tk.END, text)
+        self.task_plan_text.configure(state="disabled")
+
+    def _finish_task_plan(self, text):
+        self._task_planning = False
+        self._set_task_plan(text)
+
     def create_log_tab(self):
         """Create the tab for logging new work entries"""
         log_frame = ttk.Frame(self.notebook)
@@ -782,7 +1000,7 @@ class TimeLoggerApp:
 
         time_hint = ttk.Label(
             time_section,
-            text="Tip: accepts 930 or 9:30. Use Up/Down for ±15 min.",
+            text="Tip: accepts 930 or 9:30. Use Up/Down for Â±15 min.",
             font=("Arial", 8)
         )
         time_hint.grid(row=0, column=2, rowspan=2, padx=(10, 5), pady=5, sticky="w")
@@ -888,7 +1106,7 @@ class TimeLoggerApp:
         from_entry = ttk.Entry(date_section, textvariable=self.from_date_var, width=12)
         from_entry.grid(row=0, column=2, padx=2, pady=5, sticky="w")
         add_date_picker_button(
-            date_section, self.from_date_var, self.root, title="Filter — From date"
+            date_section, self.from_date_var, self.root, title="Filter â€” From date"
         ).grid(row=0, column=3, padx=2, pady=5)
 
         ttk.Label(date_section, text="To:").grid(row=0, column=4, padx=(10, 2), pady=5, sticky="w")
@@ -896,7 +1114,7 @@ class TimeLoggerApp:
         to_entry = ttk.Entry(date_section, textvariable=self.to_date_var, width=12)
         to_entry.grid(row=0, column=5, padx=2, pady=5, sticky="w")
         add_date_picker_button(
-            date_section, self.to_date_var, self.root, title="Filter — To date"
+            date_section, self.to_date_var, self.root, title="Filter â€” To date"
         ).grid(row=0, column=6, padx=2, pady=5)
         
         # Filter buttons
@@ -1054,7 +1272,7 @@ class TimeLoggerApp:
 
     def update_treeview_sort_headers(self):
         """Update treeview header text to reflect active sort state."""
-        arrow = "▼" if self.tree_sort_desc else "▲"
+        arrow = "â–¼" if self.tree_sort_desc else "â–²"
         label_map = {
             "id": "ID",
             "date": "Date",
@@ -1208,7 +1426,7 @@ class TimeLoggerApp:
         self.default_period_var = tk.BooleanVar()
         ttk.Checkbutton(
             add_frame,
-            text="Set as default (used by “Current Payroll Period” in Reports)",
+            text="Set as default (used by â€œCurrent Payroll Periodâ€ in Reports)",
             variable=self.default_period_var,
         ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(10, 4))
 
@@ -1240,7 +1458,7 @@ class TimeLoggerApp:
             self.period_type_var.set("Yearly")
             self.apply_period_type()
 
-        ttk.Button(pattern_frame, text="Monthly (26th–25th)", command=set_monthly_pattern).grid(
+        ttk.Button(pattern_frame, text="Monthly (26thâ€“25th)", command=set_monthly_pattern).grid(
             row=0, column=0, padx=4, pady=4
         )
         ttk.Button(pattern_frame, text="Bi-weekly", command=set_biweekly_pattern).grid(
@@ -1343,12 +1561,12 @@ class TimeLoggerApp:
         ttk.Label(run_row, text="From:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(0, 2))
         self.report_from_var = tk.StringVar()
         ttk.Entry(run_row, textvariable=self.report_from_var, width=11).pack(side=tk.LEFT, padx=2)
-        ttk.Button(run_row, text="📅", width=3, command=lambda: self.show_calendar_popup("report_from")).pack(side=tk.LEFT, padx=1)
+        ttk.Button(run_row, text="ðŸ“…", width=3, command=lambda: self.show_calendar_popup("report_from")).pack(side=tk.LEFT, padx=1)
 
         ttk.Label(run_row, text="To:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(8, 2))
         self.report_to_var = tk.StringVar()
         ttk.Entry(run_row, textvariable=self.report_to_var, width=11).pack(side=tk.LEFT, padx=2)
-        ttk.Button(run_row, text="📅", width=3, command=lambda: self.show_calendar_popup("report_to")).pack(side=tk.LEFT, padx=1)
+        ttk.Button(run_row, text="ðŸ“…", width=3, command=lambda: self.show_calendar_popup("report_to")).pack(side=tk.LEFT, padx=1)
 
         self.comparison_frame = ttk.Frame(run_row)
         self.comparison_frame.pack(side=tk.LEFT, padx=(12, 6))
@@ -1448,12 +1666,12 @@ class TimeLoggerApp:
         self.stats_work_days_var = tk.StringVar()
         ttk.Label(current_stats, textvariable=self.stats_work_days_var).grid(row=2, column=3, padx=5, pady=5, sticky="w")
 
-        # Earnings projection — dedicated tab for space
+        # Earnings projection â€” dedicated tab for space
         projection_box = ttk.LabelFrame(proj_tab, text="Earnings projection (forward model)")
         projection_box.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
         projection_box.columnconfigure(0, weight=1)
 
-        self.stats_projection_headline_var = tk.StringVar(value="—")
+        self.stats_projection_headline_var = tk.StringVar(value="â€”")
         tk.Label(
             projection_box,
             textvariable=self.stats_projection_headline_var,
@@ -1462,7 +1680,7 @@ class TimeLoggerApp:
         ).grid(row=0, column=0, sticky="w", padx=8, pady=(6, 0))
         ttk.Label(
             projection_box,
-            text="30 days after report end · weekday work rate × recent $/day (see below)",
+            text="30 days after report end Â· weekday work rate Ã— recent $/day (see below)",
             foreground="gray",
         ).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 4))
 
@@ -1554,7 +1772,7 @@ class TimeLoggerApp:
         )
         self.report_ai_text.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
 
-        # Charts (right pane — no fixed min size so the paned window can grow charts)
+        # Charts (right pane â€” no fixed min size so the paned window can grow charts)
         self.chart_frame = ttk.LabelFrame(self.report_paned, text="Charts")
         self.report_paned.add(self.chart_frame, weight=5)
 
@@ -1832,7 +2050,7 @@ class TimeLoggerApp:
         date_row.columnconfigure(0, weight=1)
         ttk.Entry(date_row, textvariable=date_var).grid(row=0, column=0, sticky="ew")
         add_date_picker_button(
-            date_row, date_var, edit_window, title="Edit — work date"
+            date_row, date_var, edit_window, title="Edit â€” work date"
         ).grid(row=0, column=1, padx=(6, 0))
         
         # Start time
@@ -2377,15 +2595,15 @@ class TimeLoggerApp:
     def get_trend_indicator(self, trend_value):
         """Convert a trend value to a visual indicator"""
         if abs(trend_value) < 0.01:  # Nearly flat
-            return "→ Stable"
+            return "â†’ Stable"
         elif trend_value > 0.05:  # Strong positive
-            return "↑↑ Strong Increase"
+            return "â†‘â†‘ Strong Increase"
         elif trend_value > 0:  # Mild positive
-            return "↑ Increasing"
+            return "â†‘ Increasing"
         elif trend_value < -0.05:  # Strong negative
-            return "↓↓ Strong Decrease"
+            return "â†“â†“ Strong Decrease"
         else:  # Mild negative
-            return "↓ Decreasing"
+            return "â†“ Decreasing"
 
     def refresh_report_ai_insights(self):
         """Regenerate AI / heuristic coaching from the last successful report."""
@@ -2406,7 +2624,7 @@ class TimeLoggerApp:
         if hasattr(self, "report_ai_text"):
             self.report_ai_text.configure(state="normal")
             self.report_ai_text.delete("1.0", tk.END)
-            self.report_ai_text.insert(tk.END, "Generating insights…")
+            self.report_ai_text.insert(tk.END, "Generating insightsâ€¦")
             self.report_ai_text.configure(state="disabled")
 
         def worker():
@@ -2415,7 +2633,7 @@ class TimeLoggerApp:
                 text = f"{body}\n\n{foot}"
             except Exception as e:
                 text = report_ai_insights.heuristic_insights(ctx)
-                text = f"{text}\n\n— Source: built-in rules (error: {e}) —"
+                text = f"{text}\n\nâ€” Source: built-in rules (error: {e}) â€”"
             self.root.after(0, functools.partial(self._finish_report_ai, text))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -2538,17 +2756,17 @@ class TimeLoggerApp:
 
         summary_lines = [
             "What this is",
-            f"• Adds expected earnings for the {projection_days} days right after your report end "
+            f"â€¢ Adds expected earnings for the {projection_days} days right after your report end "
             f"({period_end.strftime(DATE_FORMAT)}), not a full calendar month.",
-            "• Each future day = P(you work that weekday in the report) × (avg earnings on that weekday in the recent window, or recent overall avg).",
+            "â€¢ Each future day = P(you work that weekday in the report) Ã— (avg earnings on that weekday in the recent window, or recent overall avg).",
             "",
             "Inputs",
-            f"• Report range: {period_start.strftime(DATE_FORMAT)} → {period_end.strftime(DATE_FORMAT)}",
-            f"• Recent window: {recent_start.strftime(DATE_FORMAT)} → {recent_end.strftime(DATE_FORMAT)} "
+            f"â€¢ Report range: {period_start.strftime(DATE_FORMAT)} â†’ {period_end.strftime(DATE_FORMAT)}",
+            f"â€¢ Recent window: {recent_start.strftime(DATE_FORMAT)} â†’ {recent_end.strftime(DATE_FORMAT)} "
             f"({recent_window_days} days ending on the latest day in this report)",
-            f"• Avg earnings per reported day (full range): ${overall_avg:.2f}",
-            f"• Avg earnings per day in recent window: ${baseline_recent_avg:.2f}",
-            f"• Horizon summed: {horizon_start.strftime(DATE_FORMAT)} → {horizon_end.strftime(DATE_FORMAT)}",
+            f"â€¢ Avg earnings per reported day (full range): ${overall_avg:.2f}",
+            f"â€¢ Avg earnings per day in recent window: ${baseline_recent_avg:.2f}",
+            f"â€¢ Horizon summed: {horizon_start.strftime(DATE_FORMAT)} â†’ {horizon_end.strftime(DATE_FORMAT)}",
             "",
             "By weekday",
         ]
@@ -2629,8 +2847,8 @@ class TimeLoggerApp:
                 earnings_change = ((curr_earnings - prev_earnings) / prev_earnings * 100) if prev_earnings else 0
                 
                 # Format with up/down indicators
-                hours_prefix = "▲" if hours_change >= 0 else "▼"
-                earnings_prefix = "▲" if earnings_change >= 0 else "▼"
+                hours_prefix = "â–²" if hours_change >= 0 else "â–¼"
+                earnings_prefix = "â–²" if earnings_change >= 0 else "â–¼"
                 
                 # Update comparison display
                 self.compare_hours_var.set(f"{hours_prefix} {abs(hours_change):.1f}%")
@@ -3619,10 +3837,10 @@ class TimeLoggerApp:
         """Open the shared date picker for a StringVar (reports regenerate on confirm)."""
         if date_var_name == "report_from":
             date_var = self.report_from_var
-            title = "Report range — From"
+            title = "Report range â€” From"
         elif date_var_name == "report_to":
             date_var = self.report_to_var
-            title = "Report range — To"
+            title = "Report range â€” To"
         elif hasattr(self, date_var_name):
             date_var = getattr(self, date_var_name)
             title = date_var_name.replace("_", " ").title()
@@ -3891,26 +4109,26 @@ class TimeLoggerApp:
                 # Add recommendation about working hours
                 avg_daily_hours = total_hours / work_days
                 if avg_daily_hours > 8:
-                    recommendations.append("⚠️ **Your average daily hours (%.2f) exceed 8 hours**. Consider taking more breaks to prevent burnout.\n" % avg_daily_hours)
+                    recommendations.append("âš ï¸ **Your average daily hours (%.2f) exceed 8 hours**. Consider taking more breaks to prevent burnout.\n" % avg_daily_hours)
                 elif avg_daily_hours < 4:
-                    recommendations.append("📊 **Your average daily hours (%.2f) are below 4**. Consider increasing work hours if you want to boost earnings.\n" % avg_daily_hours)
+                    recommendations.append("ðŸ“Š **Your average daily hours (%.2f) are below 4**. Consider increasing work hours if you want to boost earnings.\n" % avg_daily_hours)
                 else:
-                    recommendations.append("✅ **Your average daily hours (%.2f) are in a healthy range**.\n" % avg_daily_hours)
+                    recommendations.append("âœ… **Your average daily hours (%.2f) are in a healthy range**.\n" % avg_daily_hours)
                     
                 # Add recommendation about hourly rate
                 if max_rate > avg_rate * 1.5:
-                    recommendations.append("💡 **Your hourly rate varies significantly** (from $%.2f to $%.2f). Try to prioritize higher-paying work when possible.\n" % (min_rate, max_rate))
+                    recommendations.append("ðŸ’¡ **Your hourly rate varies significantly** (from $%.2f to $%.2f). Try to prioritize higher-paying work when possible.\n" % (min_rate, max_rate))
                 
                 # Add recommendation about work coverage
                 if coverage < 50:
-                    recommendations.append("📅 **Your work coverage is low (%.1f%%)**. Consider distributing work more evenly throughout the period.\n" % coverage)
+                    recommendations.append("ðŸ“… **Your work coverage is low (%.1f%%)**. Consider distributing work more evenly throughout the period.\n" % coverage)
                 
                 # Add recommendation based on day of week analysis if we have that data
                 if 'most_hours_day' in locals():
-                    recommendations.append("📈 **%s is your most productive day** in terms of hours worked.\n" % most_hours_day)
+                    recommendations.append("ðŸ“ˆ **%s is your most productive day** in terms of hours worked.\n" % most_hours_day)
                     
                 if 'most_earnings_day' in locals() and most_earnings_day != most_hours_day:
-                    recommendations.append("💰 **%s is your most profitable day**, which differs from your most productive day. Consider focusing more on high-value work on %s.\n" % (most_earnings_day, most_earnings_day))
+                    recommendations.append("ðŸ’° **%s is your most profitable day**, which differs from your most productive day. Consider focusing more on high-value work on %s.\n" % (most_earnings_day, most_earnings_day))
                     
                 # Add projected earnings from recent trend + expected workdays.
                 daily_earnings_map = {}
@@ -3930,14 +4148,14 @@ class TimeLoggerApp:
                 monthly_projection = proj_detail["total"]
                 recommendations.append("\n## Projections\n\n")
                 recommendations.append(
-                    "💼 **Forward earnings estimate**: About **$%.2f** over the **30 days after** your report end, "
+                    "ðŸ’¼ **Forward earnings estimate**: About **$%.2f** over the **30 days after** your report end, "
                     "using weekday work rates from this period and your **last 28 days** of daily earnings.\n"
                     % monthly_projection
                 )
                 clip = "\n".join(proj_detail["summary_lines"][:6])
                 recommendations.append("\n<details>\n%s\n</details>\n" % clip)
                 yearly_projection = monthly_projection * 12
-                recommendations.append("🗓️ **Yearly projection**: This translates to roughly $%.2f per year.\n" % yearly_projection)
+                recommendations.append("ðŸ—“ï¸ **Yearly projection**: This translates to roughly $%.2f per year.\n" % yearly_projection)
                 
                 # Add section about next steps
                 recommendations.append("\n## Next Steps\n\n")
