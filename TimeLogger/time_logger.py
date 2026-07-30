@@ -19,6 +19,7 @@ import functools
 import threading
 
 import report_ai_insights
+from task_priority import TaskPriorityTab
 
 # Constants
 DATE_FORMAT = "%d-%m-%Y"
@@ -460,9 +461,9 @@ class TimeLoggerApp:
         # Create tabs
         self.create_log_tab()
         self.create_view_tab()
-        self.create_tasks_tab()
         self.create_payroll_tab()
         self.create_report_tab()
+        self.task_priority_tab = TaskPriorityTab(self)
         
         # Initialize date range with available dates
         self.update_date_range()
@@ -727,209 +728,6 @@ class TimeLoggerApp:
         except Exception as e:
             print(f"Error adding record to CSV: {str(e)}")
             return False
-
-    def create_tasks_tab(self):
-        """Create an inline task planner, priority list, and completed-work summaries."""
-        frame = ttk.Frame(self.notebook)
-        self.notebook.add(frame, text="Tasks")
-        outer = ttk.Frame(frame)
-        outer.pack(fill="both", expand=True, padx=15, pady=12)
-        self.task_id = None
-        self.task_title = tk.StringVar()
-        self.task_status = tk.StringVar(value="todo")
-        self.task_due = tk.StringVar()
-        self.task_urgency = tk.IntVar(value=3)
-        self.task_effort = tk.IntVar(value=3)
-
-        form = ttk.LabelFrame(outer, text="Task details")
-        form.pack(fill="x")
-        ttk.Label(form, text="Title *").grid(row=0, column=0, padx=5, pady=5)
-        ttk.Entry(form, textvariable=self.task_title, width=42).grid(row=0, column=1, columnspan=3, sticky="ew", padx=5, pady=5)
-        ttk.Label(form, text="Status").grid(row=0, column=4, padx=5)
-        ttk.Combobox(form, textvariable=self.task_status, values=("todo", "doing", "done"), state="readonly", width=10).grid(row=0, column=5, padx=5)
-        ttk.Label(form, text="Due date").grid(row=1, column=0, padx=5, pady=5)
-        ttk.Entry(form, textvariable=self.task_due, width=14).grid(row=1, column=1, padx=(5, 0), pady=5, sticky="w")
-        add_date_picker_button(form, self.task_due, self.root, title="Select task due date").grid(row=1, column=2, padx=3)
-        ttk.Label(form, text="Urgency").grid(row=1, column=3, padx=5)
-        tk.Spinbox(form, from_=1, to=5, textvariable=self.task_urgency, width=4).grid(row=1, column=4, padx=5)
-        ttk.Label(form, text="Effort").grid(row=1, column=5, padx=5)
-        tk.Spinbox(form, from_=1, to=5, textvariable=self.task_effort, width=4).grid(row=1, column=6, padx=5)
-        ttk.Label(form, text="Notes").grid(row=2, column=0, padx=5, pady=5, sticky="nw")
-        self.task_notes = scrolledtext.ScrolledText(form, height=3, wrap=tk.WORD)
-        self.task_notes.grid(row=2, column=1, columnspan=6, sticky="ew", padx=5, pady=5)
-        form.columnconfigure(1, weight=1)
-
-        controls = ttk.Frame(outer)
-        controls.pack(fill="x", pady=8)
-        ttk.Button(controls, text="Save task", command=self.save_task, style="Accent.TButton").pack(side=tk.LEFT, padx=3)
-        ttk.Button(controls, text="Complete selected", command=self.complete_task, style="Success.TButton").pack(side=tk.LEFT, padx=3)
-        ttk.Button(controls, text="New / clear", command=self.clear_task_form).pack(side=tk.LEFT, padx=3)
-        ttk.Button(controls, text="Delete selected", command=self.delete_task).pack(side=tk.LEFT, padx=3)
-        ttk.Button(controls, text="Plan with AI", command=self.plan_task).pack(side=tk.RIGHT, padx=3)
-
-        columns = ("title", "status", "due", "urgency", "effort", "score", "created", "completed")
-        self.task_tree = ttk.Treeview(outer, columns=columns, show="headings", height=11)
-        for col, label, width in (
-            ("title", "Title", 260), ("status", "Status", 75), ("due", "Due", 95),
-            ("urgency", "Urgency", 70), ("effort", "Effort", 65), ("score", "Score", 60),
-            ("created", "Created", 95), ("completed", "Completed", 95),
-        ):
-            self.task_tree.heading(col, text=label)
-            self.task_tree.column(col, width=width, anchor="w" if col == "title" else "center")
-        self.task_tree.pack(fill="both", expand=True)
-        self.task_tree.bind("<<TreeviewSelect>>", self.select_task)
-        self.task_summary = tk.StringVar()
-        ttk.Label(outer, textvariable=self.task_summary, justify=tk.LEFT, wraplength=1100).pack(anchor="w", pady=(8, 2))
-        self.task_plan_text = scrolledtext.ScrolledText(outer, height=6, wrap=tk.WORD, state="disabled")
-        self.task_plan_text.pack(fill="x", pady=(2, 0))
-        self.refresh_tasks()
-
-    def _task_form_data(self):
-        title = self.task_title.get().strip()
-        due_raw = self.task_due.get().strip()
-        due = DateUtils.parse_date_string(due_raw) if due_raw else None
-        urgency, effort = self.task_urgency.get(), self.task_effort.get()
-        if not title:
-            raise ValueError("A task title is required.")
-        if due_raw and not due:
-            raise ValueError("Due date must use dd-mm-yyyy.")
-        if not (1 <= urgency <= 5 and 1 <= effort <= 5):
-            raise ValueError("Urgency and effort must each be between 1 and 5.")
-        return {
-            "title": title, "notes": self.task_notes.get("1.0", tk.END).strip(),
-            "status": self.task_status.get(), "due_date": due.strftime(DB_DATE_FORMAT) if due else "",
-            "urgency": urgency, "effort": effort,
-        }
-
-    @handle_errors()
-    def save_task(self):
-        task = self._task_form_data()
-        today = DateUtils.get_today().strftime(DB_DATE_FORMAT)
-        if self.task_id is None:
-            self.cursor.execute(
-                """INSERT INTO tasks (title, notes, status, due_date, created_date, completed_date, urgency, effort)
-                VALUES (:title, :notes, :status, :due_date, :created_date, :completed_date, :urgency, :effort)""",
-                {**task, "created_date": today, "completed_date": today if task["status"] == "done" else ""},
-            )
-        else:
-            completed = today if task["status"] == "done" else ""
-            self.cursor.execute(
-                """UPDATE tasks SET title=:title, notes=:notes, status=:status, due_date=:due_date,
-                completed_date=:completed_date, urgency=:urgency, effort=:effort WHERE id=:id""",
-                {**task, "completed_date": completed, "id": self.task_id},
-            )
-        self.conn.commit()
-        self.clear_task_form()
-        self.refresh_tasks()
-
-    def clear_task_form(self):
-        self.task_id = None
-        self.task_title.set("")
-        self.task_status.set("todo")
-        self.task_due.set("")
-        self.task_urgency.set(3)
-        self.task_effort.set(3)
-        self.task_notes.delete("1.0", tk.END)
-        self.task_tree.selection_remove(self.task_tree.selection())
-
-    def select_task(self, _event=None):
-        selected = self.task_tree.selection()
-        if not selected:
-            return
-        self.task_id = int(selected[0])
-        self.cursor.execute("SELECT title, notes, status, due_date, urgency, effort FROM tasks WHERE id = ?", (self.task_id,))
-        row = self.cursor.fetchone()
-        if row:
-            self.task_title.set(row[0]); self.task_status.set(row[2])
-            self.task_due.set(DateUtils.format_date_for_display(row[3] or ""))
-            self.task_urgency.set(row[4]); self.task_effort.set(row[5])
-            self.task_notes.delete("1.0", tk.END); self.task_notes.insert("1.0", row[1] or "")
-
-    def complete_task(self):
-        if self.task_id is None:
-            messagebox.showinfo("Tasks", "Select a task to complete.")
-            return
-        self.cursor.execute("UPDATE tasks SET status='done', completed_date=? WHERE id=?", (DateUtils.get_today().strftime(DB_DATE_FORMAT), self.task_id))
-        self.conn.commit()
-        self.refresh_tasks()
-
-    def delete_task(self):
-        if self.task_id is None:
-            messagebox.showinfo("Tasks", "Select a task to delete.")
-            return
-        if messagebox.askyesno("Delete task", "Delete the selected task?"):
-            self.cursor.execute("DELETE FROM tasks WHERE id=?", (self.task_id,))
-            self.conn.commit()
-            self.clear_task_form()
-            self.refresh_tasks()
-
-    def refresh_tasks(self):
-        for item in self.task_tree.get_children():
-            self.task_tree.delete(item)
-        self.cursor.execute(
-            """SELECT id, title, status, due_date, urgency, effort, created_date, completed_date FROM tasks
-            ORDER BY urgency * effort DESC, urgency DESC,
-            CASE status WHEN 'doing' THEN 0 WHEN 'todo' THEN 1 ELSE 2 END"""
-        )
-        for task_id, title, status, due, urgency, effort, created, completed in self.cursor.fetchall():
-            self.task_tree.insert("", tk.END, iid=str(task_id), values=(title, status, due or "—", urgency, effort, urgency * effort, created, completed or "—"))
-        self.task_summary.set(self.build_task_summaries())
-
-    def build_task_summaries(self):
-        today = DateUtils.get_today()
-        periods = (("Day", today, today), ("Week", today - timedelta(days=today.weekday()), today), ("Month", today.replace(day=1), today))
-        self.cursor.execute("SELECT title, urgency, effort, completed_date FROM tasks WHERE status='done' AND completed_date != ''")
-        completed = self.cursor.fetchall()
-        summaries = []
-        for label, start, end in periods:
-            rows = [r for r in completed if (done := DateUtils.parse_date_string(r[3])) and start <= done <= end]
-            heavy, light = sum(r[2] >= 4 for r in rows), sum(r[2] <= 2 for r in rows)
-            top = max(rows, key=lambda r: (r[1], r[2]), default=None)
-            text = f"{len(rows)} completed; {heavy} heavy / {light} light."
-            if top:
-                text += f" Top urgency: {top[0]} ({top[1]}/5)."
-            summaries.append(f"{label}: {text}")
-        return "\n".join(summaries)
-
-    def plan_task(self):
-        try:
-            task = self._task_form_data()
-        except ValueError as error:
-            messagebox.showwarning("Task planning", str(error))
-            return
-        if getattr(self, "_task_planning", False):
-            return
-        self._task_planning = True
-        self._set_task_plan("Generating task plan…")
-        def worker():
-            fallback = (
-                f"## Plan: {task['title']}\n- Priority score: **{task['urgency'] * task['effort']}** "
-                f"(urgency {task['urgency']}/5 × effort {task['effort']}/5).\n"
-                f"- Due: **{task['due_date'] or 'no due date'}**. Start with one visible outcome.\n"
-                f"- Break it into {'25–45 minute subtasks' if task['effort'] >= 4 else 'one focused 25–45 minute block'}.\n"
-                "- Mark it `doing` when started and `done` after recording the outcome.\n\n"
-                "— Source: built-in task planning rules —"
-            )
-            try:
-                url = os.environ.get("TIMELOGGER_OLLAMA_URL", "http://localhost:11434/api/generate")
-                model = os.environ.get("TIMELOGGER_OLLAMA_MODEL", "llama3")
-                prompt = f"Create a concise Markdown plan for this task. Task: {task}"
-                response = report_ai_insights._ollama_generate(prompt, url, model, timeout=45)
-                text = f"{response}\n\n— Source: Ollama `{model}` @ {url} —" if response else fallback
-            except Exception:
-                text = fallback
-            self.root.after(0, lambda: self._finish_task_plan(text))
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _set_task_plan(self, text):
-        self.task_plan_text.configure(state="normal")
-        self.task_plan_text.delete("1.0", tk.END)
-        self.task_plan_text.insert(tk.END, text)
-        self.task_plan_text.configure(state="disabled")
-
-    def _finish_task_plan(self, text):
-        self._task_planning = False
-        self._set_task_plan(text)
 
     def create_log_tab(self):
         """Create the tab for logging new work entries"""
