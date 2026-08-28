@@ -21,7 +21,7 @@ TELEGRAM_POLLING = os.getenv("TELEGRAM_POLLING", "false").lower() in ("1", "true
 TELEGRAM_API_BASE = "https://api.telegram.org/bot{token}"
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")

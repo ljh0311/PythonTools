@@ -79,7 +79,7 @@ cp .env.example .env
 
 ```env
 GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.6-flash
 ```
 
 **Ollama (fallback)** — install from [ollama.ai](https://ollama.ai), pull a model, and start the service:
