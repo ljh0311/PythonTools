@@ -32,12 +32,21 @@ python run_recommendations.py --distance 80 --duration 24 --region Malaysia --js
 | `run_cleaning_pipeline.py` | Standalone CSV cleaning |
 | `22 - Sheet1.csv` | Default rental history data |
 | `pricing_config.json` | Provider pricing (incl. Traditional Rental) |
-| `components/` | GUI helpers (Ollama, loading dialog, matplotlib) |
+| `components/panels/` | Records, recommendations, settings tab UI |
+| `components/rental_dates.py` | Multi-day start/end date helpers |
+| `components/collection_location.py` | Pickup location + distance rating |
+| `components/getgo_fleet_sync.py` | GetGo fleet catalog web sync |
+| `getgo_fleet_cache.json` | Cached GetGo models (auto-refreshed) |
 | `requirements.txt` | Local Python deps (Windows-friendly pins) |
 | `requirements-container.txt` | Python 3.11+ pins for Docker |
 | `openclaw/skills/car-rental-recommender/` | OpenClaw agent skill |
+| `docs/` | Feature docs (ML, Ollama, Docker) |
+| `tests/` | Automated pytest suite |
+| `tests/manual/` | Optional demo scripts (pygame, preferences) |
+| `scripts/` | CLI helpers (`evaluate_ml.py`, etc.) |
+| `data/` | Local spreadsheets (gitignored) |
 
-Feature docs: `ML_RECOMMENDATIONS_README.md`, `OLLAMA_INTEGRATION_README.md`.
+Feature docs: [docs/ML_RECOMMENDATIONS_README.md](docs/ML_RECOMMENDATIONS_README.md), [docs/OLLAMA_INTEGRATION_README.md](docs/OLLAMA_INTEGRATION_README.md).
 
 ## Traditional Rental (Malaysia)
 
@@ -67,7 +76,7 @@ On the phone in Termux: unzip → `bash android/install.sh` → `carrs recommend
 
 ## Docker / OpenClaw
 
-The container runs the **headless CLI** only (no tkinter display). See [DOCKER.md](DOCKER.md).
+The container runs the **headless CLI** only (no tkinter display). See [docs/DOCKER.md](docs/DOCKER.md).
 
 ```bash
 docker compose build
@@ -89,8 +98,17 @@ python run_cleaning_pipeline.py "22 - Sheet1.csv" --out cleaned.csv
 
 Loading CSV in the GUI runs the same pipeline automatically (schema check, normalize, dedupe, quality report).
 
+## Development / tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -q
+python scripts/evaluate_ml.py          # human-readable ML learning report
+python scripts/evaluate_ml.py --json   # machine-readable
+```
+
 ## Troubleshooting
 
-1. Ensure `22 - Sheet1.csv` is in the CarRS folder (or use **Settings** to pick another file).
+1. Place your rental CSV in the CarRS folder (default name `22 - Sheet1.csv`) or use **Settings** to pick another file. This file is listed in `.gitignore` so personal trip data stays local; copy column headers from an existing export or from the app after adding one record.
 2. Python 3.8+ for GUI; Python 3.11+ recommended for Docker.
-3. Ollama features are optional — the app falls back to historical/ML methods.
+3. Ollama features are optional (off by default) — recommendations use CSV history, `pricing_config.json`, and local ML when enabled.

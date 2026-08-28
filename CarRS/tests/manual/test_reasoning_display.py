@@ -9,8 +9,9 @@ import pandas as pd
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-# Ensure the current directory is in the path for imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from _paths import ROOT, DEFAULT_CSV
+
+sys.path.insert(0, ROOT)
 
 from car_rental_recommender_core import (
     get_ollama_enhanced_recommendations,
@@ -67,7 +68,7 @@ class RecommendationGUI:
         Load sample data from 22 - Sheet1.csv for enhanced recommendations.
         Returns a DataFrame or an empty DataFrame on failure.
         """
-        csv_path = os.path.join(os.path.dirname(__file__), "22 - Sheet1.csv")
+        csv_path = DEFAULT_CSV
         try:
             sample_data = pd.read_csv(csv_path)
             # Only keep relevant columns and a few rows for demo
