@@ -17,7 +17,7 @@ MTProto_SESSION_PATH = DATA_DIR / os.getenv("MTProto_SESSION_NAME", "user.sessio
 MTProto_PHONE = os.getenv("MTProto_PHONE", "")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 _GEMINI_KEY_PLACEHOLDERS = frozenset(
     {

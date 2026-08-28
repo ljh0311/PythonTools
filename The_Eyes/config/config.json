@@ -1,9 +1,28 @@
 {
   "appearance": {
-    "dark_mode": false,
+    "dark_mode": true,
     "theme": "clam"
   },
-  "cameras": {},
+  "cameras": {
+    "webcam_0": {
+      "type": "browser",
+      "name": "webcam_0",
+      "zones": [
+        [
+          0.7380382775119617,
+          0.22441701874047645,
+          0.1425838196676884,
+          0.3066765933012115
+        ],
+        [
+          0.126555045826013,
+          0.15115540111716885,
+          0.12535887357720918,
+          0.7019486598880882
+        ]
+      ]
+    }
+  },
   "display": {
     "show_fps": true,
     "default_layout": "grid",
@@ -21,7 +40,10 @@
     "logs": "logs"
   },
   "calibration": {
-    "pattern_size": [9, 6],
+    "pattern_size": [
+      9,
+      6
+    ],
     "square_size": 0.025,
     "num_images": 10
   },
@@ -36,7 +58,10 @@
     },
     "clahe": {
       "clip_limit": 2.0,
-      "tile_grid_size": [8, 8]
+      "tile_grid_size": [
+        8,
+        8
+      ]
     }
   },
   "feature_matching": {
@@ -63,22 +88,26 @@
   },
   "security": {
     "motion_detection": {
-      "enabled": false,
+      "enabled": true,
       "method": "mog2",
       "sensitivity": 0.5,
       "min_area": 500,
       "detection_zones": []
     },
     "recording": {
-      "enabled": false,
+      "enabled": true,
       "motion_triggered": true,
       "continuous": false,
       "output_dir": "recordings",
-      "codec": "mp4v",
+      "codec": "avc1",
       "fps": 30.0,
       "max_file_size_mb": 500,
       "max_duration_minutes": 60,
-      "retention_days": 30
+      "retention_days": 30,
+      "auto_delete": {
+        "enabled": true,
+        "interval_hours": 6
+      }
     },
     "alerts": {
       "enabled": true,
@@ -87,7 +116,21 @@
       "enable_sound": true,
       "enable_visual": true,
       "log_file": "logs/alerts.json",
-      "suppress_duplicates_seconds": 5.0
+      "suppress_duplicates_seconds": 5.0,
+      "away_notifications": {
+        "enabled": false
+      }
+    },
+    "audit_log": {
+      "file": "logs/security_audit.txt"
+    },
+    "face_recognition": {
+      "enabled": true,
+      "similarity_threshold": 0.42,
+      "data_dir": "data/faces"
     }
+  },
+  "web": {
+    "prefer_browser_cameras": true
   }
-} 
+}

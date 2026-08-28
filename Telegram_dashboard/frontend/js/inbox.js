@@ -110,6 +110,21 @@ function buildFilterParams() {
   };
 }
 
+export function buildAiFilterPayload() {
+  return {
+    q: inboxState.filters.q || undefined,
+    chat_type: inboxState.filters.chatType || undefined,
+    direction: inboxState.filters.direction || undefined,
+    ingestion_source: inboxState.filters.ingestionSource || undefined,
+    topics: inboxState.filters.topics || undefined,
+    date_from: inboxState.filters.dateFrom || undefined,
+    date_to: inboxState.filters.dateTo || undefined,
+    user_ids: inboxState.filters.userIds.length
+      ? inboxState.filters.userIds.join(",")
+      : undefined,
+  };
+}
+
 export function readFiltersFromUrl() {
   const params = new URLSearchParams(window.location.search);
   inboxState.filters.q = params.get("q") || "";
@@ -359,14 +374,9 @@ function renderThreadContext(thread) {
     <div class="thread-context" data-chat-id="${thread.chat_id}">
       <div class="thread-context-toolbar">
         <strong>Your context</strong>
-        <div class="relationship-actions">
-          <button type="button" class="btn btn-ghost btn-sm learn-thread-context" data-chat-id="${thread.chat_id}" title="Learn relationship and drafting context from messages">
-            Learn from chat
-          </button>
-          <button type="button" class="btn btn-ghost btn-sm toggle-thread-context" data-chat-id="${thread.chat_id}">
-            ${expanded ? "Hide" : notes ? "Edit" : "Add"}
-          </button>
-        </div>
+        <button type="button" class="btn btn-ghost btn-sm toggle-thread-context" data-chat-id="${thread.chat_id}">
+          ${expanded ? "Hide" : notes ? "Edit" : "Add"}
+        </button>
       </div>
       <p class="thread-context-preview" ${expanded ? "hidden" : ""}>${preview}</p>
       <div class="thread-context-editor" ${expanded ? "" : "hidden"}>
@@ -816,36 +826,6 @@ export function bindInbox(
           inboxState.expandedContextChatIds.add(chatId);
         }
         renderInboxThreads(inboxState.threads, inboxState.total);
-        return;
-      }
-
-      const learnContextBtn = event.target.closest(".learn-thread-context");
-      if (learnContextBtn) {
-        const chatId = Number(learnContextBtn.dataset.chatId);
-        learnContextBtn.disabled = true;
-        api
-          .learnFromChat(chatId)
-          .then((result) => {
-            const saved = result.settings || result;
-            const thread = inboxState.threads.find(
-              (item) => Number(item.chat_id) === chatId,
-            );
-            if (thread) {
-              thread.ai_context = saved.ai_context || "";
-            }
-            inboxState.expandedContextChatIds.add(chatId);
-            renderInboxThreads(inboxState.threads, inboxState.total);
-            const facts = result.learn?.facts?.length || 0;
-            const msgs = result.learn?.message_count || 0;
-            const note = result.learn?.degraded ? " (heuristic fallback)" : "";
-            onNotify?.(
-              `Learned from ${msgs} messages${facts ? `, ${facts} facts` : ""}${note}.`,
-            );
-          })
-          .catch(onError)
-          .finally(() => {
-            learnContextBtn.disabled = false;
-          });
         return;
       }
 

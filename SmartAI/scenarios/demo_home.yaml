@@ -1,0 +1,41 @@
+# IR-SIM-inspired scenario config for SmartAI test.py (reference / future adapter)
+# See: https://github.com/hanruihua/ir-sim
+
+world:
+  name: demo_home
+  width: 9.7
+  height: 9.7
+  grid_size: 0.2
+
+robot:
+  kinematics: differential  # rear L/R drive + front caster
+  width: 0.3
+  length: 0.4
+  max_speed: 0.83
+
+gui:
+  backend: enhanced_pygame  # matplotlib | pygame | enhanced | 3d
+  hotkeys:
+    space: pause
+    r: reset
+    esc: quit
+
+scenarios:
+  - id: nav_living_to_kitchen
+    mode: 1
+    start: [1.0, 1.0, 0.0]
+    goal: [8.0, 8.0]
+  - id: corridor_person
+    mode: 6
+    note: vision inject person TTC 0.8s
+  - id: closed_door
+    mode: 9
+    note: RobotMind blocked path + notify user
+
+obstacles:
+  - type: circle
+    position: [5.0, 5.0]
+    radius: 0.35
+  - type: circle
+    position: [3.0, 7.0]
+    radius: 0.25

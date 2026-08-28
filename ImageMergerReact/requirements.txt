@@ -4,3 +4,4 @@ numpy
 werkzeug
 requests
 google-generativeai
+google-genai

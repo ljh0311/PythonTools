@@ -244,6 +244,8 @@ class RobotGUI:
         self.sensor_manager = sensor_manager
         self.pathfinder = pathfinder
         self.autonomous_controller = autonomous_controller
+        self.vision_fusion = None
+        self.task_boss = None
         
         # GUI state
         self.running = False
@@ -320,7 +322,8 @@ class RobotGUI:
             'sensor_updates': deque(maxlen=100),
             'nav_updates': deque(maxlen=100),
             'map_updates': deque(maxlen=100),
-            'camera_updates': deque(maxlen=100)
+            'camera_updates': deque(maxlen=100),
+            'camera_update_times': deque(maxlen=100),
         }
         self.last_perf_log_time = time.time()
         
@@ -1451,6 +1454,15 @@ class RobotGUI:
             if self.scene_understanding and self.scene_understanding_enabled and 'scene_analysis' not in self.vision_futures:
                 future = self.vision_executor.submit(self.scene_understanding.process_frame, frame)
                 self.vision_futures['scene_analysis'] = future
+
+            # Always fuse vision into navigation when available (not GUI-only)
+            if getattr(self, 'vision_fusion', None) and 'vision_fusion' not in self.vision_futures:
+                vf = self.vision_fusion
+                ctx = getattr(self.autonomous_controller, '_smartai_context', None)
+                if ctx is not None:
+                    ctx['last_camera_frame'] = frame
+                future = self.vision_executor.submit(vf.process_frame, frame)
+                self.vision_futures['vision_fusion'] = future
             
             # Reset processing flag when all futures complete
             if not self.vision_futures:

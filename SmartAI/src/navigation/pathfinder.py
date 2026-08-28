@@ -88,6 +88,7 @@ class Pathfinder:
             (0, -1),           (0, 1),
             (1, -1),  (1, 0),  (1, 1)
         ]
+        self._static_obstacles: List[Tuple[float, float, float]] = []
     
     def world_to_grid(self, x: float, y: float) -> Tuple[int, int]:
         """Convert world coordinates to grid coordinates"""
@@ -117,6 +118,18 @@ class Pathfinder:
         
         return self.grid[grid_y, grid_x] == NodeType.OBSTACLE.value
     
+    def add_static_obstacle(self, x: float, y: float, radius: float):
+        """Register a permanent obstacle and mark it on the grid."""
+        self._static_obstacles.append((x, y, radius))
+        self.add_obstacle(x, y, radius)
+
+    def reset_to_static_obstacles(self):
+        """Clear dynamic obstacles and restore only registered static obstacles."""
+        self.grid = np.zeros((self.grid_height, self.grid_width), dtype=int)
+        for x, y, radius in self._static_obstacles:
+            self.add_obstacle(x, y, radius)
+        logger.info(f"Pathfinder grid reset to {len(self._static_obstacles)} static obstacles")
+
     def add_obstacle(self, x: float, y: float, radius: float = None):
         """Add obstacle to the grid, accounting for clearance distance"""
         if radius is None:
@@ -349,10 +362,9 @@ class Pathfinder:
         
         return None
     
-    def get_grid_status(self) -> dict:
-        """Get current grid status"""
-        return {
-            'grid': self.grid.copy(),
+    def get_grid_status(self, include_grid: bool = True) -> dict:
+        """Get current grid status. Set include_grid=False for lightweight API responses."""
+        status = {
             'explored_nodes': len(self.explored_nodes),
             'total_nodes': self.grid_width * self.grid_height,
             'exploration_percentage': len(self.explored_nodes) / (self.grid_width * self.grid_height) * 100,
@@ -360,6 +372,9 @@ class Pathfinder:
             'map_width': self.map_width,
             'map_height': self.map_height
         }
+        if include_grid:
+            status['grid'] = self.grid.copy()
+        return status
     
     def clear_cache(self):
         """Clear any cached pathfinding data"""

@@ -32,12 +32,24 @@ def load_env_file(path: Path) -> None:
 
 
 def find_tdash() -> Path | None:
+    env_hint = os.environ.get("TELEGRAM_DASHBOARD_ROOT", "").strip()
     candidates = [
+        Path(env_hint) / "openclaw" / "skills" / "telegram-dashboard" / "scripts" / "tdash.py" if env_hint else None,
+        Path.home()
+        / "Documents"
+        / "brightnessControl"
+        / "PythonTools"
+        / "Telegram_dashboard"
+        / "openclaw"
+        / "skills"
+        / "telegram-dashboard"
+        / "scripts"
+        / "tdash.py",
         SKILL_ROOT.parent.parent / "openclaw" / "skills" / "telegram-dashboard" / "scripts" / "tdash.py",
         Path.home() / ".openclaw" / "workspace" / "skills" / "telegram-dashboard" / "scripts" / "tdash.py",
     ]
     for path in candidates:
-        if path.is_file():
+        if path is not None and path.is_file():
             return path
     return None
 

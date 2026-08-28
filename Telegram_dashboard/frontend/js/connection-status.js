@@ -61,7 +61,7 @@ export function getBotPill(botStatus = connectionState.botStatus) {
   return {
     state: "offline",
     label: "Bot",
-    text: "Offline",
+    text: "Not configured",
     title: "Bot: not configured — set TELEGRAM_BOT_TOKEN",
   };
 }
@@ -101,7 +101,7 @@ export function getUserPill(userAccountStatus = connectionState.userAccountStatu
   return {
     state: "offline",
     label: "My account",
-    text: "Offline",
+    text: "Not configured",
     title: "My account: optional — set TELEGRAM_API_ID and TELEGRAM_API_HASH",
   };
 }

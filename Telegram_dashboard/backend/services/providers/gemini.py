@@ -3,7 +3,7 @@ from typing import Any
 
 import httpx
 
-from backend.config import GEMINI_API_KEY, GEMINI_MODEL
+from backend.config import GEMINI_API_KEY, GEMINI_MODEL, gemini_key_configured
 from backend.services.ai_tools import SYSTEM_PROMPT, execute_tool, gemini_tools
 
 
@@ -16,7 +16,7 @@ class GeminiProvider:
 
     @property
     def configured(self) -> bool:
-        return bool(self.api_key)
+        return gemini_key_configured(self.api_key)
 
     def _endpoint(self) -> str:
         return (

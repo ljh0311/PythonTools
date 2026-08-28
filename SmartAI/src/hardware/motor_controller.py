@@ -111,10 +111,14 @@ class MotorController:
         logger.info("Motor controller stopped")
     
     def set_speeds(self, left_speed: float, right_speed: float):
-        """Set motor speeds (-100 to 100)"""
+        """Set motor speeds as percent PWM in [-100, 100]."""
+        self.set_wheel_speeds_pct(left_speed, right_speed)
+
+    def set_wheel_speeds_pct(self, left_pct: float, right_pct: float):
+        """Set rear wheel speeds as percentage PWM in [-100, 100]."""
         with self.lock:
-            self.left_speed = max(-100, min(100, left_speed))
-            self.right_speed = max(-100, min(100, right_speed))
+            self.left_speed = max(-100, min(100, left_pct))
+            self.right_speed = max(-100, min(100, right_pct))
     
     def move_forward(self, speed: float = 50.0):
         """Move robot forward"""

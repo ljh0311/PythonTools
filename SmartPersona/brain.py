@@ -568,16 +568,111 @@ class SmartPersonaBrain:
             out["person"] = entries[0]["person"]
         return out
 
+    def _event_dedupe_key(self, content):
+        """Normalized key for conversation-style event deduplication."""
+        pk, snippet = _parse_conversation_event_participants_and_snippet(content)
+        if pk is not None:
+            return ("event_conv", pk, (snippet or "").lower()[:120])
+        return ("event_plain", (content or "").lower().strip())
+
+    def _deduplicate_near_duplicate_memories(
+        self,
+        types=("fact", "event", "voice", "habit", "belief", "topic_style", "reaction", "preference"),
+        similarity_threshold=0.65,
+    ):
+        """
+        Drop near-duplicate memories within each type: substring containment or high word overlap.
+        Keeps the longest / most informative entry per cluster.
+        """
+        if not isinstance(self._memory, list):
+            return
+        type_set = set(types)
+        rest = [m for m in self._memory if m.get("type") not in type_set]
+        targets = [m for m in self._memory if m.get("type") in type_set]
+        if not targets:
+            return
+
+        by_type = {}
+        for m in targets:
+            by_type.setdefault(m.get("type"), []).append(m)
+
+        kept_targets = []
+        for typ, entries in by_type.items():
+            normalized = []
+            for e in entries:
+                content = _tidy_content_text(_normalize_memory_content(e.get("content")))
+                if not content:
+                    continue
+                ne = dict(e)
+                ne["content"] = content
+                normalized.append(ne)
+            normalized.sort(key=lambda x: len(x.get("content") or ""), reverse=True)
+            kept = []
+            for e in normalized:
+                content = e["content"]
+                content_lower = content.lower()
+                event_key = self._event_dedupe_key(content) if typ == "event" else None
+                drop = False
+                for k in kept:
+                    k_content = k["content"]
+                    k_lower = k_content.lower()
+                    if content_lower != k_lower and content_lower in k_lower:
+                        drop = True
+                        break
+                    if typ == "event" and event_key:
+                        k_event_key = self._event_dedupe_key(k_content)
+                        if event_key[0] == "event_conv" and k_event_key[0] == "event_conv":
+                            if event_key[1] == k_event_key[1]:
+                                if (
+                                    event_key[2] == k_event_key[2]
+                                    or _content_similarity(event_key[2], k_event_key[2]) >= 0.55
+                                ):
+                                    drop = True
+                                    break
+                    if _content_similarity(content, k_content) >= similarity_threshold:
+                        drop = True
+                        break
+                if not drop:
+                    kept.append(e)
+            kept_targets.extend(kept)
+
+        merged = rest + kept_targets
+        if len(merged) != len(self._memory):
+            self._memory = merged
+            self._save_memory()
+
+    def _normalize_reaction_contents(self):
+        """Strip duplicated REACTION labels accidentally stored inside reaction content."""
+        if not isinstance(self._memory, list):
+            return
+        changed = False
+        for entry in self._memory:
+            if entry.get("type") != "reaction":
+                continue
+            raw = _normalize_memory_content(entry.get("content"))
+            if not raw:
+                continue
+            cleaned = re.sub(r"(?i)^(?:reaction:\s*)+", "", raw).strip()
+            cleaned = re.sub(r"(?i);\s*reaction:\s*", "; ", cleaned).strip()
+            if cleaned != raw:
+                entry["content"] = cleaned
+                changed = True
+        if changed:
+            self._save_memory()
+
     def tidy_memory(self):
         """
         Public API: run sanitization (dedupe, drop empty, drop noisy events), then
         relationship-specific deduplication, then reflection-style (topic_style/reaction/preference) near-dedupe,
+        then near-duplicate merge for facts/events/voice/etc., normalize reaction text,
         then consolidate consecutive same-participant conversation events.
         Call this when the user requests a refresh/tidy of memory.
         """
         self._sanitize_memory()
         self._deduplicate_relationship_memories()
         self._deduplicate_reflection_style_memories()
+        self._deduplicate_near_duplicate_memories()
+        self._normalize_reaction_contents()
         self._consolidate_conversation_events()
 
     def review_memories_for_clarification(self, memory_limit=50):
@@ -1542,6 +1637,99 @@ class SmartPersonaBrain:
             lines.append(f"{sender}: {message}")
         return "\n".join(lines)
 
+    def _looks_like_analysis_not_reply(self, text):
+        """True when model output is reasoning/meta instead of a paste-ready chat line."""
+        if not text or not isinstance(text, str):
+            return False
+        raw = text.strip()
+        lower = raw.lower()
+        if len(raw) > 220 and ("\n-" in raw or raw.count("\n") >= 2):
+            return True
+        markers = (
+            "consider three",
+            "let's denote",
+            "we know that:",
+            "denote the relationship",
+            "relationship between them",
+            "involved in this discussion",
+            "based on the conversation above",
+            "the following situation",
+            "reply with only the suggested",
+            "no extra explanation",
+        )
+        if any(m in lower for m in markers):
+            return True
+        if re.search(r"\bR[0-9]\b", raw) and "relationship" in lower:
+            return True
+        return False
+
+    def _sanitize_suggested_reply(self, text):
+        """Keep the first paste-ready chat line; drop trailing analysis the model appended."""
+        raw = (text or "").strip()
+        if not raw:
+            return ""
+        for marker in (
+            "\n\nConsider ",
+            "\n\nLet's ",
+            "\n\nWe know ",
+            "\n\nBased on ",
+            "\n\nRules:",
+            "\n\nNote:",
+            "\n\n---",
+        ):
+            if marker in raw:
+                raw = raw.split(marker)[0].strip()
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        if not lines:
+            return ""
+        first = lines[0]
+        if first.startswith(('"', "'")) and first.endswith(first[0]) and len(first) > 2:
+            first = first[1:-1].strip()
+        if len(lines) == 1:
+            return first
+        if len(first) <= 160 and not self._looks_like_analysis_not_reply(first):
+            return first
+        return raw.split("\n\n")[0].strip()[:300]
+
+    def _build_reply_style_memory_context(self, limit=20):
+        """Prefer voice/style memories when drafting a messenger reply."""
+        picked = []
+        seen = set()
+        for typ in ("voice", "topic_style", "reaction", "preference", "habit", "belief"):
+            for m in self.get_memories(type=typ, limit=limit):
+                key = ((m.get("type") or ""), (m.get("content") or "").strip().lower())
+                if key in seen:
+                    continue
+                seen.add(key)
+                picked.append(m)
+                if len(picked) >= limit:
+                    break
+            if len(picked) >= limit:
+                break
+        if len(picked) < limit:
+            for m in self.get_memories(limit=limit):
+                key = ((m.get("type") or ""), (m.get("content") or "").strip().lower())
+                if key in seen:
+                    continue
+                seen.add(key)
+                picked.append(m)
+                if len(picked) >= limit:
+                    break
+        if not picked:
+            return ""
+        lines = []
+        for m in picked:
+            content = _normalize_memory_content(m.get("content"))
+            if m.get("person"):
+                lines.append(f"- Relationship with {m['person']}: {content}")
+            elif m.get("topic"):
+                lines.append(f"- Topic [{m['topic']}]: {content}")
+            elif m.get("situation"):
+                lines.append(f"- When [{m['situation']}]: {content}")
+            else:
+                lines.append(f"- [{m['type']}] {content}")
+        return "What you remember:\n" + "\n".join(lines)
+
     ####################################################################
     # === Chat/Interaction/Prompt Suggestion ===
     ####################################################################
@@ -1737,6 +1925,7 @@ class SmartPersonaBrain:
         format="auto",
         memory_limit=20,
         thoughts_limit=10,
+        persona_name=None,
     ):
         """
         Ask the brain how to reply based on chat history. Uses memory and recent
@@ -1750,6 +1939,7 @@ class SmartPersonaBrain:
             format: "auto", "text", "structured", "lines", "json"
             memory_limit: Max memories to include in context.
             thoughts_limit: Max thoughts to include in context.
+            persona_name: Display name for the user (e.g. from PERSONA_NAME / .env).
 
         Returns:
             dict with:
@@ -1757,9 +1947,12 @@ class SmartPersonaBrain:
                 - "conversation_preview": first N chars of conversation used
         """
 
+        who = (persona_name or (getattr(self._export_persona, "name", None) if self._export_persona else None) or "me").strip()
+
         default_prompt = (
-            "Based on the conversation above and the information you have about the user (me), "
-            "suggest a short reply that I (the user) could send. Reply with only the suggested message, no extra explanation."
+            f"Write the next message that {who} would send in this chat. "
+            "Output ONLY that message — one short texting-style line (or two at most). "
+            "No analysis, no bullet lists, no logic puzzles, no explanation."
         )
         prompt = (user_prompt or default_prompt).strip() or default_prompt
 
@@ -1772,15 +1965,8 @@ class SmartPersonaBrain:
         conversation_text = self._format_conversation_for_reflection(parsed)
         conversation_preview = conversation_text[:500] + ("..." if len(conversation_text) > 500 else "")
 
-        # Use consider_what_to_say for additional reasoning and context
-        reasoning_result = self.consider_what_to_say(
-            conversation_text,
-            memory_limit=memory_limit,
-            thoughts_limit=thoughts_limit,
-        )
-
         parts = []
-        mem_ctx = self._build_memory_context(limit=memory_limit)
+        mem_ctx = self._build_reply_style_memory_context(limit=memory_limit)
         if mem_ctx:
             parts.append(mem_ctx)
         thoughts_ctx = self._build_thoughts_context(limit=thoughts_limit)
@@ -1788,28 +1974,28 @@ class SmartPersonaBrain:
             parts.append(thoughts_ctx)
         parts.append("Conversation so far:\n" + conversation_text)
         parts.append(
-            "Reply style: Prefer the user's real texting voice when inferable (especially VOICE, TOPIC_STYLE, "
-            "REACTION, HABIT, and chat-derived memories). Suggest a line they could paste into a messenger "
-            "(e.g. Telegram)—casual length and tone—unless the thread clearly requires formality."
+            f"You are drafting a reply for {who} (the human who owns this memory store). "
+            "Match their real texting voice from VOICE / TOPIC_STYLE / REACTION memories when available. "
+            "Use casual messenger length, slang, and emoji habits when the thread is informal. "
+            "Do NOT analyze relationships, do NOT use variables or logic notation, do NOT explain your reasoning."
         )
 
-        # Include the model's reasoning to boost reply suggestion quality, if available
-        if reasoning_result and ("to_say" in reasoning_result or "not_to_say" in reasoning_result):
-            to_say = reasoning_result.get("to_say", "")
-            not_to_say = reasoning_result.get("not_to_say", "")
-            if to_say:
-                parts.append("Reasoned possible reply:\n" + to_say)
-            if not_to_say:
-                parts.append("What to avoid saying:\n" + not_to_say)
-
         system_content = "\n\n".join(parts)
+        chat_options = {"temperature": 0.55, "num_predict": 120}
 
-        messages = [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": prompt},
-        ]
+        def _call(extra_user_suffix=""):
+            messages = [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": prompt + extra_user_suffix},
+            ]
+            return self.ollama_client.chat(
+                model=self.model,
+                messages=messages,
+                options=chat_options,
+            )
+
         try:
-            resp = self.ollama_client.chat(model=self.model, messages=messages)
+            resp = _call()
         except Exception as e:
             return {
                 "reply": "",
@@ -1817,11 +2003,22 @@ class SmartPersonaBrain:
                 "error": f"Model error: {e}",
             }
 
-        suggestion = self._extract_message_content(resp) or ""
+        suggestion = self._sanitize_suggested_reply(self._extract_message_content(resp) or "")
+        if self._looks_like_analysis_not_reply(suggestion):
+            try:
+                retry = _call(
+                    "\n\nIMPORTANT: Output ONLY the exact chat message to send. "
+                    "One line. No preamble. No 'Consider...'. No relationship analysis."
+                )
+                retry_text = self._sanitize_suggested_reply(self._extract_message_content(retry) or "")
+                if retry_text and not self._looks_like_analysis_not_reply(retry_text):
+                    suggestion = retry_text
+            except Exception:
+                pass
+
         return {
             "reply": suggestion.strip(),
             "conversation_preview": conversation_preview,
-            "reasoning": reasoning_result,
         }
 
     def classify_reply_tone(self, reply):

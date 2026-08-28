@@ -7,6 +7,7 @@ matplotlib>=3.7.0
 
 # GUI and visualization
 customtkinter>=5.2.0
+dearpygui>=2.0.0; platform_system=="Windows"
 
 # 3D Simulation and Visualization
 pygame>=2.5.0
@@ -33,3 +34,10 @@ configparser>=5.3.0
 # Development and testing
 pytest>=7.4.0
 black>=23.7.0
+
+# AI task orchestration
+ollama>=0.3.0
+
+# Smart home integrations
+requests>=2.31.0
+paho-mqtt>=2.0.0

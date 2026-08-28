@@ -12,6 +12,7 @@ from brightness_policy import (
     PolicyDecision,
     evaluate_battery_brightness_policy,
 )
+from desk_presence import PresenceState
 
 
 @dataclass
@@ -35,7 +36,11 @@ class PowerAwareBrightnessController:
     def update_policy_config(self, config: BatteryBrightnessPolicyConfig) -> None:
         self.policy_config = config
 
-    def adjust_screen_brightness(self, brightness: float) -> PowerAwareResult:
+    def adjust_screen_brightness(
+        self,
+        brightness: float,
+        presence_state: Optional[PresenceState] = None,
+    ) -> PowerAwareResult:
         snapshot = self.battery_provider.get_snapshot()
         decision = evaluate_battery_brightness_policy(snapshot, self.policy_config)
 
@@ -46,7 +51,9 @@ class PowerAwareBrightnessController:
                 self.brightness_controller.max_brightness = min(
                     self.brightness_controller.max_brightness, decision.max_brightness_cap
                 )
-            self.brightness_controller.adjust_screen_brightness(brightness)
+            self.brightness_controller.adjust_screen_brightness(
+                brightness, presence_state
+            )
         finally:
             self.brightness_controller.max_brightness = default_max
 

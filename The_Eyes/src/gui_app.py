@@ -29,12 +29,15 @@ except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
 # Import project modules
+from .gui.theme import apply_ttk_styles
 from .camera.camera_manager import CameraManager
 from .utils.config import load_config
 from .gui.components.camera_view import CameraView
 from .security.motion_detector import MotionDetector, MotionDetectionMethod
 from .security.recorder import VideoRecorder
 from .security.alert_manager import AlertManager, AlertType, AlertLevel
+from .security.media_library import collect_recordings_dirs
+from .gui.media_browser import MediaBrowserDialog, open_path_in_os
 
 # After imports and before class TheEyesGUI declaration, add:
 
@@ -59,14 +62,19 @@ class ToolTip:
         self.tooltip_window.wm_geometry(f"+{x}+{y}")
         
         # Create tooltip content
+        root = self.widget.winfo_toplevel()
+        colors = getattr(root, "ui_colors", {})
         label = tk.Label(
-            self.tooltip_window, 
-            text=self.text, 
+            self.tooltip_window,
+            text=self.text,
             justify=tk.LEFT,
-            background="#ffffe0", 
-            relief=tk.SOLID, 
+            background=colors.get("tooltip_bg", "#1c2128"),
+            foreground=colors.get("tooltip_fg", "#e6edf3"),
+            relief=tk.SOLID,
             borderwidth=1,
-            font=("Segoe UI", 9)
+            font=("Segoe UI", 9),
+            padx=6,
+            pady=4,
         )
         label.pack(padx=2, pady=2)
     
@@ -88,13 +96,40 @@ class TheEyesGUI(tk.Tk):
         self.logger = logging.getLogger("the_eyes.gui")
         
         # Set up the application window
-        self.title("The Eyes - Home Surveillance")
-        self.geometry("1024x768")
-        
-        # Configure styles before creating UI components
+        self.title("The Eyes — Home Surveillance")
+        self.geometry("1280x800")
+        self.minsize(960, 640)
+
+        # Initialize app_config before styling so dark_mode from config applies on launch
+        self.app_config = {"cameras": {}}
+        try:
+            config_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "config",
+                "config.json",
+            )
+            loaded_config = load_config(config_path)
+            if loaded_config is not None:
+                self.app_config = loaded_config
+            self.logger.info(f"Loaded configuration from {config_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to load configuration: {e}")
+
+        if self.app_config is None:
+            self.app_config = {"cameras": {}}
+        if "cameras" not in self.app_config:
+            self.app_config["cameras"] = {}
+        if "appearance" not in self.app_config:
+            self.app_config["appearance"] = {"dark_mode": True}
+        if "display" not in self.app_config:
+            self.app_config["display"] = {"show_fps": True}
+        if "system" not in self.app_config:
+            self.app_config["system"] = {"fps_limit": 30}
+
+        self._menus_built = False
+        self.style = None
         self.configure_styles()
-        
-        # Initialize data attributes
+
         self.camera_manager = None
         self.update_thread = None
         self.is_running = False
@@ -102,10 +137,6 @@ class TheEyesGUI(tk.Tk):
         self.cameras_initialized = False
         self.current_scene = None
         self.is_ui_setup_complete = False
-        self.style = None  # Will be initialized in configure_styles
-        
-        # Initialize app_config with a default value to prevent None errors
-        self.app_config = {"cameras": {}}
         
         # Memory management settings
         self.last_gc_time = time.time()
@@ -120,32 +151,6 @@ class TheEyesGUI(tk.Tk):
         
         # Start system monitoring
         self.start_system_monitoring()
-        
-        # Load configuration
-        try:
-            config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                                    "config", "config.json")
-            loaded_config = load_config(config_path)
-            if loaded_config is not None:
-                self.app_config = loaded_config
-            self.logger.info(f"Loaded configuration from {config_path}")
-        except Exception as e:
-            self.logger.error(f"Failed to load configuration: {e}")
-            # Keep the default app_config initialized above
-        
-        # Ensure app_config is never None and has required structure
-        if self.app_config is None:
-            self.app_config = {"cameras": {}}
-        
-        # Ensure all required keys exist
-        if "cameras" not in self.app_config:
-            self.app_config["cameras"] = {}
-        if "appearance" not in self.app_config:
-            self.app_config["appearance"] = {"dark_mode": False}
-        if "display" not in self.app_config:
-            self.app_config["display"] = {"show_fps": True}
-        if "system" not in self.app_config:
-            self.app_config["system"] = {"fps_limit": 30}
         
         # Set up paths
         self.scenes_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
@@ -201,122 +206,90 @@ class TheEyesGUI(tk.Tk):
     
     def configure_styles(self):
         """Configure application styles."""
-        # Create a style instance
         self.style = ttk.Style(self)
-        
-        # Try to use a modern theme if available
-        try:
-            self.style.theme_use('clam')  # Use clam theme as base
-        except Exception as e:
-            self.logger.warning(f"Could not set 'clam' theme, using default: {str(e)}")
-        
-        # Check if we should use dark mode from config
-        if hasattr(self, 'app_config') and isinstance(self.app_config, dict) and self.app_config is not None:
-            self.dark_mode = self.app_config.get('appearance', {}).get('dark_mode', False)
-        else:
-            self.dark_mode = False
-            self.app_config = {'appearance': {'dark_mode': False}}
-        
-        # Define colors based on mode
-        if self.dark_mode:
-            bg_color = '#2d2d2d'
-            fg_color = '#e0e0e0'
-            accent_color = '#3498db'
-            highlight_color = '#4a6da7'
-            warning_color = '#e67e22'
-            error_color = '#e74c3c'
-            success_color = '#2ecc71'
-        else:
-            bg_color = '#f8f9fa'
-            fg_color = '#2c3e50'
-            accent_color = '#3498db' 
-            highlight_color = '#4a6da7'
-            warning_color = '#e67e22'
-            error_color = '#e74c3c'
-            success_color = '#2ecc71'
-        
-        # Store colors for later use
-        self.ui_colors = {
-            'bg': bg_color,
-            'fg': fg_color,
-            'accent': accent_color,
-            'highlight': highlight_color,
-            'warning': warning_color,
-            'error': error_color,
-            'success': success_color
-        }
-        
-        # Configure common styles
-        self.style.configure('TLabel', font=('Segoe UI', 10), background=bg_color, foreground=fg_color)
-        self.style.configure('TButton', font=('Segoe UI', 10))
-        self.style.configure('TEntry', font=('Segoe UI', 10))
-        self.style.configure('TFrame', background=bg_color)
-        self.style.configure('TNotebook', background=bg_color)
-        self.style.configure('TNotebook.Tab', background=bg_color, foreground=fg_color)
-        
-        # Header style
-        self.style.configure('Header.TLabel', font=('Segoe UI', 16, 'bold'), foreground=fg_color, background=bg_color)
-        
-        # Subheader style
-        self.style.configure('SubHeader.TLabel', font=('Segoe UI', 12, 'bold'), foreground=fg_color, background=bg_color)
-        
-        # Action button style
-        self.style.configure('Action.TButton', font=('Segoe UI', 10, 'bold'))
-        
-        # Status indicator styles
-        self.style.configure('Active.TLabel', foreground=success_color, background=bg_color)
-        self.style.configure('Inactive.TLabel', foreground=error_color, background=bg_color)
-        self.style.configure('Warning.TLabel', foreground=warning_color, background=bg_color)
-        
-        # Tab styling
-        self.style.map('TNotebook.Tab', 
-                     background=[('selected', accent_color)], 
-                     foreground=[('selected', 'white')])
-        
-        # Status bar style
-        self.style.configure('Status.TLabel', font=('Segoe UI', 9), padding=3, 
-                            background='#333333' if self.dark_mode else '#f0f0f0',
-                            foreground='#ffffff' if self.dark_mode else '#333333')
-        
-        # Set window background
-        self.configure(background=bg_color)
-        
-        # Add a toggle for dark/light mode in the menu
-        self._create_theme_menu()
+        self.dark_mode = self.app_config.get("appearance", {}).get("dark_mode", True)
+        self.ui_colors = apply_ttk_styles(self.style, self.dark_mode)
+        self.configure(background=self.ui_colors["bg"])
+        if not self._menus_built:
+            self._build_menu_bar()
+            self._menus_built = True
 
-    def _create_theme_menu(self):
-        """Create a menu with appearance options."""
-        # Create main menu bar if it doesn't exist
-        if not hasattr(self, 'menu_bar'):
-            self.menu_bar = tk.Menu(self)
-            self.config(menu=self.menu_bar)
-        
-        # Create appearance menu
+    def _build_menu_bar(self):
+        """Create the menu bar once (re-applying styles must not duplicate items)."""
+        self.menu_bar = tk.Menu(self)
+        self.config(menu=self.menu_bar)
+
         self.appearance_menu = tk.Menu(self.menu_bar, tearoff=0)
-        
-        # Add dark mode toggle
         self.dark_mode_var = tk.BooleanVar(value=self.dark_mode)
         self.appearance_menu.add_checkbutton(
-            label="Dark Mode",
+            label="Dark mode",
             variable=self.dark_mode_var,
-            command=self.toggle_dark_mode
+            command=self.toggle_dark_mode,
         )
-        
-        # Add appearance menu to menu bar
         self.menu_bar.add_cascade(label="Appearance", menu=self.appearance_menu)
+
+        self.media_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.media_menu.add_command(label="Browse media…", command=self._open_media_browser)
+        self.media_menu.add_separator()
+        self.media_menu.add_command(
+            label="Open motion snapshots folder",
+            command=lambda: open_path_in_os(self._media_paths()[1]),
+        )
+        self.media_menu.add_command(
+            label="Open recordings folder",
+            command=lambda: self._open_first_recordings_folder(),
+        )
+        self.menu_bar.add_cascade(label="Media", menu=self.media_menu)
+
+    def _create_theme_menu(self):
+        """Deprecated — menus are built once via _build_menu_bar."""
+        if not self._menus_built:
+            self._build_menu_bar()
+            self._menus_built = True
+
+    def _media_paths(self):
+        from pathlib import Path
+
+        project_root = Path(__file__).resolve().parent.parent
+        security_config = self.app_config.get("security", {})
+        motion_config = security_config.get("motion_detection", {})
+        recording_config = security_config.get("recording", {})
+        motion_dir = project_root / motion_config.get("snapshot_dir", "snapshots/motion")
+        recorder_dir = Path(self.recorder.output_dir) if getattr(self, "recorder", None) else None
+        recordings_dirs = collect_recordings_dirs(
+            project_root,
+            recording_config.get("output_dir", "recordings"),
+            recorder_dir,
+        )
+        return project_root, motion_dir, recordings_dirs
+
+    def _create_media_menu(self):
+        """Deprecated — media items live in _build_menu_bar."""
+        pass
+
+    def _open_media_browser(self):
+        project_root, motion_dir, recordings_dirs = self._media_paths()
+        MediaBrowserDialog(self, project_root, motion_dir, recordings_dirs)
+
+    def _open_first_recordings_folder(self):
+        _, _, recordings_dirs = self._media_paths()
+        for directory in recordings_dirs:
+            if directory.exists():
+                open_path_in_os(directory)
+                return
+        messagebox.showinfo("Recordings", "No recordings folder found yet.")
 
     def toggle_dark_mode(self):
         """Toggle between dark and light mode."""
         # Update dark mode setting
         self.dark_mode = self.dark_mode_var.get()
         
-        # Save to config
         if 'appearance' not in self.app_config:
             self.app_config['appearance'] = {}
         self.app_config['appearance']['dark_mode'] = self.dark_mode
         
-        # Reconfigure styles
-        self.configure_styles()
+        self.ui_colors = apply_ttk_styles(self.style, self.dark_mode)
+        self.configure(background=self.ui_colors["bg"])
         
         # Update all existing frames
         self._update_widget_colors(self)
@@ -345,24 +318,32 @@ class TheEyesGUI(tk.Tk):
     
     def setup_ui(self):
         """Set up the main UI components."""
-        # Status bar at the bottom
-        self.status_bar = ttk.Label(self, text="Ready", relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar = ttk.Label(self, text="Ready", style="Status.TLabel", anchor=tk.W)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        body = ttk.Frame(self)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        header = ttk.Frame(body, style="Header.TFrame", padding=(16, 10))
+        header.pack(fill=tk.X, side=tk.TOP)
+        ttk.Label(header, text="The Eyes", style="Header.TLabel").pack(side=tk.LEFT)
+        ttk.Label(header, text="  ·  Home surveillance", style="HeaderSub.TLabel").pack(side=tk.LEFT, padx=(4, 0))
+
+        content = ttk.Frame(body, padding=(12, 8, 12, 12))
+        content.pack(fill=tk.BOTH, expand=True)
+
+        self.notebook = ttk.Notebook(content)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
         
-        # Main notebook for tabs
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # Add tabs
         self.monitoring_tab = ttk.Frame(self.notebook)
         self.settings_tab = ttk.Frame(self.notebook)
         self.scenes_tab = ttk.Frame(self.notebook)
         self.visualization_tab = ttk.Frame(self.notebook)
         
-        self.notebook.add(self.monitoring_tab, text="Monitoring")
-        self.notebook.add(self.settings_tab, text="Camera Settings")
-        self.notebook.add(self.scenes_tab, text="Scenes")
-        self.notebook.add(self.visualization_tab, text="Visualization")
+        self.notebook.add(self.monitoring_tab, text="  Live  ")
+        self.notebook.add(self.settings_tab, text="  Cameras  ")
+        self.notebook.add(self.scenes_tab, text="  Scenes  ")
+        self.notebook.add(self.visualization_tab, text="  3D View  ")
         
         # Set up tabs
         self.setup_monitoring_tab()
@@ -375,16 +356,19 @@ class TheEyesGUI(tk.Tk):
         
         # Set up simple placeholder for visualization tab
         # This will be replaced with proper implementation later
-        viz_label = ttk.Label(self.visualization_tab, 
-                             text="Visualization features coming soon!", 
-                             font=('Segoe UI', 14))
+        viz_label = ttk.Label(
+            self.visualization_tab,
+            text="3D visualization — coming soon",
+            style="SubHeader.TLabel",
+        )
         viz_label.pack(expand=True, pady=50)
     
     def setup_monitoring_tab(self):
         """Set up the monitoring tab."""
-        # Top control panel
-        control_frame = ttk.Frame(self.monitoring_tab)
-        control_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        toolbar = ttk.Frame(self.monitoring_tab, style="Toolbar.TFrame", padding=(12, 10))
+        toolbar.pack(side=tk.TOP, fill=tk.X, padx=0, pady=(0, 8))
+
+        control_frame = toolbar
         
         # Left controls
         left_controls = ttk.Frame(control_frame)
@@ -441,13 +425,9 @@ class TheEyesGUI(tk.Tk):
                                      command=self.take_screenshot)
         screenshot_button.pack(side=tk.LEFT, padx=5, pady=5)
         
-        # Create a separator
-        separator = ttk.Separator(self.monitoring_tab, orient=tk.HORIZONTAL)
-        separator.pack(fill=tk.X, padx=5, pady=2)
-        
-        # Create frame for camera views with border
-        camera_container = ttk.LabelFrame(self.monitoring_tab, text="Camera Feeds")
-        camera_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Create frame for camera views
+        camera_container = ttk.LabelFrame(self.monitoring_tab, text="Camera feeds", padding=(8, 6))
+        camera_container.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
         
         # Create a frame inside the container for the camera views
         self.camera_frame = ttk.Frame(camera_container)
@@ -1628,7 +1608,7 @@ class TheEyesGUI(tk.Tk):
                 output_dir = recording_config.get("output_dir", "recordings")
                 self.recorder = VideoRecorder(
                     output_dir=output_dir,
-                    codec=recording_config.get("codec", "mp4v"),
+                    codec=recording_config.get("codec", "avc1"),
                     fps=recording_config.get("fps", 30.0),
                     max_file_size_mb=recording_config.get("max_file_size_mb", 500),
                     max_duration_minutes=recording_config.get("max_duration_minutes", 60)

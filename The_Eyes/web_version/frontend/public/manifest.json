@@ -1,0 +1,9 @@
+{
+  "short_name": "The Eyes",
+  "name": "The Eyes - Home Surveillance",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#121212"
+}

@@ -343,13 +343,26 @@ export function bindWorkflow(onChange, onError) {
           const result = await api.learnFromChat(chatId);
           const saved = result.settings || result;
           updateChatInState(chatId, saved);
+          if (result.memories) {
+            workflowState.memoriesByChatId[chatId] = result.memories;
+          } else {
+            try {
+              const memResult = await api.getChatMemories(chatId, 5);
+              workflowState.memoriesByChatId[chatId] = memResult.memories || [];
+            } catch {
+              workflowState.memoriesByChatId[chatId] = [];
+            }
+          }
           workflowState.expandedChatId = chatId;
           renderReplyMode();
           const facts = result.learn?.facts?.length || 0;
           const msgs = result.learn?.message_count || 0;
           const note = result.learn?.degraded ? " (heuristic fallback)" : "";
+          const memCount = result.memories?.length;
+          const memPart =
+            memCount != null ? `, ${memCount} memories` : "";
           onChange?.(
-            `Learned from ${msgs} messages${facts ? `, ${facts} facts` : ""}${note}.`,
+            `Learned from ${msgs} messages${facts ? `, ${facts} facts` : ""}${memPart}${note}.`,
           );
         } catch (error) {
           onError?.(error.message);

@@ -71,8 +71,9 @@ class MotionDetector:
         # For frame differencing
         self.previous_frame = None
         
-        # Detection zones (list of rectangles: [(x, y, w, h), ...])
+        # Detection zones — pixel rects [(x, y, w, h), ...] or normalized [0-1] fractions
         self.detection_zones = []
+        self.normalized_detection_zones: List[Tuple[float, float, float, float]] = []
         
         # Motion event callbacks
         self.motion_callbacks: List[Callable] = []
@@ -94,10 +95,35 @@ class MotionDetector:
         self.detection_zones.append((x, y, width, height))
         self.logger.info(f"Added detection zone: ({x}, {y}, {width}, {height})")
     
+    def set_normalized_detection_zones(
+        self, zones: List[Tuple[float, float, float, float]]
+    ):
+        """Replace zones with normalized [x, y, w, h] fractions (0-1)."""
+        self.detection_zones.clear()
+        self.normalized_detection_zones = [
+            (float(x), float(y), float(w), float(h)) for x, y, w, h in zones
+        ]
+        self.logger.info(f"Set {len(self.normalized_detection_zones)} normalized detection zone(s)")
+
     def clear_detection_zones(self):
         """Clear all detection zones."""
         self.detection_zones.clear()
+        self.normalized_detection_zones.clear()
         self.logger.info("Cleared all detection zones")
+
+    def _pixel_zones_for_frame(self, frame_w: int, frame_h: int) -> List[Tuple[int, int, int, int]]:
+        """Resolve pixel zones from normalized coords for the given frame size."""
+        if self.normalized_detection_zones:
+            return [
+                (
+                    int(x * frame_w),
+                    int(y * frame_h),
+                    max(1, int(w * frame_w)),
+                    max(1, int(h * frame_h)),
+                )
+                for x, y, w, h in self.normalized_detection_zones
+            ]
+        return list(self.detection_zones)
     
     def add_motion_callback(self, callback: Callable):
         """
@@ -142,10 +168,14 @@ class MotionDetector:
             motion_mask = self.bg_subtractor.apply(blurred)
         
         # Apply detection zones if any are defined
-        if self.detection_zones:
+        frame_h, frame_w = motion_mask.shape[:2]
+        pixel_zones = self._pixel_zones_for_frame(frame_w, frame_h)
+        if pixel_zones:
             zone_mask = np.zeros_like(motion_mask)
-            for x, y, w, h in self.detection_zones:
-                zone_mask[y:y+h, x:x+w] = 255
+            for x, y, w, h in pixel_zones:
+                x2 = min(x + w, frame_w)
+                y2 = min(y + h, frame_h)
+                zone_mask[y:y2, x:x2] = 255
             motion_mask = cv2.bitwise_and(motion_mask, zone_mask)
         
         # Apply morphological operations to reduce noise
@@ -223,7 +253,8 @@ class MotionDetector:
             Frame with zones drawn
         """
         result = frame.copy()
-        for x, y, w, h in self.detection_zones:
+        frame_h, frame_w = frame.shape[:2]
+        for x, y, w, h in self._pixel_zones_for_frame(frame_w, frame_h):
             cv2.rectangle(result, (x, y), (x + w, y + h), (0, 255, 255), 2)
             cv2.putText(result, "Zone", (x, y - 5), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
@@ -260,7 +291,7 @@ class MotionDetector:
             'last_motion_time': self.last_motion_time,
             'motion_count': self.motion_count,
             'total_frames_processed': self.total_frames_processed,
-            'detection_zones': len(self.detection_zones),
+            'detection_zones': len(self.normalized_detection_zones) or len(self.detection_zones),
             'method': self.method.value,
             'sensitivity': self.sensitivity
         }

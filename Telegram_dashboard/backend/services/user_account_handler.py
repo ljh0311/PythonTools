@@ -32,6 +32,7 @@ def _chat_title_from_entity(entity: Any) -> str | None:
 async def handle_mtproto_message(
     event: events.NewMessage.Event,
     account_user_id: int,
+    account_user: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     text = (event.message.message or event.message.text or "").strip()
     if not text and event.message.media:
@@ -47,25 +48,24 @@ async def handle_mtproto_message(
     chat_id = event.chat_id
     direction = "outgoing" if event.out else "incoming"
 
-    if direction == "outgoing":
+    sender = await event.get_sender()
+    if isinstance(sender, User):
+        sender_id = sender.id
+        username = sender.username
+        user_payload = {
+            "id": sender.id,
+            "username": sender.username,
+            "first_name": sender.first_name,
+            "last_name": sender.last_name,
+        }
+    elif direction == "outgoing":
         sender_id = account_user_id
+        username = account_user.get("username") if account_user else None
+        user_payload = account_user
+    else:
+        sender_id = event.sender_id or 0
         username = None
         user_payload = None
-    else:
-        sender = await event.get_sender()
-        if isinstance(sender, User):
-            sender_id = sender.id
-            username = sender.username
-            user_payload = {
-                "id": sender.id,
-                "username": sender.username,
-                "first_name": sender.first_name,
-                "last_name": sender.last_name,
-            }
-        else:
-            sender_id = event.sender_id or 0
-            username = None
-            user_payload = None
 
     chat_title = _chat_title_from_entity(chat)
     if chat_type == "private" and direction == "outgoing":

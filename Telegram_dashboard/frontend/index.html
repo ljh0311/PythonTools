@@ -157,7 +157,7 @@
             <div class="inbox-main card">
               <div class="inbox-toolbar">
                 <input id="inbox-search" type="search" placeholder="Search messages…" aria-label="Search messages" />
-                <input id="inbox-topics" type="search" list="topic-suggestions" placeholder="Topic filter…" aria-label="Filter by topics" />
+                <input id="inbox-topics" type="search" list="topic-suggestions" placeholder="Related topics… (e.g. car, billing)" aria-label="Filter by topics" />
                 <datalist id="topic-suggestions"></datalist>
                 <button id="inbox-backfill-topics" class="btn btn-ghost btn-sm" type="button" title="Tag recent messages with AI">Generate AI tags</button>
                 <button id="toggle-filters" class="btn btn-ghost btn-sm" type="button" aria-expanded="false" aria-controls="advanced-filters">
@@ -230,10 +230,12 @@
                   <option value="bullets">Bullets</option>
                   <option value="unanswered">Unanswered</option>
                 </select>
+                <button id="btn-intel" class="btn btn-ghost btn-sm" type="button">Conversation intel</button>
                 <button id="btn-summarize" class="btn btn-primary btn-sm" type="button">Summarize</button>
                 <button id="btn-suggest" class="btn btn-ghost btn-sm" type="button">Suggest</button>
               </div>
               <div id="summary-panel" class="insight-panel" hidden></div>
+              <div id="intel-panel" class="insight-panel" hidden></div>
               <div id="suggestions-panel" class="insight-panel" hidden></div>
             </aside>
           </div>

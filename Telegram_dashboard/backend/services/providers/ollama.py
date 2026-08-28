@@ -19,6 +19,16 @@ class OllamaProvider:
     def configured(self) -> bool:
         return bool(self.base_url and self.model)
 
+    def _model_installed(self, names: list[str]) -> bool:
+        target = self.model.lower()
+        for name in names:
+            lowered = name.lower()
+            if lowered == target or lowered.startswith(f"{target}:"):
+                return True
+            if lowered.split(":", 1)[0] == target:
+                return True
+        return False
+
     async def is_available(self) -> bool:
         if not self.configured:
             return False
@@ -26,7 +36,11 @@ class OllamaProvider:
             async with httpx.AsyncClient(timeout=5) as client:
                 host = self.base_url.removesuffix("/v1")
                 response = await client.get(f"{host}/api/tags")
-                return response.status_code == 200
+                if response.status_code != 200:
+                    return False
+                models = response.json().get("models", [])
+                names = [m.get("name", "") for m in models if m.get("name")]
+                return self._model_installed(names)
         except Exception:
             return False
 

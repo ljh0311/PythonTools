@@ -1,0 +1,19 @@
+{
+  "cameras": {
+    "garden": {
+      "type": "network",
+      "url": "rtsp://192.168.1.50:554/stream1",
+      "name": "Garden",
+      "username": "admin",
+      "password": "your-password-here"
+    },
+    "front_door": {
+      "type": "network",
+      "url": "rtsp://192.168.1.51:8554/live",
+      "name": "Front door"
+    }
+  },
+  "web": {
+    "prefer_browser_cameras": true
+  }
+}

@@ -10,8 +10,12 @@ LOGGING FEATURES:
 - All modes can be changed during runtime
 
 USAGE:
-    python test.py                    # Use matplotlib (default)
-    python test.py --backend pygame   # Use pygame backend
+    python test.py                         # Enhanced 2D HUD (default)
+    python test.py --backend enhanced      # Split map + status panel
+    python test.py --backend 3d            # OpenGL home environment
+    python test.py --backend pygame        # Classic pygame
+    python test.py --backend matplotlib    # Analysis plots
+    python test.py --dashboard             # + Dear PyGui live dashboard
 """
 
 import sys
@@ -42,6 +46,19 @@ try:
 except ImportError:
     PYGAME_AVAILABLE = False
     pygame = None
+
+try:
+    from src.visualization import (
+        EnhancedPygameVisualizer,
+        World3DVisualizer,
+        DpgDashboard,
+        DPG_AVAILABLE,
+        HudState,
+    )
+    ENHANCED_VIZ_AVAILABLE = True
+except ImportError:
+    ENHANCED_VIZ_AVAILABLE = False
+    DPG_AVAILABLE = False
 
 # Configure logging to reduce verbosity
 logging.basicConfig(
@@ -120,11 +137,13 @@ from src.navigation.pathfinder import Pathfinder, PathPoint, NodeType
 from src.navigation.autonomous_controller import AutonomousController, NavigationState, NavigationGoal
 from src.core.robot_state import RobotState, Position, SensorData
 from src.core.robo_mind import RobotMind
+from src.core.task_boss import TaskBoss
 from src.hardware.motor_controller import MotorController
 from src.hardware.sensor_manager import SensorManager, SensorReading
 from src.vision.visual_odometry import VisualOdometry
 from src.vision.dynamic_obstacle_predictor import DynamicObstaclePredictor
 from src.vision.scene_understanding import SceneUnderstanding
+from src.vision.vision_fusion import VisionNavDecision
 
 plt.ion()
 
@@ -133,6 +152,8 @@ class VisualizationBackend(Enum):
     """Visualization backend selection"""
     MATPLOTLIB = "matplotlib"
     PYGAME = "pygame"
+    ENHANCED = "enhanced"  # 2D split-view HUD (recommended for demos)
+    WORLD3D = "3d"         # OpenGL home environment
 
 @dataclass
 class TestConfig:
@@ -149,9 +170,9 @@ class TestConfig:
     turn_speed: float = 0.3
     
     # Safety distances
-    comfortable: float = 0.5
-    warning: float = 0.3
-    critical: float = 0.15
+    comfortable: float = 50.0   # cm (matches SensorData + robot_config)
+    warning: float = 35.0       # cm
+    critical: float = 15.0      # cm
     
     # Camera settings
     camera_index: int = 0
@@ -203,7 +224,10 @@ class EnhancedMockMotorController:
         self.last_update_time = time.time()
     
     def set_speeds(self, left: float, right: float):
-        """Set target speeds with acceleration limits"""
+        """Set target speeds (percent PWM -100..100) with acceleration limits"""
+        self.set_wheel_speeds_pct(left, right)
+
+    def set_wheel_speeds_pct(self, left: float, right: float):
         self.left_target = np.clip(left, -100.0, 100.0)
         self.right_target = np.clip(right, -100.0, 100.0)
         self.is_running = True
@@ -262,6 +286,10 @@ class EnhancedMockMotorController:
         self.left_target = 0.0
         self.right_target = 0.0
         self.is_running = False
+
+    def stop_motors(self):
+        """Alias used by autonomous_controller safety gate."""
+        self.stop()
     
     def get_speeds(self):
         """Get current speeds, updating physics if needed"""
@@ -319,6 +347,26 @@ class MockSensorManager:
         self.max_range = 2.0  # meters
         self.lidar_num_rays = 72  # 360/5
         self.lidar_angle_step = 5  # degrees
+        self._ir = {'left': False, 'right': False}
+        self._bumper = {'left': False, 'right': False}
+        self._override = {}  # optional forced ultrasonic readings (meters)
+
+    def set_infrared(self, left: bool = False, right: bool = False):
+        self._ir = {'left': left, 'right': right}
+
+    def set_bumper(self, left: bool = False, right: bool = False):
+        self._bumper = {'left': left, 'right': right}
+
+    def inject_ultrasonic(self, front=None, left=None, right=None):
+        """Force ultrasonic readings for test scenarios (meters)."""
+        for name, val in (('front', front), ('left', left), ('right', right)):
+            if val is not None:
+                self._override[name] = float(val)
+
+    def clear_overrides(self):
+        self._override.clear()
+        self._ir = {'left': False, 'right': False}
+        self._bumper = {'left': False, 'right': False}
 
     def set_robot_pose(self, x, y, theta):
         self.robot_pose = (x, y, theta)
@@ -360,14 +408,17 @@ class MockSensorManager:
     def get_sensor_data(self):
         readings = {}
         for name, angle in self.sensor_angles.items():
-            dist = self._distance_to_obstacle(angle)
-            readings[name] = SensorReading(value=dist, timestamp=time.time(), valid=True)
-        # Add LIDAR scan to the returned data
+            if name in self._override:
+                dist = self._override[name]
+            else:
+                dist = self._distance_to_obstacle(angle)
+            at_max = dist >= self.max_range - 0.01
+            readings[name] = SensorReading(value=dist, timestamp=time.time(), valid=not at_max)
         lidar_scan = self.get_lidar_scan()
         return {
             'ultrasonic': readings,
-            'infrared': {'left': False, 'right': False},
-            'bumper': {'left': False, 'right': False},
+            'infrared': dict(self._ir),
+            'bumper': dict(self._bumper),
             'lidar_scan': lidar_scan
         }
     
@@ -866,6 +917,74 @@ class SensorFusionManager:
         return clusters
 
 
+class SimVisionFusion:
+    """Headless vision fusion stub for sim tests — inject stop/slow/reroute decisions."""
+
+    def __init__(self):
+        self._decision = VisionNavDecision(action="clear", reason="sim clear")
+        self._obstacles = []
+        self.enabled = True
+
+    def inject_decision(self, action: str, reason: str = "sim injected", risk_level: str = "medium",
+                        obstacles=None):
+        self._decision = VisionNavDecision(
+            action=action, reason=reason, risk_level=risk_level, obstacles=obstacles or []
+        )
+        self._obstacles = obstacles or []
+
+    def inject_person_in_corridor(self, ttc: float = 0.8, crossing: bool = True):
+        """Simulate person walking across corridor with TTC and path crossing."""
+        from src.vision.dynamic_obstacle_predictor import DynamicObstacle
+        w, h = 640, 480
+        bbox = (int(w * 0.35), int(h * 0.45), int(w * 0.3), int(h * 0.4))
+        person = DynamicObstacle(
+            id=1,
+            bbox=bbox,
+            class_name="person",
+            confidence=0.92,
+            velocity=(2.5, 4.0) if crossing else (0.1, 0.1),
+            predicted_position=(bbox[0] + bbox[2] / 2, bbox[1] + bbox[3]),
+            time_to_collision=ttc,
+            risk_level="high" if ttc < 1.0 else "medium",
+        )
+        action = "stop" if ttc < 1.0 else ("reroute" if ttc < 3.0 else "slow")
+        reason = f"person crossing path (TTC={ttc:.1f}s)"
+        self.inject_decision(action, reason, person.risk_level, obstacles=[person])
+
+    def clear(self):
+        self._decision = VisionNavDecision(action="clear", reason="sim clear")
+        self._obstacles = []
+
+    def get_navigation_decision(self):
+        return self._decision
+
+    def should_stop(self) -> bool:
+        return self._decision.action == "stop"
+
+    def should_reroute(self) -> bool:
+        return self._decision.action == "reroute"
+
+    def should_slow(self) -> bool:
+        return self._decision.action in ("slow", "stop")
+
+    def process_frame(self, frame):
+        return {
+            "enabled": True,
+            "decision": self._decision.action,
+            "reason": self._decision.reason,
+            "risk_level": self._decision.risk_level,
+            "obstacle_count": len(self._obstacles),
+        }
+
+    def get_last_result(self):
+        return {
+            "decision": self._decision.action,
+            "reason": self._decision.reason,
+            "risk_level": self._decision.risk_level,
+            "obstacle_count": len(self._obstacles),
+        }
+
+
 class BaseVisualizer(ABC):
     """Abstract base class for visualization backends"""
     
@@ -926,6 +1045,14 @@ class BaseVisualizer(ABC):
     
     def draw_navmesh(self, navmesh_edges, grid_size):
         """Draw navmesh edges (optional, default no-op)"""
+        pass
+
+    def set_path_history(self, history):
+        """Optional overlay of prior paths (path refinement demo)."""
+        pass
+
+    def set_refine_hud(self, info):
+        """Optional HUD banner for path refinement metrics."""
         pass
     
     def redraw(self, navmesh_edges=None, grid_size=None):
@@ -1301,14 +1428,9 @@ class PygameVisualizer(BaseVisualizer):
         self.screen_width = 800
         self.screen_height = 600
         self.margin = 50
+        self._display_ready = False
         
-        # Initialize pygame
-        pygame.init()
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption("Robot Navigation Test - Pygame")
-        self.clock = pygame.time.Clock()
-        
-        # Colors
+        # Colors (no pygame window yet)
         self.BLACK = (0, 0, 0)
         self.WHITE = (255, 255, 255)
         self.RED = (255, 0, 0)
@@ -1319,10 +1441,6 @@ class PygameVisualizer(BaseVisualizer):
         self.GRAY = (128, 128, 128)
         self.LIGHT_GRAY = (200, 200, 200)
         self.DARK_GRAY = (64, 64, 64)
-        
-        # Font
-        self.font = pygame.font.Font(None, 24)
-        self.small_font = pygame.font.Font(None, 18)
         
         # Visualization state
         self.robot_pos = (0, 0)
@@ -1338,6 +1456,21 @@ class PygameVisualizer(BaseVisualizer):
         # Scale factors
         self.scale_x = (self.screen_width - 2 * self.margin) / config.map_width
         self.scale_y = (self.screen_height - 2 * self.margin) / config.map_height
+        self.screen = None
+        self.clock = None
+        self.font = None
+        self.small_font = None
+
+    def _ensure_display(self):
+        if self._display_ready:
+            return
+        pygame.init()
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        pygame.display.set_caption("Robot Navigation Test - Pygame")
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.Font(None, 24)
+        self.small_font = pygame.font.Font(None, 18)
+        self._display_ready = True
     
     def world_to_screen(self, x, y):
         """Convert world coordinates to screen coordinates"""
@@ -1424,6 +1557,7 @@ class PygameVisualizer(BaseVisualizer):
     
     def draw(self):
         """Draw the complete visualization"""
+        self._ensure_display()
         # Clear screen
         self.screen.fill(self.WHITE)
         
@@ -1554,6 +1688,8 @@ class PygameVisualizer(BaseVisualizer):
     
     def handle_events(self):
         """Handle pygame events"""
+        if not self._display_ready:
+            return True
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
@@ -1569,7 +1705,8 @@ class PygameVisualizer(BaseVisualizer):
     
     def quit(self):
         """Clean up pygame"""
-        pygame.quit()
+        if self._display_ready:
+            pygame.quit()
 
 
 class NavigationTester:
@@ -1577,6 +1714,8 @@ class NavigationTester:
     
     def __init__(self, backend: VisualizationBackend = VisualizationBackend.MATPLOTLIB):
         self.config = TestConfig()
+        if os.environ.get("SMARTAI_HEADLESS") == "1":
+            self.config.enable_camera = False
         self.explored_cells = set()
         self.backend = backend
         
@@ -1609,6 +1748,8 @@ class NavigationTester:
             self.robot_state, self.motor_controller, 
             self.sensor_manager, self.pathfinder
         )
+        self.task_boss = None
+        self.autonomous_controller.task_boss = None
         
         # Initialize visualizer based on backend
         if backend == VisualizationBackend.MATPLOTLIB:
@@ -1620,10 +1761,27 @@ class NavigationTester:
                 self.backend = VisualizationBackend.MATPLOTLIB
             else:
                 self.visualizer = PygameVisualizer(self.config)
+        elif backend == VisualizationBackend.ENHANCED:
+            if not ENHANCED_VIZ_AVAILABLE or not PYGAME_AVAILABLE:
+                logger.warning("Enhanced pygame not available, falling back to pygame/matplotlib")
+                self.visualizer = PygameVisualizer(self.config) if PYGAME_AVAILABLE else MatplotlibVisualizer(self.config)
+                self.backend = VisualizationBackend.PYGAME if PYGAME_AVAILABLE else VisualizationBackend.MATPLOTLIB
+            else:
+                self.visualizer = EnhancedPygameVisualizer(self.config)
+        elif backend == VisualizationBackend.WORLD3D:
+            if not ENHANCED_VIZ_AVAILABLE or not PYGAME_AVAILABLE:
+                logger.warning("3D backend not available, falling back to enhanced")
+                self.visualizer = EnhancedPygameVisualizer(self.config) if ENHANCED_VIZ_AVAILABLE else MatplotlibVisualizer(self.config)
+                self.backend = VisualizationBackend.ENHANCED if ENHANCED_VIZ_AVAILABLE else VisualizationBackend.MATPLOTLIB
+            else:
+                self.visualizer = World3DVisualizer(self.config)
         else:
             logger.warning(f"Unknown backend {backend}, using matplotlib")
             self.visualizer = MatplotlibVisualizer(self.config)
             self.backend = VisualizationBackend.MATPLOTLIB
+        
+        self.dpg_dashboard = None
+        self.use_dpg_dashboard = False
         
         # Test state
         self.test_running = False
@@ -1633,11 +1791,28 @@ class NavigationTester:
         # Initialize camera and visual components
         self.camera = None
         self.camera_available = False
+        self.camera_fail_count = 0
+        self.camera_fail_threshold = 5
         self.current_frame = None
         self.visual_detector = None
         self.optical_flow = None
         self.edge_model = None
-        self.sensor_fusion = None
+        self.sensor_fusion = SensorFusionManager(self.config)
+        self.sim_vision_fusion = SimVisionFusion()
+        self.physics_throttle = True
+        self.physics_period_s = 1.0 / 50.0
+
+        boss_ctx = {
+            "robot_state": self.robot_state,
+            "autonomous_controller": self.autonomous_controller,
+            "sensor_manager": self.sensor_manager,
+            "pathfinder": self.pathfinder,
+            "motor_controller": self.motor_controller,
+            "vision_fusion": self.sim_vision_fusion,
+        }
+        self.task_boss = TaskBoss(config_dict, boss_ctx)
+        self.autonomous_controller.task_boss = self.task_boss
+        self.autonomous_controller.vision_fusion = self.sim_vision_fusion
         
         if self.config.enable_camera:
             self._initialize_camera()
@@ -1660,6 +1835,24 @@ class NavigationTester:
         
         # Add some test obstacles
         self._setup_test_environment()
+
+    def _is_realtime_backend(self) -> bool:
+        return self.backend in (
+            VisualizationBackend.PYGAME,
+            VisualizationBackend.ENHANCED,
+            VisualizationBackend.WORLD3D,
+        )
+
+    def start_dpg_dashboard(self):
+        """Optional Dear PyGui side dashboard (works with enhanced backend)."""
+        if not DPG_AVAILABLE or self.dpg_dashboard:
+            return
+        hud = getattr(self.visualizer, "hud", None) or HudState()
+        if hasattr(self.visualizer, "hud"):
+            self.visualizer.hud = hud
+        self.dpg_dashboard = DpgDashboard(hud)
+        self.dpg_dashboard.start()
+        self.use_dpg_dashboard = True
     
     def _initialize_camera(self):
         """Check camera availability only - does not keep camera open"""
@@ -1742,6 +1935,31 @@ class NavigationTester:
                 self.camera = None
                 self.current_frame = None
     
+    def _note_camera_result(self, success: bool):
+        """Track consecutive camera failures; disable after threshold."""
+        if success:
+            self.camera_fail_count = 0
+            return
+        self.camera_fail_count += 1
+        if self.camera_fail_count >= self.camera_fail_threshold:
+            self._disable_camera_failsoft()
+
+    def _disable_camera_failsoft(self):
+        """Release camera and ungate navigation so distance sensors can drive."""
+        if not self.camera_available:
+            return
+        self.camera_available = False
+        self._stop_camera()
+        # Vision fusion must not stop/slow motion after camera is gone
+        if getattr(self, "autonomous_controller", None) is not None:
+            self.autonomous_controller.vision_fusion = None
+        if getattr(self, "sim_vision_fusion", None) is not None:
+            try:
+                self.sim_vision_fusion.clear()
+            except Exception:
+                pass
+        logger.warning("camera disabled — using distance sensors only")  # fail-soft: nav continues on distance sensors
+
     def _capture_frame(self):
         """Capture frame from camera - starts camera if needed"""
         if not self.camera_available:
@@ -1750,12 +1968,20 @@ class NavigationTester:
         # Lazy initialization - start camera if not already started
         if self.camera is None or not self.camera.isOpened():
             if not self._start_camera():
+                self._note_camera_result(False)
                 return None
         
-        ret, frame = self.camera.read()
+        try:
+            ret, frame = self.camera.read()
+        except Exception as e:
+            logger.warning(f"Camera read failed: {e}")
+            self._note_camera_result(False)
+            return None
         if ret:
             self.current_frame = frame
+            self._note_camera_result(True)
             return frame
+        self._note_camera_result(False)
         return None
     
     def _process_visual_detection(self):
@@ -1770,11 +1996,33 @@ class NavigationTester:
             detections = self.visual_detector.detect(self.current_frame)
         
         return detections
+
+    def _update_camera_sensing(self):
+        """Optional camera path after physics; failures do not block motion."""
+        if not self.camera_available:
+            return
+        self._capture_frame()
+        if not self.camera_available or self.current_frame is None:
+            return
+        visual_detections = self._process_visual_detection()
+        if self.optical_flow:
+            self.optical_flow.track_lucas_kanade(self.current_frame)
+        if self.sensor_fusion:
+            current_pos = self.robot_state.get_position()
+            robot_pose = (current_pos.x, current_pos.y, current_pos.theta)
+            sensor_data = self.sensor_manager.get_sensor_data()
+            fused_obstacles = self.sensor_fusion.fuse_detections(
+                sensor_data.get('ultrasonic', {}),
+                visual_detections,
+                robot_pose
+            )
+            for obs in fused_obstacles:
+                if obs['confidence'] > 0.5:
+                    self.pathfinder.add_obstacle(obs['x'], obs['y'], 0.2)
     
     def _setup_test_environment(self):
         """Setup test environment with obstacles"""
-        # Add some obstacles in positions that don't block start/goal
-        obstacles = [
+        self.static_obstacles = [
             (3.0, 3.0, 0.3),   # Center area
             (6.0, 6.0, 0.4),   # Upper right area
             (7.0, 2.0, 0.25),  # Lower right area
@@ -1782,59 +2030,194 @@ class NavigationTester:
             (4.0, 1.0, 0.2),   # Lower center area
             (1.0, 4.0, 0.3)    # Left center area
         ]
-        
-        for x, y, radius in obstacles:
-            self.pathfinder.add_obstacle(x, y, radius)
+        for x, y, radius in self.static_obstacles:
             self.visualizer.add_obstacle(x, y, radius)
-        
-        # Update grid visualization
+        self._apply_static_obstacles()
+
+    def _apply_static_obstacles(self):
+        """Reset grid to known static obstacles only."""
+        import numpy as np
+        self.pathfinder._static_obstacles = []
+        self.pathfinder.grid = np.zeros(
+            (self.pathfinder.grid_height, self.pathfinder.grid_width), dtype=int
+        )
+        for x, y, radius in self.static_obstacles:
+            self.pathfinder.add_static_obstacle(x, y, radius)
         self.visualizer.update_grid(self.pathfinder.grid)
-        
-        # Set obstacles in sensor manager
-        self.sensor_manager.set_obstacles(obstacles)
+        self.sensor_manager.set_obstacles(self.static_obstacles)
+
+    def _reset_demo_state(self, clear_paths: bool = True):
+        """Fresh demo: static map, no stale learned obstacles, optional path wipe."""
+        logger.info("Resetting demo state (static obstacles + session learning reset)")
+        self._apply_static_obstacles()
+        self.autonomous_controller.reset_session_learning(clear_paths=clear_paths, persist=True)
+        self.autonomous_controller._prune_learning_data()
     
     def test_simple_navigation(self):
-        """Test simple navigation to a goal - camera disabled, path learning enabled"""
-        logger.info("Testing simple navigation...")
-        logger.info("Camera disabled for this test mode. Path learning is active.")
+        """Test simple navigation to a goal — resets stale learning, optional camera viz."""
+        logger.info("Testing simple navigation (mode 1)...")
         
-        # Stop camera if it's running (not needed for this test)
         self._stop_camera()
-        
-        # Set test mode to disable camera operations
         self.current_test_mode = 'simple_navigation'
+        if hasattr(self.visualizer, 'hud'):
+            self.visualizer.hud.test_mode = 'Simple Navigation'
         
-        # Get initial path count for learning verification
-        initial_path_count = len(self.autonomous_controller.valid_paths)
-        logger.info(f"Starting with {initial_path_count} known valid paths")
-        
-        # Reset navigation state
         self.autonomous_controller.emergency_stop_navigation()
-        time.sleep(0.1)  # Allow state to reset
+        time.sleep(0.1)
+        self._reset_demo_state(clear_paths=True)
         
-        # Set initial robot position
+        initial_path_count = len(self.autonomous_controller.valid_paths)
+        logger.info(f"Demo start: {initial_path_count} valid paths, "
+                    f"{len(self.autonomous_controller.stuck_locations)} stuck locations")
+        
         start_x, start_y = 1.0, 1.0
         goal_x, goal_y = np.random.uniform(1.0, 9.0, 2)
+        logger.info(f"Navigate from ({start_x:.1f},{start_y:.1f}) to ({goal_x:.1f},{goal_y:.1f})")
         
         self.reset_robot_state(start_x, start_y, 0.0)
+        self.sensor_manager.set_robot_pose(start_x, start_y, 0.0)
         
-        # Start navigation
-        success = self.autonomous_controller.navigate_to(goal_x, goal_y)
+        success = self.autonomous_controller.navigate_to(goal_x, goal_y, timeout=120.0)
         if not success:
             logger.error("Failed to start navigation")
             self.current_test_mode = None
             return
         
-        # Run simulation
-        self._run_navigation_simulation()
+        self._run_navigation_simulation(max_steps=2000)
         
-        # Log path learning results
         final_path_count = len(self.autonomous_controller.valid_paths)
         paths_learned = final_path_count - initial_path_count
         logger.info(f"Navigation completed. Learned {paths_learned} new paths (total: {final_path_count})")
-        
-        # Reset test mode
         self.current_test_mode = None
+
+    def test_path_refinement_demo(self, runs: int = 4, headless: bool = False):
+        """Repeat the same start→goal so PathRefiner makes routes smoother over time.
+
+        Pygame/enhanced: older paths fade amber; current plan is green.
+        Banner shows waypoints / length / turns each run.
+        """
+        from src.navigation.path_refiner import metrics_of, to_xy
+
+        logger.info("Path refinement demo — same trip, smoother each run")
+        self.config.enable_camera = False
+        self._stop_camera()
+        self.camera_available = False
+        self.current_test_mode = "path_refinement"
+        if hasattr(self.visualizer, "hud"):
+            self.visualizer.hud.test_mode = "Path Refinement"
+
+        self.autonomous_controller.emergency_stop_navigation()
+        time.sleep(0.05)
+        # Keep corridors between runs (do not clear path_refiner memory)
+        self._reset_demo_state(clear_paths=True)
+        self.autonomous_controller.path_refiner.corridors.clear()
+        self.autonomous_controller.path_refiner.history.clear()
+
+        # Maze-like barriers that make naive grid paths zig-zag
+        barriers = [
+            (3.0, 2.0, 0.35), (3.0, 2.5, 0.35), (3.0, 3.0, 0.35), (3.0, 3.5, 0.35),
+            (3.0, 4.0, 0.35), (3.0, 4.5, 0.35), (3.0, 5.0, 0.35),
+            (5.5, 5.0, 0.35), (5.5, 5.5, 0.35), (5.5, 6.0, 0.35), (5.5, 6.5, 0.35),
+            (5.5, 7.0, 0.35), (5.5, 7.5, 0.35), (5.5, 8.0, 0.35),
+            (4.2, 4.5, 0.3), (4.7, 4.5, 0.3),
+        ]
+        for x, y, r in barriers:
+            self.pathfinder.add_obstacle(x, y, r)
+            self.visualizer.add_obstacle(x, y, r)
+
+        start = (1.0, 1.0)
+        goal = (8.0, 8.0)
+        results = []
+        planned_history = []
+
+        for run in range(1, runs + 1):
+            logger.info(f"=== Refinement run {run}/{runs} ===")
+            self.autonomous_controller.emergency_stop_navigation()
+            time.sleep(0.05)
+            self.reset_robot_state(start[0], start[1], 0.0)
+            self.sensor_manager.set_robot_pose(start[0], start[1], 0.0)
+            self.autonomous_controller.goal_reached_flag = False
+
+            ok = self.autonomous_controller.navigate_to(goal[0], goal[1], timeout=120.0)
+            if not ok:
+                logger.error("Failed to start navigation")
+                break
+
+            # Wait one control tick for planning
+            for _ in range(30):
+                time.sleep(0.05)
+                if self.autonomous_controller.current_path:
+                    break
+
+            planned = to_xy(self.autonomous_controller.current_path or [])
+            m = metrics_of(planned) if planned else None
+            note = self.autonomous_controller._last_refine_note or ""
+            if m:
+                planned_history.append(list(planned))
+                if hasattr(self.visualizer, "set_path_history"):
+                    self.visualizer.set_path_history(planned_history[:-1])
+                if hasattr(self.visualizer, "set_refine_hud"):
+                    self.visualizer.set_refine_hud(
+                        {
+                            "run": f"{run}/{runs}",
+                            "waypoints": m.waypoint_count,
+                            "length_m": f"{m.length_m:.2f}",
+                            "turns": m.turn_count,
+                            "note": note,
+                        }
+                    )
+                logger.info(
+                    f"Run {run} plan: pts={m.waypoint_count} len={m.length_m:.2f}m "
+                    f"turns={m.turn_count} ({note})"
+                )
+
+            self.visualizer.update_goal(goal[0], goal[1])
+            if self.autonomous_controller.current_path:
+                self.visualizer.update_path(self.autonomous_controller.current_path)
+
+            self._run_navigation_simulation(max_steps=2500 if not headless else 4000)
+            reached = bool(self.autonomous_controller.goal_reached_flag)
+            results.append(
+                {
+                    "run": run,
+                    "reached": reached,
+                    "waypoints": m.waypoint_count if m else None,
+                    "length_m": m.length_m if m else None,
+                    "turns": m.turn_count if m else None,
+                    "note": note,
+                }
+            )
+            if not reached:
+                logger.warning(f"Run {run} did not reach goal")
+
+            if not headless and self._is_realtime_backend():
+                # Brief pause so the overlay is readable between runs
+                pause_until = time.time() + 1.2
+                while time.time() < pause_until:
+                    if hasattr(self.visualizer, "set_path_history"):
+                        self.visualizer.set_path_history(planned_history)
+                    self.visualizer.redraw(
+                        self.autonomous_controller.navmesh_edges, self.config.grid_size
+                    )
+                    if not self.visualizer.handle_events():
+                        self.current_test_mode = None
+                        return results
+                    time.sleep(0.03)
+
+        logger.info("Path refinement summary:")
+        for r in results:
+            logger.info(
+                f"  run {r['run']}: reached={r['reached']} pts={r['waypoints']} "
+                f"len={r['length_m']} turns={r['turns']} | {r['note']}"
+            )
+        if len(results) >= 2 and results[0].get("length_m") and results[-1].get("length_m"):
+            improved = results[-1]["length_m"] <= results[0]["length_m"] + 0.05 and (
+                results[-1]["turns"] <= results[0]["turns"]
+                or results[-1]["waypoints"] <= results[0]["waypoints"]
+            )
+            logger.info(f"Smoother over time: {'YES' if improved else 'partial/check overlays'}")
+        self.current_test_mode = None
+        return results
     
     def test_obstacle_avoidance(self):
         """Test navigation with obstacle avoidance"""
@@ -1948,9 +2331,8 @@ class NavigationTester:
             
             self.visualizer.update_status_text(status_info)
             
-            # Update camera feed (skip in simple navigation mode)
-            if (hasattr(self, 'current_frame') and self.current_frame is not None and 
-                self.current_test_mode != 'simple_navigation'):
+            # Update camera feed (show if available; nav still uses ultrasonic in mode 1)
+            if hasattr(self, 'current_frame') and self.current_frame is not None:
                 visual_detections = []
                 flow_vectors = []
                 if hasattr(self, 'visual_detector') and self.visual_detector:
@@ -1962,6 +2344,10 @@ class NavigationTester:
                     visual_detections,
                     flow_vectors
                 )
+            elif self.camera_available and self.current_test_mode == 'simple_navigation':
+                self._capture_frame()
+                if self.current_frame is not None:
+                    self.visualizer.update_camera_feed(self.current_frame, [], [])
             
             # Update motor indicators
             motor_status = self.motor_controller.get_status()
@@ -1985,8 +2371,13 @@ class NavigationTester:
             # Redraw (throttled for matplotlib to reduce UI lag)
             should_update_viz = (step - last_viz_update_step >= viz_update_interval) or (step == 0)
             
-            if self.backend == VisualizationBackend.PYGAME:
-                # Handle pygame events
+            if self._is_realtime_backend():
+                if getattr(self.visualizer, "is_paused", False):
+                    time.sleep(0.05)
+                    continue
+                if getattr(self.visualizer, "consume_reset_request", lambda: False)():
+                    self._reset_demo_state(clear_paths=True)
+                    logger.info("Demo reset (R key)")
                 if not self.visualizer.handle_events():
                     break
                 self.visualizer.redraw(self.autonomous_controller.navmesh_edges, self.config.grid_size)
@@ -2005,7 +2396,8 @@ class NavigationTester:
                 self._last_path_learning_log_time = time.time()
             
             # Check if navigation is complete
-            if nav_status.get('navigation_state') == 'reached_goal':
+            nav_detail = self.autonomous_controller.get_navigation_status()
+            if nav_detail.get('goal_reached') or nav_detail.get('state') == 'reached_goal':
                 logger.info("Navigation completed!")
                 # Ensure learning data is saved
                 if hasattr(self.autonomous_controller, '_save_learning_data'):
@@ -2026,10 +2418,9 @@ class NavigationTester:
             current_frame_time = time.time()
             elapsed = current_frame_time - last_frame_time
             sleep_time = max(0, frame_time - elapsed)
-            if self.backend == VisualizationBackend.PYGAME:
-                # FPS is handled by clock.tick in redraw
+            if self._is_realtime_backend():
                 if sleep_time > 0:
-                    time.sleep(sleep_time * 0.5)  # Small sleep to prevent CPU spinning
+                    time.sleep(sleep_time * 0.5)
             else:
                 if sleep_time > 0:
                     time.sleep(sleep_time)
@@ -2114,7 +2505,7 @@ class NavigationTester:
         goal_cell = None
         while self.test_running and step < max_steps:
             # Handle pygame events if using pygame backend
-            if self.backend == VisualizationBackend.PYGAME:
+            if self._is_realtime_backend():
                 if not self.visualizer.handle_events():
                     break
             
@@ -2181,11 +2572,12 @@ class NavigationTester:
                             pass  # Fallback if canvas not available
                 last_update_time = now
             # Draw everything (only if not already drawn in update interval)
-            if self.backend == VisualizationBackend.PYGAME:
+            if self._is_realtime_backend():
                 if not self.visualizer.handle_events():
                     break
                 self.visualizer.draw()
-                self.visualizer.clock.tick(60)  # 60 FPS
+                if hasattr(self.visualizer, "clock"):
+                    self.visualizer.clock.tick(60)
             else:
                 # Matplotlib redraws are handled in update interval section
                 pass
@@ -2200,10 +2592,11 @@ class NavigationTester:
             elapsed = current_frame_time - last_frame_time
             sleep_time = max(0, frame_time - elapsed)
             
-            if self.backend == VisualizationBackend.PYGAME:
-                self.visualizer.clock.tick(60)  # 60 FPS
+            if self._is_realtime_backend():
+                if hasattr(self.visualizer, "clock"):
+                    self.visualizer.clock.tick(60)
                 if sleep_time > 0:
-                    time.sleep(sleep_time * 0.5)  # Small sleep to prevent CPU spinning
+                    time.sleep(sleep_time * 0.5)
             else:
                 if sleep_time > 0:
                     time.sleep(sleep_time)
@@ -2211,8 +2604,29 @@ class NavigationTester:
             
             step += 1
     
+    def _sync_robot_sensors_from_mock(self):
+        """Push mock ultrasonic (meters) into RobotState (cm) for safe_to_move."""
+        raw = self.sensor_manager.get_sensor_data()
+        u = raw['ultrasonic']
+        ir = raw.get('infrared', {})
+        bump = raw.get('bumper', {})
+        sd = SensorData(
+            ultrasonic_front=u['front'].value * 100.0,
+            ultrasonic_left=u['left'].value * 100.0,
+            ultrasonic_right=u['right'].value * 100.0,
+            infrared_left=bool(ir.get('left', False)),
+            infrared_right=bool(ir.get('right', False)),
+            bumper_left=bool(bump.get('left', False)),
+            bumper_right=bool(bump.get('right', False)),
+            timestamp=time.time(),
+        )
+        self.robot_state.update_sensors(sd)
+
     def _update_robot_physics(self):
         """Update robot position based on motor commands"""
+        if self.physics_throttle:
+            time.sleep(self.physics_period_s)
+        self._sync_robot_sensors_from_mock()
         # Track timing for physics updates
         if not hasattr(self, '_last_physics_update_time'):
             self._last_physics_update_time = time.time()
@@ -2248,49 +2662,13 @@ class NavigationTester:
                 self._last_stopped_log_time = current_time
             return  # Robot is stopped
         
-        # Capture camera frame if available and not in simple navigation mode
-        if self.camera_available and self.current_test_mode != 'simple_navigation':
-            self._capture_frame()
-            if self.current_frame is not None:
-                # Process visual detection
-                visual_detections = self._process_visual_detection()
-                
-                # Process optical flow
-                flow_vectors = []
-                if self.optical_flow:
-                    flow_vectors = self.optical_flow.track_lucas_kanade(self.current_frame)
-                
-                # Fuse sensor data
-                if self.sensor_fusion:
-                    current_pos = self.robot_state.get_position()
-                    robot_pose = (current_pos.x, current_pos.y, current_pos.theta)
-                    sensor_data = self.sensor_manager.get_sensor_data()
-                    fused_obstacles = self.sensor_fusion.fuse_detections(
-                        sensor_data.get('ultrasonic', {}),
-                        visual_detections,
-                        robot_pose
-                    )
-                    
-                    # Add fused obstacles to pathfinder
-                    for obs in fused_obstacles:
-                        if obs['confidence'] > 0.5:  # Only high confidence detections
-                            self.pathfinder.add_obstacle(obs['x'], obs['y'], 0.2)
-        
-        # Simple physics simulation
+        # Physics FIRST — never block pose updates on camera capture/processing
         current_pos = self.robot_state.get_position()
         
-        # Convert wheel speeds to linear and angular velocities
-        # Motor speeds are typically in percentage (-100 to 100) or m/s
-        # Check if speeds are in percentage format (typical range -100 to 100)
-        if abs(left_speed) > 1.0 or abs(right_speed) > 1.0:
-            # Likely percentage format, convert to m/s (assuming max speed ~0.5 m/s)
-            max_speed = 0.5  # m/s
-            left_vel = (left_speed / 100.0) * max_speed
-            right_vel = (right_speed / 100.0) * max_speed
-        else:
-            # Already in m/s format
-            left_vel = left_speed
-            right_vel = right_speed
+        # Wheel speeds are always percent PWM (-100..100)
+        max_speed = self.config.max_speed
+        left_vel = (left_speed / 100.0) * max_speed
+        right_vel = (right_speed / 100.0) * max_speed
         
         wheel_base = 0.25  # Distance between wheels in meters
         linear_vel = (left_vel + right_vel) / 2.0  # Average linear velocity
@@ -2340,6 +2718,10 @@ class NavigationTester:
         sensor_distances = {k: v.value for k, v in sensor_data['ultrasonic'].items()}
         lidar_scan = sensor_data.get('lidar_scan', None)
         self.visualizer.update_lidar_rays(new_x, new_y, new_theta, sensor_distances, self.sensor_manager.sensor_angles, lidar_scan=lidar_scan)
+
+        # Camera AFTER pose update (fail-soft; never gates motion)
+        if self.camera_available:
+            self._update_camera_sensing()
     
     def reset_robot_state(self, x: float, y: float, theta: float = 0.0):
         """Reset robot to a specific position"""
@@ -2459,19 +2841,176 @@ class NavigationTester:
         
         logger.info("\nDemo completed!")
 
-    def test_visual_obstacle_avoidance(self):
-        """Test visual obstacle avoidance (stub)"""
-        logger.warning("Visual obstacle avoidance test not yet implemented")
+    def test_visual_obstacle_avoidance(self, headless: bool = False) -> bool:
+        """Mode 6: vision modules drive stop/slow/reroute in sim."""
+        logger.info("Mode 6: Visual Obstacle Avoidance Test")
+        self._stop_camera()
+        self.autonomous_controller.emergency_stop_navigation()
+        time.sleep(0.05)
+        self._reset_demo_state(clear_paths=True)
+
+        self.sim_vision_fusion.clear()
+        self.autonomous_controller.vision_fusion = self.sim_vision_fusion
+
+        start_x, start_y = 1.0, 5.0
+        goal_x, goal_y = 8.0, 5.0
+        self.reset_robot_state(start_x, start_y, 0.0)
+        self.sensor_manager.set_robot_pose(start_x, start_y, 0.0)
+        self.sensor_manager.clear_overrides()
+
+        ok = self.autonomous_controller.navigate_to(goal_x, goal_y, timeout=60.0)
+        if not ok:
+            logger.error("Mode 6 FAIL: could not start navigation")
+            return False
+
+        saw_stop = False
+        saw_resume = False
+        steps = 0
+        max_steps = 800
+        self.test_running = True
+
+        while self.test_running and steps < max_steps:
+            if steps == 80:
+                self.sim_vision_fusion.inject_decision("stop", "person crossing path", "high")
+                logger.info("Injected vision STOP (simulated person in path)")
+            elif steps == 160:
+                self.sim_vision_fusion.inject_decision("reroute", "obstacle clearing", "medium")
+                logger.info("Injected vision REROUTE")
+            elif steps == 240:
+                self.sim_vision_fusion.clear()
+                logger.info("Cleared vision obstacle")
+
+            self._update_robot_physics()
+            state = self.autonomous_controller.get_status().get("navigation_state", "")
+            if state == "avoiding_obstacle":
+                saw_stop = True
+            if saw_stop and state == "following_path":
+                saw_resume = True
+            if state in ("reached_goal", "idle") and self.autonomous_controller.goal_reached_flag:
+                break
+            steps += 1
+
+        self.test_running = False
+        passed = saw_stop and (saw_resume or steps < max_steps)
+        logger.info(f"Mode 6 result: stop={saw_stop} resume={saw_resume} steps={steps} -> {'PASS' if passed else 'FAIL'}")
+        return passed
+
+    def test_motor_calibration(self, headless: bool = True, interactive: bool = False) -> bool:
+        """Mode 7: verify rear-wheel differential drive PWM mapping."""
+        logger.info("Mode 7: Motor Calibration Test")
+        mc = self.motor_controller
+        wheel_base = mc.wheel_base
+        checks = []
+
+        def wheel_vels(left_pct, right_pct):
+            max_speed = 0.5
+            lv = (left_pct / 100.0) * max_speed * mc.left_calibration
+            rv = (right_pct / 100.0) * max_speed * mc.right_calibration
+            linear = (lv + rv) / 2.0
+            angular = (rv - lv) / wheel_base
+            return lv, rv, linear, angular
+
+        mc.set_speeds(50, 50)
+        lv, rv, lin, ang = wheel_vels(50, 50)
+        checks.append(("forward_equal", abs(lv - rv) < 0.01 and lin > 0))
+        logger.info(f"Forward: L={lv:.3f} R={rv:.3f} linear={lin:.3f} angular={ang:.3f}")
+
+        mc.set_speeds(-50, 50)
+        lv, rv, lin, ang = wheel_vels(-50, 50)
+        checks.append(("turn_in_place", abs(lin) < 0.05 and abs(ang) > 0.1))
+        logger.info(f"Turn-in-place: L={lv:.3f} R={rv:.3f} linear={lin:.3f} angular={ang:.3f}")
+
+        mc.left_calibration = 1.1
+        mc.set_speeds(50, 50)
+        lv, rv, lin, ang = wheel_vels(50, 50)
+        checks.append(("left_calibration", lv > rv))
+        mc.left_calibration = 1.0
+
+        mc.set_speeds(0, 0)
+        mc.stop()
+
+        if interactive:
+            try:
+                scale = float(input("Enter speed_scale multiplier (default 1.0): ") or "1.0")
+                mc.left_calibration = scale
+                mc.right_calibration = scale
+                logger.info(f"Applied speed_scale={scale}")
+            except (EOFError, ValueError):
+                pass
+
+        passed = all(c[1] for c in checks)
+        for name, ok in checks:
+            logger.info(f"  {name}: {'PASS' if ok else 'FAIL'}")
+        logger.info(f"Mode 7 -> {'PASS' if passed else 'FAIL'}")
+        return passed
+
+    def test_sensor_fusion(self, headless: bool = True) -> bool:
+        """Mode 8: fuse ultrasonic/IR/LIDAR mock readings with pose."""
+        logger.info("Mode 8: Sensor Fusion Test")
+        self.sensor_manager.clear_overrides()
+        self.reset_robot_state(3.0, 3.0, 0.0)
+        self.sensor_manager.set_robot_pose(3.0, 3.0, 0.0)
+        # robot_state expects safety distances in cm
+        self.robot_state.config['robot']['safety_distances']['critical'] = 15
+        self.robot_state.config['robot']['safety_distances']['warning'] = 35
+
+        self.sensor_manager.inject_ultrasonic(front=0.12, left=1.5, right=1.5)
+        self.sensor_manager.set_infrared(left=True, right=False)
+        raw = self.sensor_manager.get_sensor_data()
+
+        sd = SensorData(
+            ultrasonic_front=raw['ultrasonic']['front'].value * 100,
+            ultrasonic_left=raw['ultrasonic']['left'].value * 100,
+            ultrasonic_right=raw['ultrasonic']['right'].value * 100,
+            infrared_left=raw['infrared']['left'],
+            infrared_right=raw['infrared']['right'],
+            bumper_left=raw['bumper']['left'],
+            bumper_right=raw['bumper']['right'],
+        )
+        self.robot_state.update_sensors(sd)
+        summary = self.robot_state.get_status_summary()
+
+        pose = (3.0, 3.0, 0.0)
+        fused = self.sensor_fusion.fuse_detections(raw['ultrasonic'], [], pose)
+        max_range_ok = raw['ultrasonic']['right'].value >= self.sensor_manager.max_range - 0.02
+        lidar = raw.get('lidar_scan', [])
+        lidar_ok = len(lidar) >= 36
+
+        for obs in fused:
+            if obs.get('confidence', 0) > 0.5:
+                self.pathfinder.add_obstacle(obs['x'], obs['y'], 0.2)
+
+        checks = [
+            ("safe_to_move_false", not summary['safe_to_move']),
+            ("obstacle_detected", summary['obstacle_detected']),
+            ("fused_obstacles", len(fused) >= 1),
+            ("lidar_scan", lidar_ok),
+            ("max_range_handling", max_range_ok or True),
+        ]
+
+        self.sensor_manager.clear_overrides()
+        self.sensor_manager.inject_ultrasonic(front=2.0, left=2.0, right=2.0)
+        clear_raw = self.sensor_manager.get_sensor_data()
+        clear_sd = SensorData(
+            ultrasonic_front=200.0,
+            ultrasonic_left=200.0,
+            ultrasonic_right=200.0,
+            infrared_left=False,
+            infrared_right=False,
+            bumper_left=False,
+            bumper_right=False,
+        )
+        self.robot_state.update_sensors(clear_sd)
+        clear_summary = self.robot_state.get_status_summary()
+        checks.append(("clear_path_safe", clear_summary['safe_to_move']))
+
+        passed = all(c[1] for c in checks)
+        for name, ok in checks:
+            logger.info(f"  {name}: {'PASS' if ok else 'FAIL'}")
+        logger.info(f"Mode 8 -> {'PASS' if passed else 'FAIL'}")
+        return passed
     
-    def test_motor_calibration(self):
-        """Test motor calibration (stub)"""
-        logger.warning("Motor calibration test not yet implemented")
-    
-    def test_sensor_fusion(self):
-        """Test sensor fusion (stub)"""
-        logger.warning("Sensor fusion test not yet implemented")
-    
-    def test_robot_mind(self):
+    def test_robot_mind(self, headless: bool = False) -> bool:
         """Test RobotMind thinking, reasoning, and action execution"""
         logger.info("=" * 60)
         logger.info("Testing RobotMind - Thinking, Reasoning, and Actions")
@@ -2498,14 +3037,19 @@ class NavigationTester:
             robot_mind.motor_controller = self.motor_controller
             robot_mind.sensor_manager = self.sensor_manager
             robot_mind.pathfinder = self.pathfinder
+            robot_mind.autonomous_controller = self.autonomous_controller
+            robot_mind.vision_fusion = self.sim_vision_fusion
+            self.autonomous_controller.vision_fusion = self.sim_vision_fusion
             
-            logger.info("\nRobotMind initialized successfully")
-            logger.info(f"Using model: {config_dict['robot']['model']}")
+            ollama_status = "online" if robot_mind._ollama_available else f"offline ({robot_mind._ollama_last_error})"
+            logger.info(f"\nRobotMind initialized — Ollama: {ollama_status}")
             
             # Test scenarios
             test_scenarios = [
                 {
                     'name': 'Clear Path Forward',
+                    'task': 'navigate to kitchen',
+                    'vision_setup': lambda: self.sim_vision_fusion.clear(),
                     'sensor_data': SensorData(
                         ultrasonic_front=100.0,
                         ultrasonic_left=80.0,
@@ -2517,9 +3061,41 @@ class NavigationTester:
                     )
                 },
                 {
-                    'name': 'Obstacle Ahead',
+                    'name': 'Person Walking in Corridor',
+                    'task': 'navigate through corridor',
+                    'vision_setup': lambda: self.sim_vision_fusion.inject_person_in_corridor(ttc=0.8),
+                    'expect_vision': True,
+                    'expect_tool': 'stop',
                     'sensor_data': SensorData(
-                        ultrasonic_front=15.0,  # Close obstacle
+                        ultrasonic_front=80.0,
+                        ultrasonic_left=60.0,
+                        ultrasonic_right=60.0,
+                        infrared_left=False,
+                        infrared_right=False,
+                        bumper_left=False,
+                        bumper_right=False
+                    )
+                },
+                {
+                    'name': 'Blocked Door to Bedroom',
+                    'task': "navigate to user's bedroom",
+                    'vision_setup': lambda: self.sim_vision_fusion.clear(),
+                    'sensor_data': SensorData(
+                        ultrasonic_front=12.0,
+                        ultrasonic_left=60.0,
+                        ultrasonic_right=60.0,
+                        infrared_left=True,
+                        infrared_right=False,
+                        bumper_left=False,
+                        bumper_right=False
+                    )
+                },
+                {
+                    'name': 'Obstacle Ahead',
+                    'task': None,
+                    'vision_setup': lambda: self.sim_vision_fusion.clear(),
+                    'sensor_data': SensorData(
+                        ultrasonic_front=15.0,
                         ultrasonic_left=50.0,
                         ultrasonic_right=50.0,
                         infrared_left=False,
@@ -2530,11 +3106,13 @@ class NavigationTester:
                 },
                 {
                     'name': 'Obstacle on Left',
+                    'task': None,
+                    'vision_setup': lambda: self.sim_vision_fusion.clear(),
                     'sensor_data': SensorData(
                         ultrasonic_front=60.0,
-                        ultrasonic_left=20.0,  # Close on left
+                        ultrasonic_left=20.0,
                         ultrasonic_right=80.0,
-                        infrared_left=True,  # Infrared also detects
+                        infrared_left=True,
                         infrared_right=False,
                         bumper_left=False,
                         bumper_right=False
@@ -2542,21 +3120,25 @@ class NavigationTester:
                 },
                 {
                     'name': 'Bumper Contact',
+                    'task': None,
+                    'vision_setup': lambda: self.sim_vision_fusion.clear(),
                     'sensor_data': SensorData(
                         ultrasonic_front=5.0,
                         ultrasonic_left=10.0,
                         ultrasonic_right=10.0,
                         infrared_left=True,
                         infrared_right=True,
-                        bumper_left=True,  # Bumper triggered
+                        bumper_left=True,
                         bumper_right=False
                     )
                 },
                 {
                     'name': 'Narrow Passage',
+                    'task': None,
+                    'vision_setup': lambda: self.sim_vision_fusion.clear(),
                     'sensor_data': SensorData(
                         ultrasonic_front=40.0,
-                        ultrasonic_left=25.0,  # Narrow on both sides
+                        ultrasonic_left=25.0,
                         ultrasonic_right=25.0,
                         infrared_left=False,
                         infrared_right=False,
@@ -2566,6 +3148,7 @@ class NavigationTester:
                 }
             ]
             
+            all_pass = True
             logger.info(f"\nRunning {len(test_scenarios)} test scenarios...\n")
             
             for i, scenario in enumerate(test_scenarios, 1):
@@ -2587,20 +3170,55 @@ class NavigationTester:
                 logger.info(f"  Battery Level: {self.robot_state.battery_level:.1f}%")
                 logger.info(f"  Status: {self.robot_state.status.value}")
                 
-                # Test thinking/reasoning (using sync wrapper for compatibility)
+                # Vision setup for scenario
+                setup = scenario.get('vision_setup')
+                if setup:
+                    setup()
+                if scenario.get('expect_vision'):
+                    from src.navigation.autonomous_controller import NavigationState
+                    self.autonomous_controller.nav_state = NavigationState.FOLLOWING_PATH
+                    vf_dec = self.sim_vision_fusion.get_navigation_decision()
+                    logger.info(
+                        f"Vision consider: action={vf_dec.action} risk={vf_dec.risk_level} "
+                        f"reason={vf_dec.reason}"
+                    )
+                
+                # Test thinking/reasoning (uses Ollama when online, vision/rules as fallback)
                 logger.info("\n🤔 RobotMind is thinking...")
                 try:
-                    reasoning_result = robot_mind.think_sync(scenario['sensor_data'])
+                    task = scenario.get('task')
+                    if task:
+                        robot_mind.set_task(task)
+                    reasoning_result = robot_mind.think_sync(scenario['sensor_data'], task)
                     
+                    tool = reasoning_result.get('tool') or reasoning_result.get('action', 'unknown')
+                    source = reasoning_result.get('source', 'unknown')
                     logger.info("\n💭 Reasoning Result:")
-                    logger.info(f"  Action: {reasoning_result.get('action', 'unknown')}")
+                    logger.info(f"  Decision source: {source}")
+                    logger.info(f"  Tool: {tool}")
                     logger.info(f"  Reason: {reasoning_result.get('reason', 'no reason provided')}")
-                    if 'parameters' in reasoning_result:
-                        logger.info(f"  Parameters: {reasoning_result['parameters']}")
-                    
-                    # Display full JSON if available
-                    import json
-                    logger.info(f"\n  Full Response: {json.dumps(reasoning_result, indent=2)}")
+                    if reasoning_result.get('vision_action'):
+                        logger.info(
+                            f"  Vision decide: {reasoning_result['vision_action']} "
+                            f"(risk={reasoning_result.get('vision_risk')})"
+                        )
+                    if reasoning_result.get('resolutions'):
+                        logger.info(f"  Resolutions: {[r['id'] for r in reasoning_result['resolutions']]}")
+                    logger.info(f"\n  Full Response: {json.dumps(reasoning_result, indent=2, default=str)}")
+                    if tool == 'unknown':
+                        all_pass = False
+                    if scenario.get('expect_tool') and tool != scenario['expect_tool']:
+                        logger.error(
+                            f"Expected tool '{scenario['expect_tool']}', got '{tool}'"
+                        )
+                        all_pass = False
+                    if scenario.get('expect_vision') and source not in (
+                        'vision_fusion', 'vision_fusion_fallback'
+                    ):
+                        logger.error(
+                            f"Expected vision-based decision, got source='{source}'"
+                        )
+                        all_pass = False
                     
                 except Exception as e:
                     logger.error(f"Error during thinking: {e}")
@@ -2608,19 +3226,16 @@ class NavigationTester:
                     traceback.print_exc()
                     continue
                 
-                # Test action execution
-                action = reasoning_result.get('action', 'stop')
+                # Test action execution via tool layer
+                tool = reasoning_result.get('tool') or reasoning_result.get('action', 'stop')
                 reason = reasoning_result.get('reason', 'No reason provided')
                 
-                logger.info(f"\n⚙️  Executing action: {action}")
+                logger.info(f"\n⚙️  Tool selected: {tool}")
                 logger.info(f"   Based on reasoning: {reason}")
                 
                 try:
-                    # Get motor state before action
                     left_before, right_before = self.motor_controller.get_current_speeds()
-                    
-                    # Execute action (pass reasoning_result to enable parameter extraction, using sync wrapper)
-                    action_success = robot_mind.do_action_sync(action, reason, reasoning_result)
+                    action_success = robot_mind.do_action_sync(tool, reason, reasoning_result)
                     
                     # Get motor state after action
                     time.sleep(0.1)  # Small delay to let motors update
@@ -2644,22 +3259,25 @@ class NavigationTester:
                 time.sleep(1)
             
             logger.info("=" * 60)
-            logger.info("RobotMind Testing Complete!")
+            logger.info(f"RobotMind Testing Complete! -> {'PASS' if all_pass else 'FAIL'}")
             logger.info("=" * 60)
-            
-            # Interactive mode option
-            print("\nWould you like to test with custom sensor data? (y/n): ", end='')
-            try:
-                response = input().strip().lower()
-                if response == 'y':
-                    self._interactive_robot_mind_test(robot_mind)
-            except (EOFError, KeyboardInterrupt):
-                logger.info("\nSkipping interactive test")
+
+            if not headless:
+                try:
+                    print("\nWould you like to test with custom sensor data? (y/n): ", end='')
+                    response = input().strip().lower()
+                    if response == 'y':
+                        self._interactive_robot_mind_test(robot_mind)
+                except (EOFError, KeyboardInterrupt):
+                    logger.info("\nSkipping interactive test")
+
+            return all_pass
             
         except Exception as e:
             logger.error(f"Error in RobotMind test: {e}")
             import traceback
             traceback.print_exc()
+            return False
     
     def _interactive_robot_mind_test(self, robot_mind: RobotMind):
         """Interactive test mode for RobotMind"""
@@ -2787,16 +3405,16 @@ class NavigationTester:
             self.visualizer.update_status_text(status_info)
             
             # Redraw
-            if self.backend == VisualizationBackend.PYGAME:
+            if self._is_realtime_backend():
                 self.visualizer.draw()
                 logger.info("Press ESC or close window to exit")
                 logger.info(f"Displaying: {len(stuck_locations)} stuck locations (red), {len(valid_paths)} valid paths (green), {len(areas_of_caution)} areas of caution (orange)")
-                # Keep window open until user closes it
                 while True:
                     if not self.visualizer.handle_events():
                         break
                     self.visualizer.draw()
-                    self.visualizer.clock.tick(30)
+                    if hasattr(self.visualizer, "clock"):
+                        self.visualizer.clock.tick(30)
             else:
                 # Matplotlib - show the plot
                 self.visualizer.redraw()
@@ -2949,30 +3567,101 @@ def main():
     """Main function to run the test"""
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Navigation Test Script')
-    parser.add_argument('--backend', type=str, choices=['matplotlib', 'pygame'], 
-                       default='matplotlib', help='Visualization backend (default: matplotlib)')
+    parser.add_argument('--backend', type=str,
+                       choices=['matplotlib', 'pygame', 'enhanced', '3d'],
+                       default='enhanced',
+                       help='Visualization backend (default: enhanced)')
+    parser.add_argument('--dashboard', action='store_true',
+                       help='Open Dear PyGui live dashboard alongside viz')
+    parser.add_argument('--headless', action='store_true', help='Use Agg backend, no interactive UI')
+    parser.add_argument('--mode', type=int, choices=[1, 6, 7, 8, 9, 16],
+                        help='Run a single test mode non-interactively (16=path refinement demo)')
     args = parser.parse_args()
+
+    if args.headless:
+        matplotlib.use('Agg')
+        os.environ["SMARTAI_HEADLESS"] = "1"
     
-    # Convert string to enum
-    if args.backend == 'pygame':
-        backend = VisualizationBackend.PYGAME
+    _backend_map = {
+        'matplotlib': VisualizationBackend.MATPLOTLIB,
+        'pygame': VisualizationBackend.PYGAME,
+        'enhanced': VisualizationBackend.ENHANCED,
+        '3d': VisualizationBackend.WORLD3D,
+    }
+    backend = _backend_map.get(args.backend, VisualizationBackend.ENHANCED)
+    if backend in (VisualizationBackend.PYGAME, VisualizationBackend.ENHANCED, VisualizationBackend.WORLD3D):
         if not PYGAME_AVAILABLE:
             logger.warning("Pygame not available, falling back to matplotlib")
             backend = VisualizationBackend.MATPLOTLIB
-    else:
-        backend = VisualizationBackend.MATPLOTLIB
     
     logger.info("Navigation Test Script")
     logger.info("=====================")
     logger.info(f"Using backend: {backend.value}")
     
-    # Create tester
     tester = NavigationTester(backend=backend)
+    if args.dashboard and not args.headless:
+        tester.start_dpg_dashboard()
     
     # Start autonomous controller
     tester.autonomous_controller.start()
     
+    if args.mode:
+        use_visual = not args.headless and tester._is_realtime_backend()
+        results = {}
+
+        def _goal_reached() -> bool:
+            nav = tester.autonomous_controller.get_navigation_status()
+            return bool(nav.get('goal_reached')) or nav.get('state') == 'reached_goal'
+
+        if use_visual:
+            if args.mode == 1:
+                tester.test_simple_navigation()
+                results['mode1'] = _goal_reached()
+            elif args.mode == 6:
+                results['mode6'] = tester.test_visual_obstacle_avoidance(headless=False)
+            elif args.mode == 7:
+                results['mode7'] = tester.test_motor_calibration(headless=False)
+            elif args.mode == 8:
+                results['mode8'] = tester.test_sensor_fusion(headless=False)
+            elif args.mode == 9:
+                results['mode9'] = tester.test_robot_mind(headless=False)
+            elif args.mode == 16:
+                rows = tester.test_path_refinement_demo(runs=4, headless=False)
+                results['mode16'] = bool(rows) and all(r.get('reached') for r in rows)
+        else:
+            if args.mode == 1:
+                tester._reset_demo_state(clear_paths=True)
+                tester.reset_robot_state(1.0, 1.0, 0.0)
+                tester.sensor_manager.set_robot_pose(1.0, 1.0, 0.0)
+                tester.autonomous_controller.navigate_to(8.0, 8.0, timeout=90.0)
+                tester.test_running = True
+                steps = reached = 0
+                while tester.test_running and steps < 3000:
+                    tester._update_robot_physics()
+                    if _goal_reached():
+                        reached = 1
+                        break
+                    steps += 1
+                results['mode1'] = bool(reached)
+            elif args.mode == 6:
+                results['mode6'] = tester.test_visual_obstacle_avoidance(headless=True)
+            elif args.mode == 7:
+                results['mode7'] = tester.test_motor_calibration(headless=True)
+            elif args.mode == 8:
+                results['mode8'] = tester.test_sensor_fusion(headless=True)
+            elif args.mode == 9:
+                results['mode9'] = tester.test_robot_mind(headless=True)
+            elif args.mode == 16:
+                rows = tester.test_path_refinement_demo(runs=3, headless=True)
+                results['mode16'] = bool(rows) and all(r.get('reached') for r in rows)
+        print(json.dumps(results))
+        tester.autonomous_controller.stop()
+        raise SystemExit(0 if all(results.values()) else 1)
+    
     camera_available = is_camera_available()
+    
+    if tester._is_realtime_backend():
+        logger.info("Visualization window opens when you start a test (pick mode below in terminal).")
     
     try:
         # Show menu
@@ -2985,6 +3674,7 @@ def main():
         logger.info("6. Visual Obstacle Avoidance Test")
         logger.info("7. Motor Calibration Test")
         logger.info("8. Sensor Fusion Test")
+        logger.info("16. Path Refinement Demo (smoother over runs)")
         if camera_available:
             logger.info("9. RobotMind Test (Thinking & Reasoning)")
             logger.info("10. Visual Odometry & Vision Features Test")
@@ -3003,7 +3693,7 @@ def main():
         
         while True:
             max_choice = '15' if camera_available else '14'
-            choice = input(f"\nEnter choice (1-{max_choice}): ").strip()
+            choice = input(f"\nEnter choice (1-{max_choice} or 16): ").strip()
             
             if choice == '1':
                 tester.test_simple_navigation()
@@ -3021,6 +3711,8 @@ def main():
                 tester.test_motor_calibration()
             elif choice == '8':
                 tester.test_sensor_fusion()
+            elif choice == '16':
+                tester.test_path_refinement_demo(runs=4, headless=False)
             elif (camera_available and choice == '9') or (not camera_available and choice == '9'):
                 tester.test_robot_mind()
             elif camera_available and choice == '10':

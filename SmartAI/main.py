@@ -22,11 +22,18 @@ import socket
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from src.core.robot_state import RobotState, RobotMode
+from src.hardware.factory import create_hardware_transport
 from src.hardware.motor_controller import MotorController
 from src.hardware.sensor_manager import SensorManager
 from src.navigation.pathfinder import Pathfinder
 from src.navigation.autonomous_controller import AutonomousController
 from src.gui.robot_gui import RobotGUI
+from src.vision.vision_fusion import VisionFusion
+from src.integrations.bridge import SmartHomeBridge
+from src.core.task_boss import TaskBoss
+from src.plugins.defaults import register_default_plugins
+from src.plugins.analysis.scene_analysis import SceneAnalysisPlugin
+from src.plugins import registry as plugin_registry
 
 # Add a global exception hook to log uncaught exceptions
 def global_exception_hook(exc_type, exc_value, exc_traceback):
@@ -51,11 +58,16 @@ class SmartRobotSystem:
         
         # System components
         self.robot_state = None
+        self.hardware_transport = None
         self.motor_controller = None
         self.sensor_manager = None
         self.pathfinder = None
         self.autonomous_controller = None
+        self.vision_fusion = None
+        self.smart_home = None
+        self.task_boss = None
         self.gui = None
+        self._plugin_context = {}
         
         # Flask web server
         self.flask_app = None
@@ -117,53 +129,55 @@ class SmartRobotSystem:
         # Define the init function for the GUI with access to self.config
         def init_all_components(config):
             """Initialize all components with the given config"""
+            register_default_plugins()
             robot_state = RobotState(config)
-            motor_controller = MotorController(config)
-            sensor_manager = SensorManager(config)
+            transport = create_hardware_transport(config)
+            motor_controller = transport.motors.raw
+            sensor_manager = transport.sensors.raw
             pathfinder = Pathfinder(config)
+            vision_fusion = VisionFusion(config, pathfinder) if config.get("vision", {}).get("fusion_enabled", True) else None
             autonomous_controller = AutonomousController(
-                robot_state, motor_controller, sensor_manager, pathfinder
+                robot_state, motor_controller, sensor_manager, pathfinder, vision_fusion
             )
+            smart_home = SmartHomeBridge(config)
+            ctx = {
+                "config": config,
+                "robot_state": robot_state,
+                "motor_controller": motor_controller,
+                "sensor_manager": sensor_manager,
+                "pathfinder": pathfinder,
+                "autonomous_controller": autonomous_controller,
+                "vision_fusion": vision_fusion,
+                "hardware": transport,
+            }
+            task_boss = TaskBoss(config, ctx, smart_home)
+            ctx["task_boss"] = task_boss
+            autonomous_controller.task_boss = task_boss
+            scene_plugin = plugin_registry.get_analysis("scene_analysis")
+            if scene_plugin and vision_fusion:
+                scene_plugin.bind_vision_fusion(vision_fusion)
+            ctx["scene_analysis"] = scene_plugin
+            autonomous_controller._smartai_context = ctx
+            ctx["smart_home"] = smart_home
             return robot_state, motor_controller, sensor_manager, pathfinder, autonomous_controller
         
         try:
-            # Initialize robot state
-            try:
-                self.robot_state = RobotState(self.config)
-                logger.info("Robot state initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize RobotState: {e}")
-                raise
-            
-            # Initialize hardware components
-            try:
-                self.motor_controller = MotorController(self.config)
-                self.sensor_manager = SensorManager(self.config)
-                logger.info("Hardware components initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize hardware components: {e}")
-                raise
-            
-            # Initialize navigation components
-            try:
-                self.pathfinder = Pathfinder(self.config)
-                self.autonomous_controller = AutonomousController(
-                    self.robot_state, self.motor_controller, 
-                    self.sensor_manager, self.pathfinder
-                )
-                logger.info("Navigation components initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize navigation components: {e}")
-                raise
-            
-            # Initialize GUI with loading screen
-            try:
-                self.gui = RobotGUI.launch_with_loading(init_all_components, self.config)
-                logger.info("GUI initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize GUI: {e}")
-                raise
-            
+            self.gui = RobotGUI.launch_with_loading(init_all_components, self.config)
+            self.robot_state = self.gui.robot_state
+            self.motor_controller = self.gui.motor_controller
+            self.sensor_manager = self.gui.sensor_manager
+            self.pathfinder = self.gui.pathfinder
+            self.autonomous_controller = self.gui.autonomous_controller
+            ctx = getattr(self.autonomous_controller, "_smartai_context", {})
+            self._plugin_context = ctx
+            self.hardware_transport = ctx.get("hardware")
+            self.vision_fusion = ctx.get("vision_fusion")
+            self.task_boss = ctx.get("task_boss")
+            self.smart_home = ctx.get("smart_home")
+            if self.vision_fusion:
+                self.gui.vision_fusion = self.vision_fusion
+            if self.task_boss:
+                self.gui.task_boss = self.task_boss
             logger.info("All system components initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize system: {e}")
@@ -186,7 +200,12 @@ class SmartRobotSystem:
             @self.flask_app.route('/api/status', methods=['GET'])
             def get_status():
                 """Get current robot system status"""
-                return jsonify(self.get_system_status())
+                try:
+                    return jsonify(self.get_system_status())
+                except Exception as e:
+                    logger.error(f"/api/status failed: {e}")
+                    logger.error(traceback.format_exc())
+                    return jsonify({'error': str(e)}), 500
             
             @self.flask_app.route('/api/move', methods=['POST'])
             def move_robot():
@@ -359,6 +378,69 @@ class SmartRobotSystem:
                     return jsonify(learning_data)
                 except Exception as e:
                     return jsonify({'error': str(e)}), 500
+
+            @self.flask_app.route('/api/task', methods=['POST'])
+            def run_task():
+                """Run a natural-language or tool task via TaskBoss (no direct motor PWM)."""
+                if not self.task_boss:
+                    return jsonify({'error': 'TaskBoss not initialized'}), 500
+                try:
+                    data = request.get_json() or {}
+                    task = data.get('task', '')
+                    if data.get('tool'):
+                        result = self.task_boss.execute_tool(data['tool'], **data.get('args', {}))
+                    else:
+                        result = self.task_boss.run_task(task)
+                    return jsonify(result)
+                except Exception as e:
+                    return jsonify({'error': str(e)}), 500
+
+            @self.flask_app.route('/api/tools', methods=['GET'])
+            def list_tools():
+                if not self.task_boss:
+                    return jsonify({'error': 'TaskBoss not initialized'}), 500
+                return jsonify({'tools': self.task_boss.tools.list_tools()})
+
+            @self.flask_app.route('/api/notifications', methods=['GET'])
+            def get_notifications():
+                """Recent robot notifications (log + API channel)."""
+                if not self.task_boss:
+                    return jsonify({'notifications': []})
+                history = self.task_boss.mind.notifier.get_history(limit=20)
+                return jsonify({'notifications': history})
+
+            @self.flask_app.route('/api/blocked_path', methods=['GET', 'POST'])
+            def blocked_path():
+                """Get or resolve pending blocked-path state."""
+                if not self.task_boss:
+                    return jsonify({'error': 'TaskBoss not initialized'}), 500
+                handler = self.task_boss.mind.blocked_path_handler
+                if request.method == 'GET':
+                    return jsonify({'pending': handler.get_pending_state()})
+                data = request.get_json() or {}
+                resolution_id = data.get('resolution_id')
+                if resolution_id:
+                    selected = handler.select_resolution(resolution_id)
+                    if selected and selected.get('tool'):
+                        result = self.task_boss.execute_tool(selected['tool'])
+                        return jsonify({'selected': selected, 'result': result})
+                    return jsonify({'error': 'Unknown resolution'}), 400
+                return jsonify({'pending': handler.get_pending_state()})
+
+            @self.flask_app.route('/api/smart_home/<action>', methods=['POST'])
+            def smart_home_action(action):
+                if not self.task_boss:
+                    return jsonify({'error': 'TaskBoss not initialized'}), 500
+                data = request.get_json() or {}
+                tool_map = {
+                    'on': 'turn_on_light',
+                    'off': 'turn_off_light',
+                    'state': 'get_device_state',
+                }
+                tool = tool_map.get(action)
+                if not tool:
+                    return jsonify({'error': 'Unknown action'}), 400
+                return jsonify(self.task_boss.execute_tool(tool, **data))
             
             logger.info("Flask web server routes configured")
             
@@ -396,7 +478,13 @@ class SmartRobotSystem:
             if self.flask_app:
                 self.web_server_thread = threading.Thread(
                     target=self.flask_app.run,
-                    kwargs={'host': self.web_host, 'port': self.web_port, 'debug': False, 'use_reloader': False},
+                    kwargs={
+                        'host': self.web_host,
+                        'port': self.web_port,
+                        'debug': False,
+                        'use_reloader': False,
+                        'threaded': True,
+                    },
                     daemon=True
                 )
                 self.web_server_thread.start()
@@ -406,9 +494,9 @@ class SmartRobotSystem:
                 web_url = f"http://{local_ip}:{self.web_port}"
                 
                 logger.info(f"Web server started at {web_url}")
-                print(f"\n🌐 Web Interface Available at: {web_url}")
-                print("📱 You can control the robot from any device on your network!")
-                print("🔧 Use the web interface or continue with the GUI application.\n")
+                print(f"\nWeb interface: {web_url}")
+                print("Control the robot from any device on your network.")
+                print("Use the web UI or the desktop GUI.\n")
                 
                 # # Optionally open browser
                 # try:
@@ -452,6 +540,10 @@ class SmartRobotSystem:
             if self.autonomous_controller:
                 self.autonomous_controller.stop()
                 logger.info("Autonomous controller stopped")
+
+            if self.task_boss:
+                self.task_boss.shutdown()
+                logger.info("TaskBoss stopped")
             
             # Stop hardware components
             if self.motor_controller:
@@ -481,14 +573,23 @@ class SmartRobotSystem:
     
     def get_system_status(self) -> dict:
         """Get comprehensive system status"""
-        return {
+        status = {
             'running': self.running,
             'robot_state': self.robot_state.get_status_summary() if self.robot_state else None,
             'motor_status': self.motor_controller.get_status() if self.motor_controller else None,
             'sensor_status': self.sensor_manager.get_sensor_status() if self.sensor_manager else None,
             'navigation_status': self.autonomous_controller.get_status() if self.autonomous_controller else None,
-            'pathfinder_status': self.pathfinder.get_grid_status() if self.pathfinder else None
+            'pathfinder_status': self.pathfinder.get_grid_status(include_grid=False) if self.pathfinder else None,
         }
+        if self.vision_fusion:
+            status['vision_fusion'] = self.vision_fusion.get_status()
+        if self.task_boss:
+            status['task_boss'] = self.task_boss.get_status()
+        if self.smart_home:
+            status['smart_home'] = self.smart_home.get_status()
+        if self.hardware_transport:
+            status['hardware_backend'] = self.hardware_transport.get_backend_name()
+        return status
 
 
 def main():

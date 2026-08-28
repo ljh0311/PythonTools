@@ -10,6 +10,9 @@ import {
   IconButton,
   Collapse,
   Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -17,6 +20,9 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import CloseIcon from '@mui/icons-material/Close';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import { apiUrl } from '../apiConfig';
 
 const AlertPanel = styled(Paper)(({ theme }) => ({
   maxHeight: 360,
@@ -41,6 +47,18 @@ const AlertItem = styled(ListItem)(({ theme, severity }) => {
   };
 });
 
+function resolveCameraName(cameraId, cameraNames) {
+  if (!cameraId) return 'System';
+  return cameraNames?.[cameraId] || cameraId;
+}
+
+function formatAlertMessage(message, cameraId, cameraNames) {
+  if (!message || !cameraId) return message;
+  const friendly = resolveCameraName(cameraId, cameraNames);
+  if (friendly === cameraId) return message;
+  return message.replace(new RegExp(`\\b${cameraId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), friendly);
+}
+
 function formatRelativeTime(timestamp) {
   try {
     const date = new Date(timestamp);
@@ -54,9 +72,10 @@ function formatRelativeTime(timestamp) {
   }
 }
 
-export default function AlertsPanel({ alerts = [], onAcknowledge, apiReachable = true }) {
+export default function AlertsPanel({ alerts = [], cameraNames = {}, onAcknowledge, apiReachable = true }) {
   const [expanded, setExpanded] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [snapshotPreview, setSnapshotPreview] = useState(null);
 
   useEffect(() => {
     setUnreadCount(alerts.filter((a) => !a.acknowledged).length);
@@ -140,15 +159,38 @@ export default function AlertsPanel({ alerts = [], onAcknowledge, apiReachable =
                   <AlertItem key={alert.id || `${alert.timestamp}-${alert.message}`} severity={getSeverity(alert.level)}>
                     <ListItemText
                       primary={
-                        <Typography variant="body2" fontWeight={600}>
-                          {alert.message}
+                        <Typography variant="body2" fontWeight={600} component="div">
+                          {formatAlertMessage(alert.message, alert.camera_id, cameraNames)}
                         </Typography>
                       }
+                      secondaryTypographyProps={{ component: 'div' }}
                       secondary={
-                        <Typography variant="caption" color="text.secondary" component="span">
-                          {formatRelativeTime(alert.timestamp)} · {alert.camera_id || 'System'}
-                          {alert.acknowledged ? ' · Acknowledged' : ''}
-                        </Typography>
+                        <>
+                          <Typography variant="caption" color="text.secondary" component="span" display="block">
+                            {formatRelativeTime(alert.timestamp)} · {resolveCameraName(alert.camera_id, cameraNames)}
+                            {alert.acknowledged ? ' · Acknowledged' : ''}
+                          </Typography>
+                          {alert.data?.snapshot && (
+                            <Box sx={{ mt: 0.5 }}>
+                              <Button
+                                size="small"
+                                variant="text"
+                                startIcon={<PhotoCameraIcon fontSize="small" />}
+                                onClick={() =>
+                                  setSnapshotPreview({
+                                    url: apiUrl(
+                                      `/api/media/file?path=${encodeURIComponent(alert.data.snapshot)}`
+                                    ),
+                                    title: `Motion ${alert.data.phase === 'last' ? 'ended' : 'started'} — ${resolveCameraName(alert.camera_id, cameraNames)}`,
+                                  })
+                                }
+                                sx={{ p: 0, minWidth: 0 }}
+                              >
+                                View {alert.data.phase === 'last' ? 'end' : 'start'} snapshot
+                              </Button>
+                            </Box>
+                          )}
+                        </>
                       }
                     />
                     {!alert.acknowledged && onAcknowledge && (
@@ -168,6 +210,32 @@ export default function AlertsPanel({ alerts = [], onAcknowledge, apiReachable =
           )}
         </AlertPanel>
       </Collapse>
+
+      <Dialog
+        open={Boolean(snapshotPreview)}
+        onClose={() => setSnapshotPreview(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1 }}>
+          <Typography variant="subtitle1" component="span" fontWeight={600}>
+            {snapshotPreview?.title || 'Snapshot'}
+          </Typography>
+          <IconButton aria-label="Close snapshot" onClick={() => setSnapshotPreview(null)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 1, bgcolor: 'black' }}>
+          {snapshotPreview?.url && (
+            <Box
+              component="img"
+              src={snapshotPreview.url}
+              alt={snapshotPreview.title}
+              sx={{ width: '100%', height: 'auto', display: 'block', borderRadius: 1 }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Paper>
   );
 }

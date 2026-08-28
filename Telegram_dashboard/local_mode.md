@@ -122,12 +122,26 @@ For local testing without HTTPS you can use long-polling separately, but this da
 | `MTProto_ENABLED` | `true` to listen on your personal account |
 | `MTProto_PHONE` | Phone for first-time login |
 | `TELEGRAM_WEBHOOK_SECRET` | Validates incoming webhooks |
-| `GEMINI_API_KEY` | Primary AI provider |
-| `OLLAMA_BASE_URL` | Local AI fallback |
+| `GEMINI_API_KEY` | Primary AI provider (Gemini). Placeholder values are ignored. |
+| `OLLAMA_BASE_URL` | Local AI fallback when Gemini is unavailable |
+| `OLLAMA_MODEL` | Ollama model tag (e.g. `llama3.2`; run `ollama pull llama3.2`) |
 | `DASHBOARD_API_KEY` | Machine/API access (OpenClaw, scripts) |
 | `OPERATOR_USERNAME` / `OPERATOR_PASSWORD` | Human login |
 | `AUTO_REPLY_MODE` | `manual` \| `auto` \| `per_chat` |
 | `TOPIC_MODE` | `user_type` \| `ai_assign` |
+
+### AI: Gemini first, Ollama fallback
+
+1. **Gemini (cloud):** Set a real `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey).
+2. **Ollama (local fallback):** Install [Ollama](https://ollama.ai), ensure the service is running, then pull the model:
+
+   ```powershell
+   ollama pull llama3.2
+   ollama list
+   ```
+
+3. The dashboard tries Gemini for summaries, suggestions, and auto-reply. If Gemini is missing, misconfigured, or errors, it uses Ollama automatically.
+4. Check provider status: `GET /api/ai/status` (requires auth). `ollama.available` must be `true` and your model must appear in `ollama list`.
 
 ## Troubleshooting
 
@@ -136,6 +150,7 @@ For local testing without HTTPS you can use long-polling separately, but this da
 | `ModuleNotFoundError: backend` | Set `PYTHONPATH` to project root |
 | Port in use | Change `PORT` in `.env` or use `--port 8001` |
 | WebSocket disconnects | Ensure same auth token/API key as REST calls |
+| AI summaries empty / generic replies | Set a real `GEMINI_API_KEY`, or run Ollama (`ollama serve`, `ollama pull llama3.2`). Check `/api/ai/status`. |
 | OpenClaw can’t reach API | Confirm dashboard is running; check URL and API key |
 
 ## When to switch to Docker

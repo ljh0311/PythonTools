@@ -117,6 +117,11 @@ export const api = {
     ),
   summarize: (payload) =>
     request("/api/ai/summarize", { method: "POST", body: JSON.stringify(payload) }),
+  getConversationIntel: (payload) =>
+    request("/api/ai/conversation-intel", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   suggestActions: (payload) =>
     request("/api/ai/suggest-actions", { method: "POST", body: JSON.stringify(payload) }),
   getEvents: (limit = 50) => request(`/api/events?limit=${limit}`),

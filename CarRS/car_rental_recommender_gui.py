@@ -73,6 +73,7 @@ from components.collection_location import (
     parse_rating_choice,
     rating_choice_labels,
 )
+from components.quick_add import load_shortcuts, parse_quick_add, save_shortcuts
 from components.ev_traditional_analysis import (
     ELECTRIC,
     TRADITIONAL,
@@ -3183,6 +3184,34 @@ class CarRentalRecommenderApp:
         search_entry.pack(side="left", padx=2)
         search_entry.bind("<KeyRelease>", self.filter_records)
 
+        # Quick Add — shortcut text for fast row entry
+        quick_frame = ttk.LabelFrame(right_frame, text="⚡ Quick Add")
+        quick_frame.pack(fill="x", padx=5, pady=5)
+        ttk.Label(
+            quick_frame,
+            text="Example: 1 hour rental(40km), mazda 3   ·   optional: getgo · from Tampines · rating 3",
+            foreground="#555555",
+            wraplength=520,
+        ).pack(anchor="w", padx=8, pady=(6, 2))
+        quick_row = ttk.Frame(quick_frame)
+        quick_row.pack(fill="x", padx=8, pady=4)
+        self.quick_add_var = tk.StringVar()
+        quick_entry = ttk.Entry(quick_row, textvariable=self.quick_add_var)
+        quick_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        quick_entry.bind("<Return>", lambda _e: self.quick_add_record())
+        ttk.Button(
+            quick_row, text="Add row", command=self.quick_add_record, style="Accent.TButton"
+        ).pack(side="left", padx=2)
+        ttk.Button(
+            quick_row, text="Fill form", command=self.quick_add_fill_form
+        ).pack(side="left", padx=2)
+        ttk.Button(
+            quick_row, text="Save shortcut", command=self.save_quick_add_shortcut
+        ).pack(side="left", padx=2)
+        self.quick_shortcut_frame = ttk.Frame(quick_frame)
+        self.quick_shortcut_frame.pack(fill="x", padx=8, pady=(2, 8))
+        self.refresh_quick_add_shortcuts()
+
         # LLM Assistant Frame for natural language input
         llm_assistant_frame = ttk.LabelFrame(right_frame, text="🤖 LLM Assistant - Describe Your Rental")
         llm_assistant_frame.pack(fill="x", padx=5, pady=5)
@@ -5954,6 +5983,159 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                 f"An unexpected error occurred while validating form data: {str(e)}\n\nPlease check all fields and try again."
             )
             return None
+
+    def _known_car_models(self):
+        if self.df is None or self.df.empty or "Car model" not in self.df.columns:
+            return []
+        return [
+            str(m)
+            for m in self.df["Car model"].dropna().unique()
+            if str(m) != "Calculator Generated"
+        ]
+
+    def refresh_quick_add_shortcuts(self):
+        """Rebuild shortcut chip buttons."""
+        if not hasattr(self, "quick_shortcut_frame"):
+            return
+        for child in self.quick_shortcut_frame.winfo_children():
+            child.destroy()
+        shortcuts = load_shortcuts()
+        if not shortcuts:
+            ttk.Label(self.quick_shortcut_frame, text="No saved shortcuts yet.").pack(
+                anchor="w"
+            )
+            return
+        for text in shortcuts[:12]:
+            ttk.Button(
+                self.quick_shortcut_frame,
+                text=text if len(text) <= 42 else text[:39] + "...",
+                command=lambda t=text: self._apply_quick_shortcut(t),
+            ).pack(side="left", padx=2, pady=2)
+
+    def _apply_quick_shortcut(self, text: str):
+        self.quick_add_var.set(text)
+        self.quick_add_fill_form()
+
+    def save_quick_add_shortcut(self):
+        text = (self.quick_add_var.get() or "").strip()
+        if not text:
+            messagebox.showinfo("Quick Add", "Type a shortcut first.")
+            return
+        shortcuts = load_shortcuts()
+        if text not in shortcuts:
+            shortcuts.insert(0, text)
+        save_shortcuts(shortcuts)
+        self.refresh_quick_add_shortcuts()
+        self.status_var.set(f"Saved shortcut: {text}")
+
+    def _parse_quick_add_input(self):
+        region = "Singapore"
+        if hasattr(self, "record_region_var") and self.record_region_var.get() in VALID_REGIONS:
+            region = self.record_region_var.get()
+        provider = "Getgo"
+        if hasattr(self, "record_provider_var") and self.record_provider_var.get():
+            provider = self.record_provider_var.get()
+        return parse_quick_add(
+            self.quick_add_var.get(),
+            known_models=self._known_car_models(),
+            default_provider=provider,
+            default_region=region,
+        )
+
+    def quick_add_fill_form(self):
+        """Parse shortcut and put values into the record form (does not save)."""
+        parsed = self._parse_quick_add_input()
+        if not parsed.get("ok"):
+            messagebox.showerror("Quick Add", parsed.get("error") or "Could not parse shortcut.")
+            return
+        self.record_region_var.set(parsed["region"])
+        if hasattr(self, "record_provider_combo") and self.record_provider_combo is not None:
+            self.record_provider_combo["values"] = get_providers_for_region(parsed["region"])
+        self.record_provider_var.set(parsed["provider"])
+        self.record_car_model_var.set(parsed["car_model"])
+        self.record_distance_var.set(str(parsed["distance"]))
+        self.record_hours_var.set(str(parsed["hours"]))
+        self.record_weekend_var.set("weekend" if parsed["is_weekend"] else "weekday")
+        self.record_date_var.set(parsed["date"].strftime("%d/%m/%Y"))
+        self.record_collection_location_var.set(parsed.get("collection_location") or "")
+        self.record_distance_rating_var.set(
+            format_rating_choice(parsed.get("distance_rating"))
+        )
+        # Estimate total from pricing when possible
+        cost = calculate_estimated_cost(
+            parsed["distance"],
+            parsed["hours"],
+            parsed["provider"],
+            parsed["car_model"],
+            self.cost_analysis,
+            parsed["is_weekend"],
+        )
+        if cost and cost.get("total_cost") is not None:
+            self.record_total_cost_var.set(f"{cost['total_cost']:.2f}")
+            if cost.get("duration_cost") is not None:
+                self.record_duration_cost_var.set(f"{cost['duration_cost']:.2f}")
+            if cost.get("mileage_cost") is not None:
+                self.record_mileage_cost_var.set(f"{cost['mileage_cost']:.2f}")
+        self.on_provider_changed()
+        self._form_dirty = True
+        self.status_var.set(
+            f"Filled form: {parsed['car_model']}, {parsed['hours']}h, {parsed['distance']}km"
+        )
+
+    def quick_add_record(self):
+        """Parse shortcut and append a new row immediately."""
+        if not self._check_data_loaded():
+            return
+        parsed = self._parse_quick_add_input()
+        if not parsed.get("ok"):
+            messagebox.showerror("Quick Add", parsed.get("error") or "Could not parse shortcut.")
+            return
+
+        cost = calculate_estimated_cost(
+            parsed["distance"],
+            parsed["hours"],
+            parsed["provider"],
+            parsed["car_model"],
+            self.cost_analysis,
+            parsed["is_weekend"],
+        ) or {}
+        total = cost.get("total_cost")
+        record = {
+            "Region": parsed["region"],
+            "Date": parsed["date"],
+            "Car model": parsed["car_model"],
+            "Car Cat": parsed["provider"],
+            "Distance (KM)": parsed["distance"],
+            "Rental hour": parsed["hours"],
+            "Weekday/weekend": "weekend" if parsed["is_weekend"] else "weekday",
+            "Total": total,
+            "Duration cost": cost.get("duration_cost"),
+            "Mileage cost ($0.39)": cost.get("mileage_cost"),
+            "Cost per KM": (total / parsed["distance"]) if total and parsed["distance"] else None,
+            "Cost/HR": (total / parsed["hours"]) if total and parsed["hours"] else None,
+            COLLECTION_LOCATION_COL: parsed.get("collection_location") or "",
+            DISTANCE_RATING_COL: parsed.get("distance_rating"),
+        }
+        try:
+            self.df = pd.concat([self.df, pd.DataFrame([record])], ignore_index=True)
+            self.cost_analysis = create_complete_cost_analysis(
+                self.df, region=self._get_current_region()
+            )
+            self._form_dirty = False
+            self.refresh_records()
+            self.save_data()
+            self.quick_add_var.set("")
+            self.status_var.set(
+                f"Quick-added {parsed['car_model']} ({parsed['hours']}h / {parsed['distance']}km)"
+            )
+            messagebox.showinfo(
+                "Quick Add",
+                f"Added:\n{parsed['car_model']}\n"
+                f"{parsed['hours']} h · {parsed['distance']} km · {parsed['provider']}"
+                + (f"\nEst. ${total:.2f}" if total is not None else ""),
+            )
+        except Exception as exc:
+            messagebox.showerror("Quick Add", f"Failed to add record: {exc}")
 
     def add_record(self):
         """Add a new record from form data with enhanced validation and feedback"""

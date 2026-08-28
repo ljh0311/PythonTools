@@ -80,6 +80,56 @@ class TestAIGenerationHonesty(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_conversation_intel_parses_strict_json(self) -> None:
+        async def run() -> None:
+            svc = AIService()
+            svc.gemini = MagicMock(configured=True)
+            svc.gemini.generate_text = AsyncMock(
+                return_value=(
+                    '{"topics_summary":"Billing and scheduling updates were discussed.",'
+                    '"sentiment_summary":"The tone is urgent but cooperative.",'
+                    '"needs_summary":"They need a reply confirming next steps.",'
+                    '"key_points":["Billing issue raised","Meeting requested"]}'
+                )
+            )
+            svc.ollama = MagicMock(configured=False)
+            svc.ollama.is_available = AsyncMock(return_value=False)
+
+            with patch("backend.services.ai_service.ai_rate_limiter") as limiter:
+                limiter.check = MagicMock()
+                result = await svc.conversation_intel(SAMPLE_MESSAGES)
+
+            self.assertEqual(result["provider"], "gemini")
+            self.assertEqual(result["topics_summary"], "Billing and scheduling updates were discussed.")
+            self.assertEqual(result["sentiment_summary"], "The tone is urgent but cooperative.")
+            self.assertEqual(result["needs_summary"], "They need a reply confirming next steps.")
+            self.assertEqual(result["key_points"], ["Billing issue raised", "Meeting requested"])
+            self.assertEqual(result["message_count"], 1)
+            self.assertEqual(result["messages_analyzed"], 1)
+
+        asyncio.run(run())
+
+    def test_conversation_intel_fallback_marks_degraded(self) -> None:
+        async def run() -> None:
+            svc = AIService()
+            svc.gemini = MagicMock(configured=True)
+            svc.gemini.generate_text = AsyncMock(side_effect=RuntimeError("boom"))
+            svc.ollama = MagicMock(configured=False)
+            svc.ollama.is_available = AsyncMock(return_value=False)
+
+            with patch("backend.services.ai_service.ai_rate_limiter") as limiter:
+                limiter.check = MagicMock()
+                result = await svc.conversation_intel(SAMPLE_MESSAGES)
+
+            self.assertEqual(result["provider"], "fallback")
+            self.assertTrue(result.get("degraded"))
+            self.assertIn("RuntimeError: boom", result.get("failure_reason", ""))
+            self.assertIn("topics_summary", result)
+            self.assertIn("sentiment_summary", result)
+            self.assertIn("needs_summary", result)
+
+        asyncio.run(run())
+
 
 if __name__ == "__main__":
     unittest.main()

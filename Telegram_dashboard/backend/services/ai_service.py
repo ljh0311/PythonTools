@@ -97,6 +97,25 @@ SUGGEST_SYSTEM = (
     "\"priority\": \"high\"|\"medium\"|\"low\", \"confidence\": number, \"due_hint\": string}]}"
 )
 
+CONVERSATION_INTEL_SYSTEM = (
+    "You analyze filtered Telegram conversations for a user dashboard. "
+    "Return ONLY valid JSON with no markdown fences. "
+    "Write all fields in clear English. "
+    "Only attribute speech to usernames in the transcript. "
+    "Group or channel titles are never speakers. "
+    "Schema: {"
+    "\"topics_summary\": string, "
+    "\"sentiment_summary\": string, "
+    "\"needs_summary\": string, "
+    "\"key_points\": [string]"
+    "}. "
+    "topics_summary: 2-4 concise sentences about what people discussed. "
+    "sentiment_summary: 1-3 concise sentences about emotional tone, urgency, or friction. "
+    "needs_summary: 2-4 concise sentences focused on what others want, expect, need approved, or need answered from the operator. "
+    "key_points: 3-7 short standalone bullets as plain strings. "
+    "Do not include markdown bullets inside strings."
+)
+
 THREAD_SUMMARY_SYSTEM = (
     "You summarize Telegram conversations for a user dashboard. "
     "Write 1-3 clear English sentences about what was actually discussed. "
@@ -1052,6 +1071,164 @@ class AIService:
         if last_error:
             result["failure_reason"] = str(last_error)
         return result
+
+    def _fallback_conversation_intel(self, messages: list[dict]) -> dict[str, Any]:
+        sorted_messages = sorted(messages, key=lambda m: m.get("created_at", ""))
+        incoming = [m for m in sorted_messages if m.get("direction") == "incoming"]
+        outgoing = [m for m in sorted_messages if m.get("direction") == "outgoing"]
+        recent = sorted_messages[-5:]
+
+        participants = sorted(
+            {
+                m.get("username") or f"User {m.get('user_id')}"
+                for m in sorted_messages
+                if m.get("username") or m.get("user_id")
+            }
+        )
+        participant_text = ", ".join(participants[:5]) if participants else "your contacts"
+
+        latest_incoming = incoming[-1] if incoming else None
+        latest_outgoing = outgoing[-1] if outgoing else None
+        latest_incoming_text = (latest_incoming or {}).get("text", "").strip()
+        latest_outgoing_text = (latest_outgoing or {}).get("text", "").strip()
+
+        needs_summary = "No clear unanswered need was detected."
+        if latest_incoming_text:
+            needs_summary = (
+                "The clearest current need appears in the latest incoming message: "
+                f"\"{latest_incoming_text[:180]}\". "
+                "This likely needs a reply, confirmation, or next step from you."
+            )
+        elif latest_outgoing_text:
+            needs_summary = (
+                "The recent conversation mostly shows your outgoing updates. "
+                "Check whether the other side still needs a confirmation or reply."
+            )
+
+        sentiment_summary = (
+            "Tone could not be deeply analyzed without AI. "
+            "Use the recent messages below to judge urgency, mood, or tension."
+        )
+        if incoming and not outgoing:
+            sentiment_summary = (
+                "The thread is currently one-sided toward incoming messages, which may indicate pending attention. "
+                "Review the latest requests for urgency or frustration."
+            )
+
+        key_points = [
+            f"{(item.get('username') or f'User {item.get('user_id')}')}: {(item.get('text') or '').strip()[:180]}"
+            for item in recent
+            if (item.get("text") or "").strip()
+        ]
+
+        return {
+            "topics_summary": (
+                f"{len(messages)} filtered messages involving {participant_text}. "
+                "AI conversation intel is unavailable, so this is a lightweight overview based on recent message flow."
+            ),
+            "sentiment_summary": sentiment_summary,
+            "needs_summary": needs_summary,
+            "key_points": key_points[:5],
+            "message_highlights": self._fallback_message_highlights(messages),
+            "provider": "fallback",
+        }
+
+    async def conversation_intel(
+        self,
+        messages: list[dict],
+        relationship_map: dict[int, str] | None = None,
+        ai_context_map: dict[int, str] | None = None,
+    ) -> dict[str, Any]:
+        if not messages:
+            return {
+                "topics_summary": "No messages match the current filters.",
+                "sentiment_summary": "No conversation sentiment to analyze.",
+                "needs_summary": "No current needs detected because no messages matched.",
+                "key_points": [],
+                "provider": "none",
+                "message_count": 0,
+                "messages_total": 0,
+                "messages_analyzed": 0,
+                "truncated_for_ai": False,
+                "redaction_applied": False,
+                "redaction_count": 0,
+                "generated_at": datetime.utcnow().isoformat(),
+            }
+
+        total = len(messages)
+        batch = self._cap_messages_for_ai(messages, AI_SUGGEST_MESSAGE_CAP)
+
+        if not self.configured:
+            result = self._fallback_conversation_intel(messages)
+            result.update(
+                {
+                    "message_count": total,
+                    "messages_total": total,
+                    "messages_analyzed": len(batch),
+                    "truncated_for_ai": len(batch) < total,
+                    "redaction_applied": False,
+                    "redaction_count": 0,
+                    "generated_at": datetime.utcnow().isoformat(),
+                }
+            )
+            return result
+
+        redacted, redaction_count, redaction_applied = self._prepare_messages(batch)
+        transcript = self._format_transcript(redacted)
+        metadata_block = self._thread_metadata_block(redacted)
+        context_block = self._chat_context_block(relationship_map, ai_context_map)
+        prompt = (
+            "Analyze these Telegram messages and explain: "
+            "what people talked about, what they felt, and what they need from the operator.\n\n"
+            f"{context_block}{metadata_block}{transcript}"
+        )
+
+        try:
+            raw, provider, gen_meta = await self._generate_text(prompt, CONVERSATION_INTEL_SYSTEM)
+            parsed = self._parse_json_response(raw)
+            key_points = parsed.get("key_points", [])
+            if not isinstance(key_points, list):
+                raise ValueError("AI response missing key_points array")
+
+            result = {
+                "topics_summary": str(parsed.get("topics_summary", "")).strip(),
+                "sentiment_summary": str(parsed.get("sentiment_summary", "")).strip(),
+                "needs_summary": str(parsed.get("needs_summary", "")).strip(),
+                "key_points": [str(item).strip() for item in key_points if str(item).strip()][:7],
+                "provider": provider,
+                "message_count": total,
+                "messages_total": total,
+                "messages_analyzed": len(batch),
+                "truncated_for_ai": len(batch) < total,
+                "redaction_applied": redaction_applied,
+                "redaction_count": redaction_count,
+                "generated_at": datetime.utcnow().isoformat(),
+            }
+            self._apply_generation_meta(result, gen_meta)
+            if not result["topics_summary"]:
+                raise ValueError("AI response missing topics_summary")
+            if not result["sentiment_summary"]:
+                raise ValueError("AI response missing sentiment_summary")
+            if not result["needs_summary"]:
+                raise ValueError("AI response missing needs_summary")
+            return result
+        except Exception as exc:
+            logger.warning("conversation_intel failed, using fallback: %s", exc, exc_info=True)
+            result = self._fallback_conversation_intel(messages)
+            result.update(
+                {
+                    "message_count": total,
+                    "messages_total": total,
+                    "messages_analyzed": len(batch),
+                    "truncated_for_ai": len(batch) < total,
+                    "redaction_applied": redaction_applied,
+                    "redaction_count": redaction_count,
+                    "generated_at": datetime.utcnow().isoformat(),
+                    "degraded": True,
+                    "failure_reason": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            return result
 
     async def assign_topics(self, text: str) -> list[str]:
         redacted_text = redaction_service.redact(text).text

@@ -1,0 +1,13 @@
+:root {
+  font-family: 'Figtree', 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}

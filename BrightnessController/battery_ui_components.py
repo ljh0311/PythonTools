@@ -194,8 +194,14 @@ class BatteryMonitorPanel(ttk.Frame):
 
         top = ttk.Frame(self)
         top.pack(fill="x", pady=(0, 8))
-        self.gauge = BatteryGauge(top)
-        self.gauge.pack(side="left")
+        gauge_col = ttk.Frame(top)
+        gauge_col.pack(side="left")
+        self.gauge = BatteryGauge(gauge_col)
+        self.gauge.pack(anchor="w")
+        self.gauge_caption = ttk.Label(
+            gauge_col, text="", foreground="#666666", font=("Segoe UI", 8)
+        )
+        self.gauge_caption.pack(anchor="w", pady=(2, 0))
 
         metrics = ttk.Frame(top)
         metrics.pack(side="left", fill="both", expand=True, padx=(12, 0))

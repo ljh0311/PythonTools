@@ -1230,6 +1230,81 @@ h2 {
   line-height: 1.5;
 }
 
+.intel-grid {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.intel-card {
+  padding: 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.intel-card h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.intel-card-topic {
+  border-left: 3px solid var(--accent);
+}
+
+.intel-card-feeling {
+  border-left: 3px solid #c084fc;
+}
+
+.intel-card-needs {
+  border-left: 3px solid var(--success);
+}
+
+.intel-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.intel-section {
+  margin: 0 0 0.7rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.intel-section h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.intel-section p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.intel-sentiment {
+  border-left: 3px solid #c084fc;
+}
+
+.intel-needs {
+  border-left: 3px solid var(--success);
+}
+
+.intel-points {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
 .summary-meta {
   margin: 0;
   font-size: 0.75rem;

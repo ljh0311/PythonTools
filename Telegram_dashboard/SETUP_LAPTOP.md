@@ -28,7 +28,7 @@ Open `.env` in any text editor. At minimum set:
 - `DASHBOARD_API_KEY` — any long random secret you make up
 - `TELEGRAM_BOT_TOKEN` — from Telegram BotFather (optional for testing UI)
 
-For AI summaries, also add `GEMINI_API_KEY` or run Ollama locally.
+For AI summaries, set `GEMINI_API_KEY` or run Ollama locally (`ollama pull llama3.2`). Gemini is tried first; Ollama is the automatic fallback.
 
 ## 4. Start the app
 

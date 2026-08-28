@@ -1,134 +1,60 @@
-# Pygame Navigation Test
+# SmartAI Test Visualization Guide
 
-This directory contains two versions of the navigation test script:
+## Backends (test.py)
 
-## Files
+| Backend | Command | Best for |
+|---------|---------|----------|
+| **enhanced** (default) | `python test.py --backend enhanced` | Demos — split map + HUD panel |
+| **3d** | `python test.py --backend 3d` | Home floor walkthrough (OpenGL) |
+| **pygame** | `python test.py --backend pygame` | Lightweight 2D |
+| **matplotlib** | `python test.py --backend matplotlib` | Debug plots, analysis |
 
-1. **`test.py`** - Original matplotlib-based version (FIXED)
-2. **`test_pygame.py`** - New pygame-based version
-3. **`test_pygame_simple.py`** - Simple pygame test to verify installation
-4. **`PYGAME_TEST_README.md`** - This file
+Optional live dashboard: `python test.py --dashboard` (Dear PyGui side window)
 
-## Key Differences
+**Important:** `--mode 1` shows the window. Add `--headless` only if you want no UI.
 
-### Visualization Engine
-- **Original (`test.py`)**: Uses matplotlib with TkAgg backend
-- **Pygame (`test_pygame.py`)**: Uses pygame for real-time rendering
-
-### Performance
-- **Original**: Slower, more suitable for analysis and debugging
-- **Pygame**: Faster, smoother real-time visualization (60 FPS)
-
-### Features
-Both versions support:
-- Robot navigation visualization
-- Obstacle avoidance
-- LIDAR ray visualization
-- Path planning display
-- Learning data visualization
-- Interactive testing
-
-## Bug Fixes
-
-### Dictionary Iteration Error
-The original `test.py` had a bug where the `valid_paths` dictionary was being modified while being iterated over. This has been fixed in both versions by:
-
-```python
-# FIXED VERSION - Create a copy before iteration
-valid_paths = learning_data.get('valid_paths', {}).copy()
-for path_key, path_data in valid_paths.items():
-    # ... process data
-```
-
-## Installation Requirements
-
-### For Original Version (`test.py`)
 ```bash
-pip install matplotlib numpy opencv-python
+python test.py --backend enhanced --mode 1          # demo + window
+python test.py --backend enhanced --mode 1 --headless  # CI, no window
 ```
 
-### For Pygame Version (`test_pygame.py`)
+## Enhanced 2D HUD
+
+- Left: map, path, LIDAR, robot (front caster shown as white dot)
+- Right panel: nav state, sensors, rear motors, RobotMind, camera thumb
+- Keys: **Space** pause · **R** reset demo · **Esc** quit
+
+## 3D home view
+
+Uses `src/simulation/world_3d.py` — walls, furniture, robot in a house layout.
+Drag mouse to orbit camera. 2D nav coords map to 3D floor (x, z).
+
+## Scenario config
+
+`scenarios/demo_home.yaml` — IR-SIM-style layout reference for future adapter.
+
+## Research-backed picks (2025–2026)
+
+- **[IR-SIM](https://github.com/hanruihua/ir-sim)** — YAML scenarios, keyboard/mouse, collision; good 2D nav reference
+- **[PyRoboSim](https://github.com/sea-bass/pyrobosim)** — ROS2 2.5D mobile robot sim
+- **Dear PyGui** — GPU dashboard for live telemetry (used in `--dashboard`)
+- **[Genesis](https://github.com/Genesis-Embodied-AI/Genesis)** — future upgrade for photoreal 3D + physics (heavy)
+
+## Install
+
 ```bash
-pip install pygame numpy opencv-python
+pip install pygame matplotlib opencv-python dearpygui pyopengl
 ```
 
-## Usage
+## Path refinement (smoother over time)
 
-### Test Pygame Installation
+The robot now **learns successful trips** and reuses them:
+
 ```bash
-python test_pygame_simple.py
+python test.py --backend enhanced --mode 16
 ```
 
-### Run Original Version
-```bash
-python test.py
-```
-
-### Run Pygame Version
-```bash
-python test_pygame.py
-```
-
-## Interactive Commands
-
-Both versions support the same interactive commands:
-- `1` - Simple Navigation
-- `2` - Obstacle Avoidance  
-- `3` - Exploration
-- `4` - Visual Odometry Test (if camera available)
-- `5` - Demo Mode
-- `6` - Debug Logging Toggle
-- `7` - Quiet Mode
-- `8` - Normal Mode
-- `q` - Quit
-
-## Pygame Controls
-
-In the pygame version:
-- **ESC** - Exit the visualization
-- **Close Window** - Exit the application
-
-## Advantages of Pygame Version
-
-1. **Better Performance**: 60 FPS vs variable frame rate in matplotlib
-2. **Smoother Animation**: Real-time rendering without blocking
-3. **Better Event Handling**: More responsive to user input
-4. **Lower Resource Usage**: More efficient for real-time applications
-5. **Cross-platform**: Better compatibility across different systems
-
-## Advantages of Matplotlib Version
-
-1. **Better for Analysis**: Easier to add plots, graphs, and analysis tools
-2. **More Plotting Options**: Rich set of visualization features
-3. **Better for Debugging**: Can pause, zoom, and inspect data easily
-4. **Integration**: Better integration with scientific computing workflows
-
-## Troubleshooting
-
-### Pygame Issues
-If pygame doesn't work:
-1. Install pygame: `pip install pygame`
-2. Test with simple script: `python test_pygame_simple.py`
-3. Check display drivers and OpenGL support
-
-### Original Version Issues
-If matplotlib doesn't work:
-1. Install matplotlib: `pip install matplotlib`
-2. Try different backend: `export MPLBACKEND=TkAgg`
-3. Check Tkinter installation
-
-## Performance Comparison
-
-| Feature | Matplotlib Version | Pygame Version |
-|---------|-------------------|----------------|
-| Frame Rate | Variable (10-30 FPS) | Consistent 60 FPS |
-| Memory Usage | Higher | Lower |
-| CPU Usage | Higher | Lower |
-| Responsiveness | Lower | Higher |
-| Analysis Tools | Rich | Basic |
-
-## Recommendations
-
-- **Use Pygame version** for real-time navigation testing and demonstrations
-- **Use Matplotlib version** for analysis, debugging, and development
-- **Test both** to ensure compatibility with your system 
+- Same start→goal, several runs
+- Amber = older plans, green = current
+- Banner: waypoints, length, turns
+- Menu option **16** also works

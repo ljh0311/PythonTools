@@ -26,7 +26,29 @@ def relative_charge_percent(os_percent: int, full_percent: int) -> int:
     full_pct = max(65, min(100, int(full_percent))) if full_percent else 100
     if full_pct <= 0:
         return os_pct
-    return min(100, round(100 * os_pct / full_pct))
+    return min(100, int(round(100 * os_pct / full_pct)))
+
+
+def format_progress_caption(os_percent: int, full_percent: int) -> str:
+    """Short caption under the gauge for progress toward learned full."""
+    full_pct = max(0, min(100, int(full_percent))) if full_percent else 100
+    if full_pct >= 100:
+        return ""
+    os_pct = max(0, min(100, int(os_percent)))
+    rel = relative_charge_percent(os_pct, full_pct)
+    if rel >= 99:
+        return f"At learned full · OS {os_pct}%"
+    return f"Progress to learned full ({full_pct}%)"
+
+
+def format_learned_full_status(
+    relative_percent: int, full_percent: int, os_percent: int
+) -> str:
+    """Status line: relative first, OS raw % secondary."""
+    rel = max(0, min(100, int(relative_percent)))
+    full_pct = max(0, min(100, int(full_percent)))
+    os_pct = max(0, min(100, int(os_percent)))
+    return f"{rel}% of learned full (OS {os_pct}%)"
 
 
 def format_duration_minutes(minutes: float) -> str:

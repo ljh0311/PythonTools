@@ -1,5 +1,9 @@
 import { api } from "./api.js";
-import { collectFiltersFromForm, displayName, inboxState } from "./inbox.js";
+import {
+  buildAiFilterPayload,
+  collectFiltersFromForm,
+  displayName,
+} from "./inbox.js";
 
 function escapeHtml(value) {
   return String(value)
@@ -17,16 +21,7 @@ function formatTime(iso) {
 
 function buildFilterPayload() {
   collectFiltersFromForm();
-  const { q, userIds, chatType, direction, topics, dateFrom, dateTo } = inboxState.filters;
-  return {
-    q: q || undefined,
-    user_ids: userIds.length ? userIds.join(",") : undefined,
-    chat_type: chatType || undefined,
-    direction: direction || undefined,
-    topics: topics || undefined,
-    date_from: dateFrom || undefined,
-    date_to: dateTo || undefined,
-  };
+  return buildAiFilterPayload();
 }
 
 function renderRedactionNotice(container, result) {
@@ -309,9 +304,64 @@ function renderSuggestions(result, onSent) {
   });
 }
 
+function renderIntelSection(title, text, tone = "default") {
+  return `
+    <section class="intel-section intel-${escapeHtml(tone)}">
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(text || "No summary available.")}</p>
+    </section>`;
+}
+
+function renderIntel(result) {
+  const panel = document.getElementById("intel-panel");
+  const summaryPanel = document.getElementById("summary-panel");
+  const suggestionsPanel = document.getElementById("suggestions-panel");
+  if (summaryPanel) summaryPanel.hidden = true;
+  if (suggestionsPanel) suggestionsPanel.hidden = true;
+  panel.hidden = false;
+  const isFallback = result.provider === "fallback";
+  panel.innerHTML = `
+    <div class="insight-header">
+      <strong>Conversation intel</strong>
+      ${providerBadge(result.provider)}
+    </div>
+    ${renderTruncationNotice(result)}
+    ${renderDegradationNotice(result)}
+    ${isFallback ? renderFallbackNotice() : ""}
+    ${renderIntelSection("What people talked about", result.topics_summary)}
+    ${renderIntelSection("What people felt", result.sentiment_summary, "sentiment")}
+    ${renderIntelSection("What they need from you", result.needs_summary, "needs")}
+    ${
+      result.key_points?.length
+        ? `<section class="intel-section">
+            <h3>Key points</h3>
+            <ul class="intel-points">
+              ${result.key_points.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+            </ul>
+          </section>`
+        : ""
+    }
+    ${isFallback ? renderMessageHighlights(result.message_highlights || []) : ""}
+    <p class="summary-meta">${escapeHtml(String(result.message_count || 0))} messages</p>
+    <button type="button" class="btn btn-ghost btn-sm" id="copy-intel">Copy</button>`;
+
+  renderRedactionNotice(panel, result);
+  panel.querySelector("#copy-intel")?.addEventListener("click", () => {
+    const lines = [
+      "Conversation intel",
+      `What people talked about: ${result.topics_summary || ""}`,
+      `What people felt: ${result.sentiment_summary || ""}`,
+      `What they need from you: ${result.needs_summary || ""}`,
+      ...(result.key_points?.length ? ["Key points:", ...result.key_points.map((item) => `- ${item}`)] : []),
+    ];
+    navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
+  });
+}
+
 export function bindInsights(onError, onSent = () => {}) {
   document.getElementById("btn-summarize").addEventListener("click", async () => {
     const panel = document.getElementById("summary-panel");
+    document.getElementById("intel-panel").hidden = true;
     const summaryType = document.getElementById("summary-type").value;
     panel.hidden = false;
     panel.innerHTML = `<p class="summary-loading">Generating summary…</p>`;
@@ -326,11 +376,25 @@ export function bindInsights(onError, onSent = () => {}) {
 
   document.getElementById("btn-suggest").addEventListener("click", async () => {
     const panel = document.getElementById("suggestions-panel");
+    document.getElementById("intel-panel").hidden = true;
     panel.hidden = false;
     panel.innerHTML = `<p class="summary-loading">Generating suggestions…</p>`;
     try {
       const result = await api.suggestActions(buildFilterPayload());
       renderSuggestions(result, onSent);
+    } catch (error) {
+      panel.innerHTML = `<p class="error-text">${escapeHtml(error.message)}</p>`;
+      onError(error.message);
+    }
+  });
+
+  document.getElementById("btn-intel").addEventListener("click", async () => {
+    const panel = document.getElementById("intel-panel");
+    panel.hidden = false;
+    panel.innerHTML = `<p class="summary-loading">Analyzing conversation intel…</p>`;
+    try {
+      const result = await api.getConversationIntel(buildFilterPayload());
+      renderIntel(result);
     } catch (error) {
       panel.innerHTML = `<p class="error-text">${escapeHtml(error.message)}</p>`;
       onError(error.message);

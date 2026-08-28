@@ -1,7 +1,30 @@
 # Smart Robot Configuration File
 
-# Hardware Configuration
+# Network Settings (for future remote control)
+network:
+  host: "localhost"
+  port: 8080
+  enable_remote_control: false
+
+# Named locations for tool-based navigation (cm)
+locations:
+  kitchen: [600, 400]
+  bedroom: [200, 300]
+  living_room: [500, 600]
+
+# Vision fusion into navigation (not GUI-only)
+vision:
+  fusion_enabled: true
+  model_path: "efficientdet.tflite"
+  prediction_horizon: 2.0
+  stop_time_to_collision: 1.0
+  reroute_time_to_collision: 3.0
+  camera_fov_deg: 60
+  max_range_cm: 300
+
+# Hardware transport backend: gpio | simulation | rpi
 hardware:
+  transport: gpio
   # Motor pins (for Raspberry Pi GPIO)
   left_motor:
     forward_pin: 17
@@ -34,6 +57,8 @@ hardware:
 
 # Robot Physical Properties
 robot:
+  name: SmartAI
+  model: llama3.1:8b
   # Dimensions (in cm)
   width: 30
   length: 40
@@ -49,8 +74,8 @@ robot:
   
   # Safety distances (in cm)
   safety_distances:
-    critical: 10
-    warning: 30
+    critical: 15
+    warning: 35
     comfortable: 50
 
 # Navigation Settings
@@ -88,6 +113,16 @@ control:
   show_debug_info: true
   show_sensor_data: true
 
+# Notifications (blocked path, user alerts)
+notifications:
+  enabled: true
+  channels:
+    log: true
+    api: true
+    tts: false
+    gui_toast: false
+  max_history: 50
+
 # Logging and Debugging
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR
@@ -96,8 +131,24 @@ logging:
   max_log_size: "10MB"
   backup_count: 5
 
-# Network Settings (for future remote control)
-network:
-  host: "localhost"
-  port: 8080
-  enable_remote_control: false 
+# Smart home integrations (credentials via env or local secrets — do not commit real tokens)
+integrations:
+  smartthings:
+    enabled: false
+    mock_mode: true
+    personal_access_token: ""  # PAT from https://account.smartthings.com/tokens
+    api_base: "https://api.smartthings.com/v1"
+    default_light_device_id: ""
+  google_home:
+    enabled: false
+    mock_mode: true
+    project_id: ""
+    client_id: ""
+    client_secret: ""
+    refresh_token: ""
+    default_device_id: ""
+  mqtt:
+    enabled: false
+    host: localhost
+    port: 1883
+    topic_prefix: smartai

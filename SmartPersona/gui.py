@@ -68,12 +68,13 @@ class ReplySuggestionThread(QThread):
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self, brain, chat_history, user_prompt=None, format="auto"):
+    def __init__(self, brain, chat_history, user_prompt=None, format="auto", persona_name=None):
         super().__init__()
         self.brain = brain
         self.chat_history = chat_history
         self.user_prompt = user_prompt
         self.format = format
+        self.persona_name = persona_name
 
     def run(self):
         try:
@@ -81,6 +82,7 @@ class ReplySuggestionThread(QThread):
                 self.chat_history,
                 user_prompt=self.user_prompt,
                 format=self.format,
+                persona_name=self.persona_name,
             )
             self.finished.emit(result)
         except Exception as e:
@@ -672,16 +674,18 @@ class SmartPersonaGUI(QWidget):
         user_prompt = None
         if hint:
             user_prompt = (
-                "Based on the conversation above and what you know about me from memories, "
-                "suggest a short reply I could send in the same informal texting style I use when possible. "
-                "Reply with only the suggested message, no extra explanation.\n\n"
+                f"Write the next message that {self.persona.get_name()} would send in this chat. "
+                "Output ONLY that message — casual texting style. No analysis or explanation.\n\n"
                 f"Additional direction: {hint}"
             )
+        else:
+            user_prompt = None
         self.reply_suggestion_thread = ReplySuggestionThread(
             self.brain,
             chat_history,
             user_prompt=user_prompt,
             format="auto",
+            persona_name=self.persona.get_name(),
         )
         self.reply_suggestion_thread.finished.connect(self._on_get_reply_finished)
         self.reply_suggestion_thread.error.connect(self._on_get_reply_error)
@@ -867,6 +871,42 @@ class SmartPersonaGUI(QWidget):
         lines = [f"{idx + 1}. {item}" for idx, item in enumerate(memories)]
         self.memories_display.setPlainText("\n".join(lines))
         self._update_identity_strip()
+
+    def _on_tidy_memory_clicked(self):
+        if self.refresh_memory_thread and self.refresh_memory_thread.isRunning():
+            return
+        before = len(self.brain.get_memory())
+        self._set_busy(self.memories_tidy_btn, True, "⏳ Tidying...")
+        self.refresh_memory_thread = RefreshMemoryThread(self.brain)
+        self.refresh_memory_thread.finished.connect(
+            lambda questions: self._on_tidy_memory_finished(before, questions)
+        )
+        self.refresh_memory_thread.error.connect(self._on_tidy_memory_error)
+        self.refresh_memory_thread.start()
+
+    def _on_tidy_memory_finished(self, before_count, questions):
+        self._set_busy(self.memories_tidy_btn, False)
+        after = len(self.brain.get_memory())
+        removed = max(0, before_count - after)
+        try:
+            profile_path = (
+                self.brain.export_user_profile(persona=self.persona)
+                if hasattr(self.brain, "export_user_profile")
+                else None
+            )
+        except OSError:
+            profile_path = None
+        msg = f"Memory tidied: {before_count} → {after} entries ({removed} removed)."
+        if profile_path:
+            msg += f"\nProfile updated: {profile_path}"
+        if questions:
+            msg += "\n\nClarification questions:\n" + "\n".join(f"• {q}" for q in questions[:5])
+        QMessageBox.information(self, "Memory tidied", msg)
+        self._refresh_memories_display()
+
+    def _on_tidy_memory_error(self, error):
+        self._set_busy(self.memories_tidy_btn, False)
+        QMessageBox.warning(self, "Tidy memory", str(error))
 
     def _refresh_thoughts_display(self):
         thoughts = self.brain.get_thoughts(limit=999)
@@ -1187,6 +1227,12 @@ class SmartPersonaGUI(QWidget):
         self.memories_refresh_btn = QPushButton("🔄 Refresh Memories")
         self.memories_refresh_btn.setToolTip("Fetch the latest memories from AI storage.")
         btnrow.addWidget(self.memories_refresh_btn)
+        self.memories_tidy_btn = QPushButton("🧹 Tidy memory")
+        self.memories_tidy_btn.setToolTip(
+            "Deduplicate, merge overlapping entries, and clean noisy memories. Updates user_profile.md."
+        )
+        self.memories_tidy_btn.clicked.connect(self._on_tidy_memory_clicked)
+        btnrow.addWidget(self.memories_tidy_btn)
         btnrow.addStretch()
         layout.addLayout(btnrow)
         return widget

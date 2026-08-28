@@ -353,6 +353,20 @@ async def suggest_actions(body: FilteredAiRequest) -> dict[str, Any]:
     return {**result, "filter_hash": fhash, "suggestions": saved}
 
 
+@router.post("/ai/conversation-intel", dependencies=[Depends(verify_operator)])
+async def conversation_intel(body: FilteredAiRequest) -> dict[str, Any]:
+    messages, _filters = _fetch_filtered_messages(body)
+    chat_ids = list({m["chat_id"] for m in messages if m.get("chat_id") is not None})
+    try:
+        return await ai_service.conversation_intel(
+            messages,
+            relationship_map=store.get_relationship_map(chat_ids),
+            ai_context_map=store.get_ai_context_map(chat_ids),
+        )
+    except RateLimitExceeded as exc:
+        _raise_ai_http_error(exc)
+
+
 async def _ensure_chat_relationships() -> None:
     store.sync_chat_settings_from_messages()
     for chat_id in store.chats_missing_relationship():
@@ -459,8 +473,20 @@ async def learn_from_chat(chat_id: int) -> dict[str, Any]:
         relationship_source=learned.relationship_source,
         ai_context=learned.ai_context,
     )
+    saved_memories: list[dict[str, Any]] = []
+    if learned.facts:
+        store.clear_ai_memories(chat_id)
+        saved_memories = store.add_chat_memories(
+            chat_id,
+            [{"type": "fact", "content": f} for f in learned.facts],
+            source="ai",
+        )
     await ws_manager.broadcast("chat_reply_updated", saved)
-    return {"settings": saved, "learn": learned.to_learn_meta()}
+    return {
+        "settings": saved,
+        "learn": learned.to_learn_meta(),
+        "memories": saved_memories or store.list_chat_memories(chat_id, limit=5),
+    }
 
 
 @router.get("/chats/{chat_id}/memories", dependencies=[Depends(verify_operator)])

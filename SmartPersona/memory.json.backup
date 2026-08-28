@@ -1,0 +1,364 @@
+[
+  {
+    "type": "event",
+    "content": "Conversation between Chrissylia (Bb) ❤️, hong (consolidated).",
+    "timestamp": null,
+    "source": "message_history",
+    "timestamp_start": 1770130980.019847,
+    "timestamp_end": 1770158641.019847,
+    "summary": "Consolidated chat messages between Chrissylia (Bb) ❤️ and hong from 2/3/2026 3:03 PM to 10:44 PM, combining all consecutive entries by each author and removing redundant blank messages."
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, Yappie: hong: laoban hong: the beach day hong: uw join me and Chris rent car hong: HAHAHAHAHAHAHAHAHHA Yappie: EURHH Yappie: i s...",
+    "timestamp": 1770132504.9940033,
+    "source": "message_history"
+  },
+  {
+    "type": "fact",
+    "content": "Hong and Yappie have a playful relationship.",
+    "timestamp": 1770132510.2642803,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Hong invited Yappie to join him on a beach day with Chris, but Yappie declined due to financial constraints.",
+    "timestamp": 1770132510.2653902,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, yappie: hong: I drawing arms now Yappie: ok Yappie: Yappie: u infront the queue ah hong: nah hong: about 8 more Yappie: gaddam .... ... Yappie: wake up alr not hong: gud the fking morn hong: Yappie: good the fking mo...",
+    "timestamp": 1770132554.3558102,
+    "source": "message_history",
+    "timestamp_start": 1770132554.3558102,
+    "timestamp_end": 1770132623.0125325,
+    "summary": "2 messages",
+    "participants": "hong, yappie"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Ester, Darrel(SIT) Ling, hong, Already told Scott to do the following: Ester: Heads up Ester: A guy name scott gonna pester you guys tmr hong: wo bu yao hong: wo yao heads down Darrel(SIT) Li...",
+    "timestamp": 1770132671.3472085,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Ester, Darrel(SIT) Ling, hong: hong: c4 has arrived hong: bomb has been planted hong: c2^2 has arrived Ester: Whit Ester: Whut Ester: Hahah hong: Este...",
+    "timestamp": 1770132723.708271,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Celulu, hong: Celulu: eh lai Celulu: which classrom u in Celulu: ru in this one hong: hong: Celulu: SHAG Celulu: i cfm late Celulu: ...",
+    "timestamp": 1770132790.7622204,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, Yong Qing: Yong Qing: u drive in? hong: we rent car in malaysia Yong Qing: at whr now Yong Qing: i also in jb lolol hong: oh LOL ho...",
+    "timestamp": 1770133886.8805182,
+    "source": "message_history"
+  },
+  {
+    "type": "fact",
+    "content": "Hong and Yong Qing are both in Johor Bahru (JB).",
+    "timestamp": 1770133893.2129314,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Aefy 🍃, Unknown, hong: hong: after some short discussion with Darius/Pierre, I'll check on the car agn as Pierre suggest we get SUV since we go...",
+    "timestamp": 1770134279.309682,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Jen has concerns about the price of renting a car and whether it's necessary to take an SUV.",
+    "timestamp": 1770134296.7611938,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with bastard, hong: hong: bro hong: U wear my belt ah bastard: Guess belt? hong: yea bastard: huh i took that from my room bastard: It was h...",
+    "timestamp": 1770294383.4151924,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with ester, hong: Ester: Sithu MC today Ester: He just pm me Ester: Fyi hong: ah hong: ok hong: no diff hong: HAHAHAHAHHH Ester: HAHAHHAA ... ... hong: he got msg u isit Ester: Ya Ester: Morning still got msg Ester: You try ca...",
+    "timestamp": 1770299148.9496515,
+    "source": "message_history",
+    "timestamp_start": 1770299148.9496515,
+    "timestamp_end": 1770299263.9822922,
+    "summary": "2 messages",
+    "participants": "ester, hong"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, Yong Qing: Yong Qing: bro Yong Qing: whr u rn? Yong Qing: free? hong: why eh Yong Qing: can fetch me at ecp? hong: im at home ah ho...",
+    "timestamp": 1770299758.6591918,
+    "source": "message_history"
+  },
+  {
+    "type": "fact",
+    "content": "I used to smoke Viceroy Hokkaido mint Blue boost. Now, i smoke Marlboro Ice Blast Small Tech.",
+    "timestamp": 1770300875.3204095,
+    "source": "user",
+    "topic": "Vices, smoking"
+  },
+  {
+    "type": "fact",
+    "content": "I like travelling, especially if i can drive.",
+    "timestamp": 1770301421.8113682,
+    "source": "user",
+    "topic": "Travelling, driving, exploring"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, yong qing: hong: how's u hong: u homed? Yong Qing: ye i was Yong Qing: he was Yong Qing: HAHAHA Yong Qing: i legit seh sia Yong Qin... ... hong: meiii hong: alot things to update hong: actl not that many hong: but yea t...",
+    "timestamp": 1770301456.1634352,
+    "source": "message_history",
+    "timestamp_start": 1770301456.1634352,
+    "timestamp_end": 1770301721.0449317,
+    "summary": "3 messages",
+    "participants": "hong, yong qing"
+  },
+  {
+    "type": "event",
+    "content": "Hong invited Yong Qing to join him on a beach day with Chris.",
+    "timestamp": 1770301732.1179607,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Yong Qing, hong: hong: bro hong: I'm hong: sigh hong: Yong Qing: huh Yong Qing: what happen hong: I dun fking noe hong: ok wait hong: I ...",
+    "timestamp": 1770302139.4143279,
+    "source": "message_history"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, Yong Qing: hong: I dun fking noe",
+    "timestamp": 1770302159.7126555,
+    "source": "reflection"
+  },
+  {
+    "type": "voice",
+    "content": "Uses informal language and slang (e.g. \"fking\", \"bro\", \"sia\").",
+    "timestamp": 1770302159.7146633,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with hong, yong qing: Yong Qing: i did it again 😭😭😭 Yong Qing: and i sped alot tdy cuz we were late for shoot Yong Qing: but o dun recall any ... ... hong: sigh hong: this is sad hong: hong: my view for the next 4hrs(?) hong: hong...",
+    "timestamp": 1770302418.6000054,
+    "source": "message_history",
+    "timestamp_start": 1770302418.6000054,
+    "timestamp_end": 1770302714.2615273,
+    "summary": "2 messages",
+    "participants": "hong, yong qing"
+  },
+  {
+    "type": "fact",
+    "content": "Hong's nickname is \"bro\".",
+    "timestamp": 1770302724.1514661,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Yong Qing about blood test results.",
+    "timestamp": 1770302724.1537051,
+    "source": "reflection"
+  },
+  {
+    "type": "belief",
+    "content": "Importance of believing in oneself (\"cuz ni ke yi de!!\").",
+    "timestamp": 1770302724.1547153,
+    "source": "reflection"
+  },
+  {
+    "type": "fact",
+    "content": "We are kin-ball friends.",
+    "timestamp": 1770635900.987204,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "Chrissylia Phua is my partner",
+    "timestamp": 1770635900.9882555,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "We are work colleagues turned friends",
+    "timestamp": 1770635900.9902349,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "It is just a nickname",
+    "timestamp": 1770635900.991234,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "We once liked each other but did not get together",
+    "timestamp": 1770635900.993242,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "Yappie is Wei Xuan's nickname. He is Hong's NS friend.",
+    "timestamp": 1770637755.9613435,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "Darius and Pierre is Hong and Aefy's kinball friends. Darius was in the same car group for a previous kin-ball trip",
+    "timestamp": 1770637755.963327,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "Chrissylia Phua is Hong's partner/fiancee, we met during inline skate CCA at SIT Dover.",
+    "timestamp": 1770637755.964331,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "It refers to this colleague, Si Thu Aung, that we have argument with.",
+    "timestamp": 1770637755.9653296,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "It is mainly the cost of the car compared to the space available. Our car was the most expensive compared to the rest.",
+    "timestamp": 1770637755.9673345,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "Aefy suggested us taking a SUV due to the possibility of us carring multiple bags",
+    "timestamp": 1770638285.4921448,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "Pierre is Hong's kin-ball friend. He was the one to introduce Hong into kin-ball",
+    "timestamp": 1770638285.4931614,
+    "source": "user"
+  },
+  {
+    "type": "fact",
+    "content": "It just some encouragement that i always say.",
+    "timestamp": 1770638285.494147,
+    "source": "user"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with Bb Phua, hong: Bb Phua: Zao an lao gong ❤️ hong: zao an Lao po❤️ hong:  hong: I just rmb hong: I supposed to find airbnb for our job tr...",
+    "timestamp": 1771755256.3681555,
+    "source": "message_history",
+    "participants": "Bb Phua, hong"
+  },
+  {
+    "type": "habit",
+    "content": "Uses informal language and slang (e.g. \"HAHA\", \"ogiii\").",
+    "timestamp": 1771755277.6881926,
+    "source": "reflection"
+  },
+  {
+    "type": "voice",
+    "content": "Uses informal language and slang, playful tone with humor to diffuse situations.",
+    "timestamp": 1771755277.6887283,
+    "source": "reflection"
+  },
+  {
+    "type": "fact",
+    "content": "Chrissylia Phua is my partner/fiancee.",
+    "timestamp": 1771755277.6917784,
+    "source": "reflection"
+  },
+  {
+    "type": "event",
+    "content": "Conversation with [3/2/2026 7, [3/2/2026 8: [3/2/2026 7: 27 PM] hong: OH YA [3/2/2026 7: 27 PM] hong: MY BRO IS NOW IN VIETNAM [3/2/2026 7: 27 PM] hong: SO I HAVE T...",
+    "timestamp": 1772505509.9659567,
+    "source": "message_history",
+    "participants": "[3/2/2026 7, [3/2/2026 8"
+  },
+  {
+    "type": "relationship",
+    "content": "Hong is referred to as \"laoban\" (boss) by Yappie.",
+    "timestamp": 1770132510.2662866,
+    "source": "reflection",
+    "person": "Hong"
+  },
+  {
+    "type": "relationship",
+    "content": "I am together with Chrissylia Phua (Bb is her telegram handle).",
+    "timestamp": 1770299030.4687457,
+    "source": "user",
+    "person": "Chrissylia Phua"
+  },
+  {
+    "type": "relationship",
+    "content": "Yong Qing is a close friend (referred to as \"bro\"). We have not met or talked for a very long time.",
+    "timestamp": 1770302724.1557143,
+    "source": "reflection",
+    "person": "Yong Qing"
+  },
+  {
+    "type": "relationship",
+    "content": "Partner/Fiancee (Chrissylia Phua's telegram handle is \"Bb\").",
+    "timestamp": 1771755277.6932933,
+    "source": "reflection",
+    "person": "Bb Phua"
+  },
+  {
+    "type": "preference",
+    "content": "Marlboro Ice Blast cigarettes are preferred over Semo brand.",
+    "timestamp": 1770132510.2642803,
+    "source": "reflection"
+  },
+  {
+    "type": "reaction",
+    "content": "being bombarded with updates; Reaction: playful response, using humor to diffuse the situation",
+    "timestamp": 1770301732.1168323,
+    "source": "reflection",
+    "situation": "Situation"
+  },
+  {
+    "type": "topic_style",
+    "content": "Hong's responses are brief and straightforward when discussing his preference for Marlboro Ice Blast cigarettes.",
+    "timestamp": 1770301732.1198406,
+    "source": "reflection",
+    "topic": "[Vices, smoking]"
+  },
+  {
+    "type": "topic_style",
+    "content": "Hong enjoys traveling, especially if he can drive.",
+    "timestamp": 1770301732.1208382,
+    "source": "reflection",
+    "topic": "[Travelling, driving, exploring]"
+  },
+  {
+    "type": "reaction",
+    "content": "when being bombarded with updates; playful response, using humor to diffuse the situation.",
+    "timestamp": 1770302429.5885491,
+    "source": "reflection"
+  },
+  {
+    "type": "topic_style",
+    "content": "brief and straightforward responses when discussing his preference for Marlboro Ice Blast cigarettes.",
+    "timestamp": 1770302429.585543,
+    "source": "reflection",
+    "topic": "Vices, smoking"
+  },
+  {
+    "type": "topic_style",
+    "content": "enjoys traveling, especially if he can drive.",
+    "timestamp": 1770302429.5866742,
+    "source": "reflection",
+    "topic": "Travelling, driving, exploring"
+  }
+]
