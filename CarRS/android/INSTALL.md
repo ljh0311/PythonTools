@@ -212,7 +212,7 @@ pip uninstall -y pandas numpy tabulate requests scikit-learn
 - **No matplotlib** charts in CLI mode.
 - **Ollama** integration is GUI-oriented; CLI uses historical + ML methods only.
 - First `pip install` may take several minutes on mobile data.
-- Windows/Docker workflows are unchanged; see [README.md](../README.md) and [DOCKER.md](../DOCKER.md).
+- Windows/Docker workflows are unchanged; see [README.md](../README.md) and [docs/DOCKER.md](../docs/DOCKER.md).
 
 ---
 

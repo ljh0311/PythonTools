@@ -8,8 +8,9 @@ import pandas as pd
 import sys
 import os
 
-# Add the current directory to the path so we can import the core module
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from _paths import ROOT, DEFAULT_CSV
+
+sys.path.insert(0, ROOT)
 
 from car_rental_recommender_core import (
     load_data,
@@ -27,7 +28,7 @@ def test_user_preference_analysis():
     try:
         # Load the data
         print("1. Loading data from CSV...")
-        df = load_data("22 - Sheet1.csv")
+        df = load_data(DEFAULT_CSV)
         df = enhance_dataframe(df)
         print(f"   Loaded {len(df)} records\n")
         
@@ -144,8 +145,8 @@ if __name__ == "__main__":
     print("=" * 50)
     
     # Check if the CSV file exists
-    if not os.path.exists("22 - Sheet1.csv"):
-        print("❌ Error: CSV file '22 - Sheet1.csv' not found!")
+    if not os.path.exists(DEFAULT_CSV):
+        print(f"❌ Error: CSV file not found: {DEFAULT_CSV}")
         print("Please ensure the CSV file is in the same directory as this script.")
         sys.exit(1)
     
@@ -154,7 +155,7 @@ if __name__ == "__main__":
     
     # Load data for insights
     try:
-        df = load_data("22 - Sheet1.csv")
+        df = load_data(DEFAULT_CSV)
         df = enhance_dataframe(df)
         display_user_insights(df)
     except Exception as e:

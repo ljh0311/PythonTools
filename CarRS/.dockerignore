@@ -3,7 +3,7 @@ __pycache__
 venv
 .git
 *.md
-!DOCKER.md
+!docs/DOCKER.md
 test_*.py
 car_rental_recommender_gui.py
 archive

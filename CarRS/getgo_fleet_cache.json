@@ -1,0 +1,580 @@
+{
+  "source": "home.getgo.sg",
+  "models": [
+    {
+      "slug": "mazda-3",
+      "name": "Mazda 3",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "ssangyong-tivoli",
+      "name": "Ssangyong Tivoli",
+      "tier": "standard",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "toyota-sienta",
+      "name": "Toyota Sienta",
+      "tier": "standard",
+      "vehicle_type": "MPV",
+      "seats": "7 Seater"
+    },
+    {
+      "slug": "hyundai-kona",
+      "name": "Hyundai Kona EV",
+      "tier": "standard electric",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "honda-shuttle",
+      "name": "Honda Shuttle",
+      "tier": "standard",
+      "vehicle_type": "Stationwagon",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "ssangyong-stavic",
+      "name": "Ssangyong Stavic",
+      "tier": "grand",
+      "vehicle_type": "MPV",
+      "seats": ""
+    },
+    {
+      "slug": "mitsubishi-attrage",
+      "name": "Mitsubishi Attrage",
+      "tier": "economy",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "honda-vezel-2nd-gen",
+      "name": "Honda Vezel Hybrid 2nd Gen",
+      "tier": "standard",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "honda-civic",
+      "name": "Honda Civic",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-avante",
+      "name": "Hyundai Avante",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "nissan-qashqai",
+      "name": "Nissan Qashqai",
+      "tier": "standard",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "honda-grace",
+      "name": "Honda Grace",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-ioniq-ev",
+      "name": "Hyundai IONIQ EV",
+      "tier": "standard electric",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "mazda-3-hatchback",
+      "name": "Mazda 3 Hatchback",
+      "tier": "standard",
+      "vehicle_type": "Hatchback",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "nissan-sylphy",
+      "name": "Nissan Sylphy",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "ssangyong-tivoli-xlv",
+      "name": "Ssangyong Tivoli XLV",
+      "tier": "standard",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "toyota-vios",
+      "name": "Toyota Vios",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "toyota-raize",
+      "name": "Toyota Raize",
+      "tier": "standard",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-ioniq-5",
+      "name": "Hyundai IONIQ 5",
+      "tier": "premium electric",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-avante-cn7",
+      "name": "Hyundai Avante CN7",
+      "tier": "select",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "byd-t3",
+      "name": "BYD T3",
+      "tier": "commercial electric",
+      "vehicle_type": "Van",
+      "seats": "2 Seater"
+    },
+    {
+      "slug": "byd-e6",
+      "name": "BYD e6",
+      "tier": "standard electric",
+      "vehicle_type": "MPV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-ioniq-hybrid",
+      "name": "Hyundai IONIQ Hybrid",
+      "tier": "select",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-venue-1-6",
+      "name": "Hyundai Venue 1.6",
+      "tier": "standard",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-i30-hatchback-1-4t",
+      "name": "Hyundai i30 Hatchback 1.4T",
+      "tier": "standard",
+      "vehicle_type": "Hatchback",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "toyota-harrier-2-0",
+      "name": "Toyota Harrier 2.0",
+      "tier": "premium",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-i30-wagon",
+      "name": "Hyundai i30 Wagon",
+      "tier": "standard",
+      "vehicle_type": "Stationwagon",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "toyota-altis-11th-gen",
+      "name": "Toyota Corolla Altis 11th Gen",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "honda-vezel-3rd-gen",
+      "name": "Honda Vezel Hybrid 3rd Gen",
+      "tier": "premium",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "suzuki-ignis",
+      "name": "Suzuki Ignis",
+      "tier": "standard",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "dfsk-ec35",
+      "name": "DFSK EC35",
+      "tier": "commercial electric",
+      "vehicle_type": "Van",
+      "seats": "2 Seater"
+    },
+    {
+      "slug": "mitsubishi-lancer-ex",
+      "name": "Mitsubishi Lancer EX",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "toyota-vios-e",
+      "name": "Toyota Vios E",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "mazda-2",
+      "name": "Mazda 2",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-elantra",
+      "name": "Hyundai Elantra",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "bmw-x3-2-0l-3rd-gen",
+      "name": "BMW X3 2.0 3rd Gen",
+      "tier": "luxury",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-kona-hybrid",
+      "name": "Hyundai Kona Hybrid",
+      "tier": "select",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "toyota-axio",
+      "name": "Toyota Axio",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "bmw-520i",
+      "name": "BMW 520i",
+      "tier": "luxury",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "bmw-528i",
+      "name": "BMW 528i",
+      "tier": "luxury",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "bmw-x3-2-0l-2nd-gen",
+      "name": "BMW X3 2.0L 2nd Gen",
+      "tier": "luxury",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "opel-mokka",
+      "name": "Opel Mokka",
+      "tier": "select",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "lexus-ct200h",
+      "name": "Lexus CT200H",
+      "tier": "premium",
+      "vehicle_type": "Hatchback",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "ssangyong-rexton",
+      "name": "Ssangyong Rexton",
+      "tier": "premium",
+      "vehicle_type": "SUV",
+      "seats": "7 Seater"
+    },
+    {
+      "slug": "ssangyong-actyon",
+      "name": "Ssangyong Actyon",
+      "tier": "premium",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "kia-optima-k5",
+      "name": "Kia Optima K5",
+      "tier": "premium",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "skoda-karoq-1-4",
+      "name": "SKODA Karoq 1.4",
+      "tier": "premium",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "ssangyong-korando",
+      "name": "Ssangyong Korando",
+      "tier": "premium",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "bmw-318i",
+      "name": "BMW 318i",
+      "tier": "premium",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "mazda-3-mild-hybrid",
+      "name": "Mazda 3 Mild Hybrid",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "mercedes-benz-c180",
+      "name": "Mercedes Benz C180",
+      "tier": "luxury",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "byd-m3e",
+      "name": "BYD m3E",
+      "tier": "standard electric",
+      "vehicle_type": "MPV",
+      "seats": "7 Seater"
+    },
+    {
+      "slug": "byd-atto-3",
+      "name": "BYD Atto 3",
+      "tier": "premium electric",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "honda-city",
+      "name": "Honda City",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "toyota-yaris-cross",
+      "name": "Toyota Yaris Cross",
+      "tier": "standard",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "lexus-es250",
+      "name": "Lexus ES250",
+      "tier": "luxury",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "lexus-rx300",
+      "name": "Lexus RX300",
+      "tier": "luxury",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "mercedes-benz-c180k",
+      "name": "Mercedes Benz C180K",
+      "tier": "premium",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "volkswagen-touran",
+      "name": "Volkswagen Touran",
+      "tier": "premium",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "grand-scenic-renault",
+      "name": "Grand Scenic Renault",
+      "tier": "standard",
+      "vehicle_type": "MPV",
+      "seats": "7 Seater"
+    },
+    {
+      "slug": "bmw-316i",
+      "name": "BMW 316i",
+      "tier": "premium",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "shineray-x30lev",
+      "name": "Shineray X30LEV",
+      "tier": "commercial electric",
+      "vehicle_type": "Van",
+      "seats": "2 Seater"
+    },
+    {
+      "slug": "nissan-x-trail",
+      "name": "Nissan X-Trail",
+      "tier": "premium",
+      "vehicle_type": "SUV",
+      "seats": "7 Seater"
+    },
+    {
+      "slug": "mazda-cx-5",
+      "name": "Mazda CX-5",
+      "tier": "premium",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "honda-fit-3rd-gen",
+      "name": "Honda Fit (3rd Gen)",
+      "tier": "standard",
+      "vehicle_type": "Hatchback",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "opel-astra",
+      "name": "Opel Astra",
+      "tier": "standard",
+      "vehicle_type": "Hatchback",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "honda-n-van",
+      "name": "Honda N-Van",
+      "tier": "standard",
+      "vehicle_type": "Van",
+      "seats": "2 Seater"
+    },
+    {
+      "slug": "honda-freed",
+      "name": "Honda Freed",
+      "tier": "select",
+      "vehicle_type": "MPV",
+      "seats": "7 Seater"
+    },
+    {
+      "slug": "volkswagen-golf",
+      "name": "Volkswagen Golf",
+      "tier": "select",
+      "vehicle_type": "Hatchback",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "skoda-octavia",
+      "name": "Skoda Octavia",
+      "tier": "select",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "kia-niro-plus-hybrid",
+      "name": "KIA NIRO Plus Hybrid",
+      "tier": "select",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "mazda-3-mild-hybrid-elegance",
+      "name": "Mazda 3 Mild Hybrid Elegance",
+      "tier": "select",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "kia-carens-diesel",
+      "name": "Kia Carens Diesel",
+      "tier": "standard",
+      "vehicle_type": "MPV",
+      "seats": "7 Seater"
+    },
+    {
+      "slug": "toyota-yaris-cross-active-hybrid",
+      "name": "Toyota Yaris Cross Active Hybrid",
+      "tier": "select",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "suzuki-swift-mild-hybrid-4th-gen",
+      "name": "Suzuki Swift Mild Hybrid 4th Gen",
+      "tier": "select",
+      "vehicle_type": "Hatchback",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "nissan-kicks",
+      "name": "Nissan Kicks",
+      "tier": "select",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "dongfeng-box",
+      "name": "Dongfeng Box",
+      "tier": "standard electric",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "mg-4-2",
+      "name": "Suzuki Swift Mild Hybrid 3rd Gen",
+      "tier": "select",
+      "vehicle_type": "Hatchback",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "toyota-corolla-altis-12th-gen",
+      "name": "Toyota Corolla Altis 12th Gen",
+      "tier": "select",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "hyundai-kona-select",
+      "name": "Toyota Prius Hybrid",
+      "tier": "standard",
+      "vehicle_type": "Sedan",
+      "seats": "5 Seater"
+    },
+    {
+      "slug": "honda-freed-g-hybrid",
+      "name": "Honda Freed G Hybrid",
+      "tier": "standard",
+      "vehicle_type": "SUV",
+      "seats": "7 Seater"
+    },
+    {
+      "slug": "skoda-kamiq",
+      "name": "Skoda Kamiq",
+      "tier": "select",
+      "vehicle_type": "SUV",
+      "seats": "5 Seater"
+    }
+  ],
+  "fetched_at": "2026-08-28T06:00:00"
+}

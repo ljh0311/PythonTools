@@ -202,7 +202,41 @@ The LLM receives structured prompts including:
 - **Offline Capable**: Works without internet connection (after model download)
 - **Open Source**: Ollama is open source and auditable
 
-## Future Enhancements
+## Vision image import (Records tab)
+
+Extract rental fields from receipts, booking screenshots, or invoices using a **local vision model** via Ollama.
+
+### Setup
+
+1. Start Ollama: `ollama serve`
+2. Pull a vision model (recommended):
+
+```bash
+ollama pull llama3.2-vision
+```
+
+Other options: `llava`, `moondream`, `bakllava`
+
+### Usage
+
+1. Open **Records Management**
+2. In **Import from image**, click **Choose image** (PNG, JPG, WebP)
+3. Select a vision model from the dropdown (refresh with 🔄 if needed)
+4. Click **Extract & fill form** — fields populate the record form for review
+5. Save manually with **Add New Record** or **Update Record**
+
+**Privacy:** Images stay on your machine. Data is sent only to `localhost` Ollama when you click Extract.
+
+### Recommended vision models
+
+| Model | Install | Notes |
+|-------|---------|-------|
+| llama3.2-vision | `ollama pull llama3.2-vision` | Best default for receipts/screenshots |
+| moondream | `ollama pull moondream` | Lightweight, fast |
+| llava | `ollama pull llava` | General vision Q&A |
+
+If extraction fails, confirm Ollama is running (`ollama list`) and the selected model supports images.
+
 
 Planned improvements:
 

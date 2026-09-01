@@ -189,8 +189,8 @@ def validate_date_range(
     )
     if not end_valid:
         return False, None, None, end_error
-    if start_date >= end_date:
-        return False, None, None, f"{start_field} must be before {end_field}."
+    if start_date > end_date:
+        return False, None, None, f"{start_field} must not be after {end_field}."
     return True, start_date, end_date, None
 
 
@@ -222,7 +222,18 @@ def load_data(file_path):
 
     df = pd.read_csv(file_path)
     df = ensure_region_column(df)
+    df = _ensure_extended_record_columns(df)
     print(f"Loaded {len(df)} records from {file_path}")
+    return df
+
+
+def _ensure_extended_record_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply rental-date and collection-location column helpers after raw CSV load."""
+    from components.rental_dates import ensure_rental_date_columns
+    from components.collection_location import ensure_collection_columns
+
+    df = ensure_rental_date_columns(df)
+    df = ensure_collection_columns(df)
     return df
 
 
@@ -244,6 +255,17 @@ def enhance_dataframe(df):
             print("Added Month and Year columns")
         except Exception as e:
             print(f"Warning: Could not convert Date column: {str(e)}")
+
+    from components.rental_dates import RENTAL_END_DATE_COL, ensure_rental_date_columns
+    from components.collection_location import ensure_collection_columns
+
+    df = ensure_rental_date_columns(df)
+    df = ensure_collection_columns(df)
+    if RENTAL_END_DATE_COL in df.columns:
+        try:
+            df[RENTAL_END_DATE_COL] = pd.to_datetime(df[RENTAL_END_DATE_COL], errors="coerce")
+        except Exception as e:
+            print(f"Warning: Could not convert {RENTAL_END_DATE_COL}: {e}")
 
     # Ensure numeric columns are properly formatted (including Malaysia NormalRental optional columns)
     # Excel_Calculated_* columns are preserved on import for CSVs exported from Excel; not shown in UI
@@ -2722,8 +2744,20 @@ def create_trip_record(
     deposit_rm=None,
     rental_fee_rm=None,
     additional_fee_rm=None,
+    start_date=None,
+    end_date=None,
+    collection_location=None,
+    distance_rating=None,
 ):
     """Create a new trip record for saving to the dataset. Region must be Singapore or Malaysia."""
+    from components.collection_location import (
+        COLLECTION_LOCATION_COL,
+        DISTANCE_RATING_COL,
+        format_collection_location,
+        parse_distance_rating,
+    )
+    from components.rental_dates import RENTAL_END_DATE_COL, compute_rental_hours_from_dates
+
     if region not in VALID_REGIONS:
         region = "Singapore"
     allowed = get_providers_for_region(region)
@@ -2743,8 +2777,19 @@ def create_trip_record(
     }
     mapped_provider = provider_mapping.get(provider, provider)
 
+    if start_date is None:
+        start_date = pd.Timestamp.now()
+    else:
+        start_date = pd.Timestamp(start_date)
+    if end_date is not None and not pd.isna(end_date):
+        end_date = pd.Timestamp(end_date)
+        duration = compute_rental_hours_from_dates(start_date, end_date, fallback_hours=duration)
+    else:
+        end_date = start_date + pd.Timedelta(hours=float(duration or 0))
+
     record = {
-        "Date": pd.Timestamp.now(),
+        "Date": start_date,
+        RENTAL_END_DATE_COL: end_date,
         "Region": region,
         "Car Cat": mapped_provider,
         "Distance (KM)": distance,
@@ -2752,6 +2797,8 @@ def create_trip_record(
         "Total": total_cost,
         "Weekday/weekend": day_type,
         "Car model": car_model or "Calculator Generated",
+        COLLECTION_LOCATION_COL: format_collection_location(collection_location),
+        DISTANCE_RATING_COL: parse_distance_rating(distance_rating),
         "Fuel pumped": 0,
         "Estimated fuel usage": 0,
         "Consumption (KM/L)": 0,
@@ -2767,6 +2814,98 @@ def create_trip_record(
         record["Deposit (RM)"] = deposit_rm if deposit_rm is not None else np.nan
         record["Rental fee (RM)"] = rental_fee_rm if rental_fee_rm is not None else np.nan
         record["Additional fee (RM)"] = additional_fee_rm if additional_fee_rm is not None else np.nan
+    return record
+
+
+def build_record_dict(
+    region,
+    start_date,
+    car_model,
+    provider,
+    distance,
+    rental_hour,
+    weekend="weekday",
+    end_date=None,
+    collection_location=None,
+    distance_rating=None,
+    fuel_pumped=None,
+    fuel_usage=None,
+    consumption=None,
+    pumped_cost=None,
+    cost_per_km=None,
+    duration_cost=None,
+    total=None,
+    fuel_savings=None,
+    cost_per_hr=None,
+    kwh_used=None,
+    electricity_cost=None,
+    deposit_rm=None,
+    rental_fee_rm=None,
+    additional_fee_rm=None,
+    traditional_fuel_rm=None,
+):
+    """
+    Build a rental record dict for dataframe append/update (no UI dependencies).
+    Computes rental hour from start/end when multi-day; merges Traditional Rental fields.
+    """
+    from components.collection_location import (
+        COLLECTION_LOCATION_COL,
+        DISTANCE_RATING_COL,
+        format_collection_location,
+        parse_distance_rating,
+    )
+    from components.rental_dates import RENTAL_END_DATE_COL, compute_rental_hours_from_dates
+
+    provider = normalize_traditional_rental_provider(provider) or provider
+    start_ts = pd.Timestamp(start_date)
+    end_ts = pd.Timestamp(end_date) if end_date is not None and not pd.isna(end_date) else None
+    if end_ts is not None:
+        rental_hour = compute_rental_hours_from_dates(start_ts, end_ts, fallback_hours=rental_hour)
+    elif rental_hour is not None:
+        end_ts = start_ts + pd.Timedelta(hours=float(rental_hour))
+
+    record = {
+        "Region": region,
+        "Date": start_ts,
+        RENTAL_END_DATE_COL: end_ts,
+        "Car model": car_model,
+        "Car Cat": provider,
+        "Distance (KM)": distance,
+        "Rental hour": rental_hour,
+        "Fuel pumped": f"{fuel_pumped} L" if fuel_pumped is not None else None,
+        "Estimated fuel usage": fuel_usage,
+        "Consumption (KM/L)": consumption,
+        "Pumped fuel cost": f"${pumped_cost}" if pumped_cost is not None else None,
+        "Cost per KM": cost_per_km,
+        "Duration cost": duration_cost,
+        "Total": total,
+        "Est original fuel savings": fuel_savings,
+        "Weekday/weekend": weekend,
+        "Cost/HR": cost_per_hr,
+        "kWh Used": kwh_used,
+        "Electricity Cost": electricity_cost,
+        COLLECTION_LOCATION_COL: format_collection_location(collection_location),
+        DISTANCE_RATING_COL: parse_distance_rating(distance_rating),
+    }
+
+    if is_traditional_rental(provider):
+        if traditional_fuel_rm is not None:
+            record["Pumped fuel cost"] = f"RM{traditional_fuel_rm}"
+        elif pumped_cost is not None:
+            record["Pumped fuel cost"] = f"RM{pumped_cost}"
+        record["Deposit (RM)"] = deposit_rm
+        record["Rental fee (RM)"] = rental_fee_rm
+        record["Additional fee (RM)"] = additional_fee_rm
+        record["Mileage cost ($0.39)"] = 0
+        if total is None:
+            breakdown = calculate_traditional_rental_cost(
+                rental_duration_cost=rental_fee_rm,
+                malaysia_usage_addon=additional_fee_rm,
+                deposit=deposit_rm,
+                fuel_topped_up=traditional_fuel_rm if traditional_fuel_rm is not None else pumped_cost,
+            )
+            record["Total"] = breakdown["total_cost"]
+
     return record
 
 

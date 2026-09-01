@@ -5,3 +5,11 @@ __pycache__/
 *.pyo
 .pytest_cache/
 .env
+.firecrawl/
+
+# Local / personal data (stay on your machine)
+22 - Sheet1.csv
+quick_add_shortcuts.json
+settings.json
+data/
+*.xlsx

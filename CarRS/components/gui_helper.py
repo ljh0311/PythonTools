@@ -43,3 +43,38 @@ class GUIHelper:
             cb.bind(event, handler)
 
         return cb
+
+    @staticmethod
+    def create_collapsible(parent, title, collapsed=False):
+        """Return (frame, body) where frame toggles body visibility."""
+        frame = CollapsibleFrame(parent, title, collapsed=collapsed)
+        return frame, frame.body
+
+
+class CollapsibleFrame(ttk.Frame):
+    """Simple show/hide section with toggle header."""
+
+    def __init__(self, parent, title, collapsed=False):
+        super().__init__(parent)
+        self._collapsed = collapsed
+        self._title = title
+        header = ttk.Frame(self)
+        header.pack(fill=tk.X)
+        self._toggle_btn = ttk.Button(
+            header,
+            text=("▸ " if collapsed else "▾ ") + title,
+            command=self.toggle,
+        )
+        self._toggle_btn.pack(anchor=tk.W, padx=2, pady=2)
+        self.body = ttk.Frame(self)
+        if not collapsed:
+            self.body.pack(fill=tk.BOTH, expand=True, padx=4, pady=(0, 4))
+
+    def toggle(self):
+        self._collapsed = not self._collapsed
+        prefix = "▸ " if self._collapsed else "▾ "
+        self._toggle_btn.config(text=prefix + self._title)
+        if self._collapsed:
+            self.body.pack_forget()
+        else:
+            self.body.pack(fill=tk.BOTH, expand=True, padx=4, pady=(0, 4))

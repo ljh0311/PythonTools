@@ -8,8 +8,13 @@ import pygame
 import pandas as pd
 import numpy as np
 import os
+import sys
 import random
 from typing import List, Dict, Optional, Tuple
+
+from _paths import ROOT, DEFAULT_CSV
+
+sys.path.insert(0, ROOT)
 
 # Initialize Pygame
 pygame.init()
@@ -270,7 +275,7 @@ class CarRacingSimulation:
         self.frame_count = 0
         
         # Load cars from CSV
-        csv_path = "22 - Sheet1.csv"
+        csv_path = DEFAULT_CSV
         self.all_cars = load_cars_from_csv(csv_path)
         
         if not self.all_cars:
