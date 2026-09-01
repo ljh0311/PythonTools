@@ -5,6 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Home Robot Assistant</title>
     <style>
+        :root {
+            --color-primary: #4285f4;
+            --color-primary-hover: #3367d6;
+            --color-bg: #f5f7fa;
+            --color-bg-gradient-end: #fafbfc;
+            --color-surface: #ffffff;
+            --color-surface-muted: #f8f9fa;
+            --color-text: #1f2937;
+            --color-text-secondary: #6b7280;
+            --color-border: #e5e7eb;
+            --color-success: #16a34a;
+            --color-warning: #d97706;
+            --color-danger: #dc2626;
+            --color-danger-hover: #b91c1c;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+            --touch-min: 44px;
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --color-bg: #111827;
+                --color-bg-gradient-end: #1f2937;
+                --color-surface: #1f2937;
+                --color-surface-muted: #374151;
+                --color-text: #f9fafb;
+                --color-text-secondary: #9ca3af;
+                --color-border: #4b5563;
+                --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+                --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+            }
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,82 +49,109 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
+            font-family: var(--font-sans);
+            background: linear-gradient(135deg, var(--color-bg) 0%, var(--color-bg-gradient-end) 100%);
             min-height: 100vh;
-            color: #333;
+            color: var(--color-text);
+            line-height: 1.5;
+            overflow-x: clip;
         }
 
         .container {
+            width: 100%;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 20px;
+            padding: clamp(12px, 3vw, 24px);
         }
 
         .header {
             text-align: center;
-            color: #333;
+            color: var(--color-text);
             margin-bottom: 40px;
             padding: 30px 20px;
         }
 
         .header h1 {
-            font-size: 2.8em;
+            font-size: clamp(1.8rem, 4vw, 2.8rem);
             margin-bottom: 10px;
-            color: #4285f4;
+            color: var(--color-primary);
             font-weight: 600;
             letter-spacing: -0.5px;
         }
 
         .header p {
-            font-size: 1.3em;
-            color: #666;
+            font-size: 1.15em;
+            color: var(--color-text-secondary);
             font-weight: 400;
+        }
+
+        .connection-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 0.9em;
+            font-weight: 600;
+            background: var(--color-surface-muted);
+            color: var(--color-text-secondary);
+            border: 1px solid var(--color-border);
+        }
+
+        .connection-pill.online { color: var(--color-success); }
+        .connection-pill.offline { color: var(--color-danger); }
+
+        .dev-toolbar {
+            display: none;
+            justify-content: flex-end;
+            margin-bottom: 14px;
+        }
+
+        body.dev-mode-visible .dev-toolbar {
+            display: flex;
         }
 
         .dashboard {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            grid-template-columns: 1fr;
+            gap: clamp(16px, 2.5vw, 24px);
             margin-bottom: 30px;
         }
 
         .card {
-            background: white;
-            border-radius: 16px;
-            padding: 28px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            background: var(--color-surface);
+            border-radius: var(--radius-lg);
+            padding: clamp(16px, 3vw, 28px);
+            box-shadow: var(--shadow-sm);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
-            border: 1px solid rgba(0,0,0,0.05);
+            border: 1px solid var(--color-border);
+            min-width: 0;
         }
 
         .card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
         }
 
         .card h2 {
-            color: #4285f4;
+            color: var(--color-primary);
             margin-bottom: 24px;
-            font-size: 1.6em;
+            font-size: 1.5em;
             font-weight: 600;
-            border-bottom: 2px solid #f0f0f0;
+            border-bottom: 2px solid var(--color-border);
             padding-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
         }
 
         .card h3 {
-            color: #555;
-            font-size: 1.2em;
+            color: var(--color-text);
+            font-size: 1.1em;
             font-weight: 600;
             margin-bottom: 16px;
         }
 
         .status-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
             gap: 15px;
         }
 
@@ -95,39 +159,42 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
             padding: 12px 16px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border-left: 4px solid #4285f4;
+            background: var(--color-surface-muted);
+            border-radius: var(--radius-md);
+            border-left: 4px solid var(--color-primary);
             transition: background 0.2s ease;
+            min-width: 0;
         }
 
         .status-item:hover {
-            background: #f0f0f0;
+            filter: brightness(0.98);
         }
 
         .status-label {
             font-weight: 600;
-            color: #555;
+            color: var(--color-text-secondary);
         }
 
         .status-value {
-            font-weight: bold;
-            color: #333;
+            font-weight: 600;
+            color: var(--color-text);
         }
 
         .status-value.online {
-            color: #28a745;
+            color: var(--color-success);
         }
 
         .status-value.offline {
-            color: #dc3545;
+            color: var(--color-danger);
         }
 
         .control-panel {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            grid-template-columns: 1fr;
+            gap: 24px;
         }
 
         .movement-controls {
@@ -138,31 +205,42 @@
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 10px;
-            max-width: 200px;
+            max-width: 220px;
+            width: 100%;
             margin: 0 auto 20px;
         }
 
         .direction-btn {
+            min-width: var(--touch-min);
+            min-height: var(--touch-min);
             padding: 16px;
             border: none;
-            border-radius: 12px;
-            background: #4285f4;
+            border-radius: var(--radius-md);
+            background: var(--color-primary);
             color: white;
             font-size: 1.3em;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: background 0.2s ease, transform 0.15s ease;
             font-weight: 600;
             box-shadow: 0 2px 4px rgba(66, 133, 244, 0.2);
         }
 
         .direction-btn:hover {
-            background: #3367d6;
-            transform: scale(1.05);
-            box-shadow: 0 4px 8px rgba(66, 133, 244, 0.3);
+            background: var(--color-primary-hover);
+            transform: scale(1.03);
         }
 
         .direction-btn:active {
-            transform: scale(0.95);
+            transform: scale(0.97);
+        }
+
+        .direction-btn:focus-visible,
+        .action-btn:focus-visible,
+        .quick-action-btn:focus-visible,
+        .room-button:focus-visible,
+        .tab-btn:focus-visible {
+            outline: 3px solid var(--color-primary);
+            outline-offset: 2px;
         }
 
         .direction-btn.forward {
@@ -187,15 +265,60 @@
         .direction-btn.stop {
             grid-column: 2;
             grid-row: 2;
-            background: #dc3545;
+            background: var(--color-danger);
         }
 
         .direction-btn.stop:hover {
-            background: #c82333;
+            background: var(--color-danger-hover);
         }
 
         .speed-control {
             margin-top: 20px;
+        }
+
+        .motor-calibration {
+            padding-top: 16px;
+            border-top: 1px solid var(--color-border);
+        }
+
+        .motor-calibration h3 {
+            margin-bottom: 4px;
+        }
+
+        .help-text {
+            color: var(--color-text-secondary);
+            font-size: 0.9em;
+            margin: 0 0 12px;
+        }
+
+        .trim-control {
+            margin-bottom: 12px;
+        }
+
+        .trim-control label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: var(--color-text-secondary);
+        }
+
+        .trim-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 12px 0;
+        }
+
+        .trim-actions .action-btn {
+            flex: 1 1 140px;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95em;
+            color: var(--color-text-secondary);
         }
 
         .speed-slider {
@@ -220,12 +343,39 @@
         }
 
         .action-btn.primary {
-            background: #4285f4;
+            background: var(--color-primary);
             color: white;
         }
 
         .action-btn.primary:hover {
-            background: #3367d6;
+            background: var(--color-primary-hover);
+        }
+
+        .action-btn.danger {
+            background: var(--color-danger);
+            color: white;
+        }
+
+        .action-btn.danger:hover {
+            background: var(--color-danger-hover);
+        }
+
+        .empty-state {
+            color: var(--color-text-secondary);
+            text-align: center;
+            padding: 24px;
+            background: var(--color-surface-muted);
+            border-radius: var(--radius-md);
+            border: 1px dashed var(--color-border);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+            .card:hover { transform: none; }
         }
 
         .action-btn.secondary {
@@ -235,15 +385,6 @@
 
         .action-btn.secondary:hover {
             background: #f57c00;
-        }
-
-        .action-btn.danger {
-            background: #ea4335;
-            color: white;
-        }
-
-        .action-btn.danger:hover {
-            background: #d33b2c;
         }
 
         .navigation-controls {
@@ -258,7 +399,7 @@
             display: block;
             margin-bottom: 5px;
             font-weight: 600;
-            color: #555;
+            color: var(--color-text-secondary);
         }
 
         .input-group input {
@@ -278,8 +419,25 @@
 
         .coordinates-input {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
             gap: 10px;
+        }
+
+        .map-canvas-wrap {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .map-canvas-wrap canvas {
+            display: block;
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            aspect-ratio: 1 / 1;
+            border: 2px solid var(--color-primary);
+            border-radius: 12px;
+            background: var(--color-surface-muted);
         }
 
         .sensor-display {
@@ -288,27 +446,35 @@
 
         .sensor-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
             gap: 10px;
         }
 
         .sensor-item {
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 6px;
+            padding: 12px;
+            background: var(--color-surface-muted);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
             text-align: center;
+        }
+
+        .sensor-label {
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            margin-bottom: 6px;
+            font-size: 0.95em;
         }
 
         .sensor-value {
             font-size: 1.2em;
             font-weight: 600;
-            color: #4285f4;
+            color: var(--color-primary);
         }
 
         .loading {
             text-align: center;
             padding: 20px;
-            color: #666;
+            color: var(--color-text-secondary);
         }
 
         .error {
@@ -373,28 +539,31 @@
         }
 
         .waypoint-item {
-            background: #f8f9fa;
+            background: var(--color-surface-muted);
             padding: 12px 16px;
             border-radius: 10px;
-            border-left: 4px solid #4285f4;
+            border: 1px solid var(--color-border);
+            border-left: 4px solid var(--color-primary);
             display: flex;
             justify-content: space-between;
             align-items: center;
             transition: background 0.2s ease;
+            gap: 8px;
+            flex-wrap: wrap;
         }
 
         .waypoint-item:hover {
-            background: #f0f0f0;
+            filter: brightness(0.98);
         }
 
         .waypoint-name {
             font-weight: 600;
-            color: #333;
+            color: var(--color-text);
         }
 
         .waypoint-coords {
             font-size: 0.9em;
-            color: #666;
+            color: var(--color-text-secondary);
         }
 
         .waypoint-actions {
@@ -439,24 +608,24 @@
 
         .tab-btn {
             padding: 10px 20px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--color-border);
             border-radius: 8px;
-            background: white;
-            color: #666;
+            background: var(--color-surface-muted);
+            color: var(--color-text-secondary);
             cursor: pointer;
             font-weight: 600;
             transition: all 0.3s ease;
         }
 
         .tab-btn:hover {
-            border-color: #4285f4;
-            color: #4285f4;
+            border-color: var(--color-primary);
+            color: var(--color-primary);
         }
 
         .tab-btn.active {
-            background: #4285f4;
+            background: var(--color-primary);
             color: white;
-            border-color: #4285f4;
+            border-color: var(--color-primary);
         }
 
         /* Camera Container */
@@ -528,13 +697,14 @@
 
         .toggle-item {
             padding: 12px;
-            background: #f8f9fa;
+            background: var(--color-surface-muted);
+            border: 1px solid var(--color-border);
             border-radius: 10px;
             transition: background 0.2s ease;
         }
 
         .toggle-item:hover {
-            background: #f0f0f0;
+            filter: brightness(0.98);
         }
 
         .toggle-label {
@@ -553,14 +723,14 @@
 
         .toggle-text {
             font-weight: 600;
-            color: #333;
+            color: var(--color-text);
             display: block;
             margin-bottom: 4px;
         }
 
         .toggle-description {
             font-size: 0.9em;
-            color: #666;
+            color: var(--color-text-secondary);
             display: block;
         }
 
@@ -578,10 +748,10 @@
 
         .room-button {
             padding: 14px 20px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--color-border);
             border-radius: 12px;
-            background: white;
-            color: #333;
+            background: var(--color-surface-muted);
+            color: var(--color-text);
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -589,28 +759,30 @@
         }
 
         .room-button:hover {
-            border-color: #4285f4;
-            background: #f0f7ff;
-            color: #4285f4;
+            border-color: var(--color-primary);
+            background: var(--color-surface);
+            color: var(--color-primary);
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(66, 133, 244, 0.15);
+            box-shadow: var(--shadow-sm);
         }
 
         .quick-actions {
-            display: flex;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
             gap: 12px;
             margin-bottom: 30px;
         }
 
         .quick-action-btn {
-            padding: 12px 24px;
+            padding: 12px 16px;
             border: none;
             border-radius: 10px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
             font-size: 1em;
+            width: 100%;
+            min-height: var(--touch-min);
         }
 
         /* Toast Notifications */
@@ -666,14 +838,16 @@
             justify-content: space-between;
             align-items: center;
             padding: 12px;
-            background: #f8f9fa;
+            background: var(--color-surface-muted);
+            border: 1px solid var(--color-border);
             border-radius: 8px;
             cursor: pointer;
             transition: background 0.2s ease;
+            color: var(--color-text);
         }
 
         .collapsible-header:hover {
-            background: #f0f0f0;
+            filter: brightness(0.98);
         }
 
         .collapsible-content {
@@ -687,17 +861,62 @@
             padding-top: 15px;
         }
 
-        @media (max-width: 768px) {
+        @media (min-width: 900px) {
             .dashboard {
-                grid-template-columns: 1fr;
+                grid-template-columns: 1fr 1fr;
             }
-            
+
             .control-panel {
-                grid-template-columns: 1fr;
+                grid-template-columns: 1fr 1fr;
+                grid-template-areas:
+                    "movement motor"
+                    "actions actions";
             }
-            
-            .status-grid {
-                grid-template-columns: 1fr;
+
+            .movement-controls {
+                grid-area: movement;
+            }
+
+            .motor-calibration {
+                grid-area: motor;
+                border-top: none;
+                padding-top: 0;
+            }
+
+            .action-buttons {
+                grid-area: actions;
+                padding-top: 16px;
+                border-top: 1px solid var(--color-border);
+            }
+        }
+
+        @media (min-width: 1100px) {
+            .control-panel {
+                grid-template-columns: 1fr 1fr 1fr;
+                grid-template-areas: none;
+            }
+
+            .movement-controls,
+            .motor-calibration,
+            .action-buttons {
+                grid-area: auto;
+            }
+
+            .motor-calibration {
+                border-top: 1px solid var(--color-border);
+                padding-top: 16px;
+            }
+
+            .action-buttons {
+                border-top: none;
+                padding-top: 0;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                margin-bottom: 24px;
+                padding: 20px 12px;
             }
 
             .camera-container {
@@ -708,8 +927,26 @@
                 grid-template-columns: repeat(2, 1fr);
             }
 
-            .header h1 {
-                font-size: 2.2em;
+            .sensor-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .toast {
+                left: 12px;
+                right: 12px;
+                max-width: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .room-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .direction-btn {
+                min-width: 40px;
+                min-height: 40px;
+                padding: 12px;
             }
         }
     </style>
@@ -719,35 +956,41 @@
         <div class="header">
             <h1>Smart Home Robot Assistant</h1>
             <p>Your intelligent home companion</p>
+            <div class="connection-pill offline" id="connectionPill" role="status" aria-live="polite">
+                <span class="status-indicator offline" id="connectionDot"></span>
+                <span id="connectionText">Connecting...</span>
+            </div>
         </div>
-        <div style="display: flex; justify-content: flex-end; margin-bottom: 14px;">
-            <button class="quick-action-btn action-btn" 
+        <div class="dev-toolbar">
+            <button class="quick-action-btn action-btn"
                     id="devModeBtn"
-                    style="background: #6c757d; color: #fff; margin-right: 0;"
-                    onclick="toggleDevMode()">
+                    style="background: #6c757d; color: #fff;"
+                    onclick="toggleDevMode()"
+                    aria-label="Toggle developer mode">
                 Dev Mode
             </button>
         </div>
         <script>
+            (function initDevToolbar() {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('dev') === '1' || localStorage.getItem('robotDevMode') === 'true') {
+                    document.body.classList.add('dev-mode-visible');
+                }
+            })();
+
             function toggleDevMode() {
-                // Simple example: Toggle a CSS class on body and print to console
                 document.body.classList.toggle('dev-mode');
                 const enabled = document.body.classList.contains('dev-mode');
+                localStorage.setItem('robotDevMode', enabled ? 'true' : 'false');
                 document.getElementById('devModeBtn').textContent = enabled ? 'Dev Mode: ON' : 'Dev Mode';
-                if (enabled) {
-                    console.log("Developer Mode Enabled");
-                } else {
-                    console.log("Developer Mode Disabled");
-                }
-                // TODO: Add additional dev mode functionality as needed
             }
         </script>
 
         <!-- Quick Actions Bar -->
         <div class="quick-actions">
-            <button class="quick-action-btn action-btn danger" onclick="emergencyStop()">Emergency Stop</button>
-            <button class="quick-action-btn action-btn primary" onclick="setMode('autonomous')">Autonomous Mode</button>
-            <button class="quick-action-btn action-btn secondary" onclick="setMode('manual')">Manual Mode</button>
+            <button class="quick-action-btn action-btn danger" onclick="emergencyStop()" aria-label="Emergency stop robot">Emergency Stop</button>
+            <button class="quick-action-btn action-btn primary" onclick="setMode('autonomous')" aria-label="Switch to autonomous mode">Autonomous Mode</button>
+            <button class="quick-action-btn action-btn secondary" onclick="setMode('manual')" aria-label="Switch to manual mode">Manual Mode</button>
         </div>
 
         <div class="dashboard">
@@ -805,6 +1048,28 @@
                             <label for="speedSlider">Speed: <span id="speedValue">50%</span></label>
                             <input type="range" id="speedSlider" class="speed-slider" min="0" max="100" value="50" oninput="updateSpeed()">
                         </div>
+                    </div>
+
+                    <!-- Motor Trim -->
+                    <div class="motor-calibration">
+                        <h3>Motor Trim</h3>
+                        <p class="help-text">Fix left/right veer when driving straight.</p>
+                        <div class="trim-control">
+                            <label for="leftTrimSlider">Left: <span id="leftTrimValue">1.00</span></label>
+                            <input type="range" id="leftTrimSlider" class="speed-slider" min="0.5" max="1.5" step="0.01" value="1.0" oninput="updateMotorTrimPreview()">
+                        </div>
+                        <div class="trim-control">
+                            <label for="rightTrimSlider">Right: <span id="rightTrimValue">1.00</span></label>
+                            <input type="range" id="rightTrimSlider" class="speed-slider" min="0.5" max="1.5" step="0.01" value="1.0" oninput="updateMotorTrimPreview()">
+                        </div>
+                        <div class="trim-actions">
+                            <button class="action-btn secondary" onclick="saveMotorTrim()">Save Trim</button>
+                            <button class="action-btn secondary" onclick="runMotorAutoCal()">Auto-Calibrate</button>
+                        </div>
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="autoCalStartup" onchange="saveAutoCalSetting()">
+                            Auto-calibrate on startup
+                        </label>
                     </div>
 
                     <!-- Action Buttons -->
@@ -910,27 +1175,27 @@
             <div class="sensor-display">
                 <div class="sensor-grid" id="sensorGrid">
                     <div class="sensor-item">
-                        <div>Ultrasonic Front</div>
+                        <div class="sensor-label">Ultrasonic Front</div>
                         <div class="sensor-value" id="ultrasonicFront">--</div>
                     </div>
                     <div class="sensor-item">
-                        <div>Ultrasonic Left</div>
+                        <div class="sensor-label">Ultrasonic Left</div>
                         <div class="sensor-value" id="ultrasonicLeft">--</div>
                     </div>
                     <div class="sensor-item">
-                        <div>Ultrasonic Right</div>
+                        <div class="sensor-label">Ultrasonic Right</div>
                         <div class="sensor-value" id="ultrasonicRight">--</div>
                     </div>
                     <div class="sensor-item">
-                        <div>Infrared Left</div>
+                        <div class="sensor-label">Infrared Left</div>
                         <div class="sensor-value" id="infraredLeft">--</div>
                     </div>
                     <div class="sensor-item">
-                        <div>Infrared Right</div>
+                        <div class="sensor-label">Infrared Right</div>
                         <div class="sensor-value" id="infraredRight">--</div>
                     </div>
                     <div class="sensor-item">
-                        <div>Bumper Left</div>
+                        <div class="sensor-label">Bumper Left</div>
                         <div class="sensor-value" id="bumperLeft">--</div>
                     </div>
                 </div>
@@ -1011,6 +1276,7 @@
             updateStatus();
             updateSensors();
             loadWaypoints();
+            loadMotorTrim();
             
             // Update status every 2 seconds
             updateInterval = setInterval(function() {
@@ -1024,7 +1290,8 @@
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
-                
+                setConnectionStatus(true);
+
                 if (data.robot_state) {
                     document.getElementById('mode').textContent = data.robot_state.mode.charAt(0).toUpperCase() + data.robot_state.mode.slice(1);
                     document.getElementById('status').textContent = data.robot_state.status.charAt(0).toUpperCase() + data.robot_state.status.slice(1);
@@ -1058,7 +1325,20 @@
                 }
             } catch (error) {
                 console.error('Error updating status:', error);
+                setConnectionStatus(false);
             }
+        }
+
+        function setConnectionStatus(online) {
+            const pill = document.getElementById('connectionPill');
+            const dot = document.getElementById('connectionDot');
+            const text = document.getElementById('connectionText');
+            if (!pill || !dot || !text) return;
+            pill.classList.toggle('online', online);
+            pill.classList.toggle('offline', !online);
+            dot.classList.toggle('online', online);
+            dot.classList.toggle('offline', !online);
+            text.textContent = online ? 'Connected' : 'Disconnected';
         }
 
         // Update sensor data
@@ -1197,38 +1477,26 @@
             }
         }
 
-        // Emergency stop
+        // Emergency stop — single confirm, immediate action
         async function emergencyStop() {
-            if (!confirm('Are you sure you want to emergency stop the robot? Emergency stop will activate in 3 seconds unless cancelled.')) {
+            if (!confirm('Emergency stop will halt all robot movement immediately. Continue?')) {
                 return;
             }
-            
-            showMessage('Emergency stop will activate in 3 seconds...', 'warning');
-            
-            const timeoutId = setTimeout(async () => {
-                try {
-                    const response = await fetch('/api/emergency_stop', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        }
-                    });
-                    
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        showMessage('Emergency stop activated', 'success');
-                    } else {
-                        showMessage('Error: ' + data.error, 'error');
-                    }
-                } catch (error) {
-                    showMessage('Error emergency stopping: ' + error.message, 'error');
+
+            try {
+                const response = await fetch('/api/emergency_stop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showMessage('Emergency stop activated', 'success');
+                } else {
+                    showMessage('Error: ' + data.error, 'error');
                 }
-            }, 3000);
-            
-            // Allow user to cancel the emergency stop
-            if (confirm('Click OK to cancel emergency stop, or Cancel to let it proceed.')) {
-                clearTimeout(timeoutId);
-                showMessage('Emergency stop cancelled', 'info');
+            } catch (error) {
+                showMessage('Error emergency stopping: ' + error.message, 'error');
             }
         }
 
@@ -1236,6 +1504,69 @@
         function updateSpeed() {
             currentSpeed = document.getElementById('speedSlider').value;
             document.getElementById('speedValue').textContent = currentSpeed + '%';
+        }
+
+        function updateMotorTrimPreview() {
+            const left = parseFloat(document.getElementById('leftTrimSlider').value);
+            const right = parseFloat(document.getElementById('rightTrimSlider').value);
+            document.getElementById('leftTrimValue').textContent = left.toFixed(2);
+            document.getElementById('rightTrimValue').textContent = right.toFixed(2);
+        }
+
+        async function loadMotorTrim() {
+            try {
+                const response = await fetch('/api/motor_calibration');
+                const data = await response.json();
+                document.getElementById('leftTrimSlider').value = data.left_trim ?? 1.0;
+                document.getElementById('rightTrimSlider').value = data.right_trim ?? 1.0;
+                document.getElementById('autoCalStartup').checked = !!data.auto_calibrate_on_startup;
+                updateMotorTrimPreview();
+            } catch (error) {
+                console.warn('Could not load motor trim:', error);
+            }
+        }
+
+        async function saveMotorTrim() {
+            const left_trim = parseFloat(document.getElementById('leftTrimSlider').value);
+            const right_trim = parseFloat(document.getElementById('rightTrimSlider').value);
+            const auto_calibrate_on_startup = document.getElementById('autoCalStartup').checked;
+            try {
+                const response = await fetch('/api/motor_calibration', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ left_trim, right_trim, auto_calibrate_on_startup }),
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showMessage('Motor trim saved', 'success');
+                } else {
+                    showMessage('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Error saving trim: ' + error.message, 'error');
+            }
+        }
+
+        async function saveAutoCalSetting() {
+            await saveMotorTrim();
+        }
+
+        async function runMotorAutoCal() {
+            try {
+                showMessage('Running auto-calibration...', 'success');
+                const response = await fetch('/api/motor_calibration/auto', { method: 'POST' });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    document.getElementById('leftTrimSlider').value = data.left_trim;
+                    document.getElementById('rightTrimSlider').value = data.right_trim;
+                    updateMotorTrimPreview();
+                    showMessage('Auto-calibration complete', 'success');
+                } else {
+                    showMessage('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Auto-calibration failed: ' + error.message, 'error');
+            }
         }
 
         // Show message (toast notification)
@@ -1311,7 +1642,7 @@
             list.innerHTML = '';
             
             if (waypoints.length === 0) {
-                list.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No saved locations yet. Add one above!</p>';
+                list.innerHTML = '<p class="empty-state">No saved locations yet. Add one above to get started.</p>';
                 return;
             }
             

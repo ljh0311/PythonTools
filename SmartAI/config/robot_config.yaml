@@ -73,6 +73,16 @@ navigation:
   update_frequency: 5  # Hz
   mapping_enabled: true
 
+# Motor straight-line calibration (persisted to calibration_file)
+motor_calibration:
+  calibration_file: "config/motor_calibration.json"
+  auto_calibrate_on_startup: true
+  calibration_speed: 50.0
+  max_calibration_iterations: 5
+  # Sim-only: hidden motor imbalance for local trim learning tests (Windows)
+  sim_imbalance_left: 0.88
+  sim_imbalance_right: 1.12
+
 # Control Settings
 control:
   # Manual control

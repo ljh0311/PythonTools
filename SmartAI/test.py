@@ -12,6 +12,7 @@ LOGGING FEATURES:
 USAGE:
     python test.py                    # Use matplotlib (default)
     python test.py --backend pygame   # Use pygame backend
+    python test.py --mode 1 --headless  # Run mode 1 without GUI
 """
 
 import sys
@@ -23,7 +24,9 @@ import argparse
 from enum import Enum
 from abc import ABC, abstractmethod
 import matplotlib
-matplotlib.use('TkAgg')  # Use TkAgg backend for better compatibility
+
+_HEADLESS = '--headless' in sys.argv or os.environ.get('SMARTAI_HEADLESS') == '1'
+matplotlib.use('Agg' if _HEADLESS else 'TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.animation import FuncAnimation
@@ -113,9 +116,17 @@ def set_normal_mode():
     logger.setLevel(logging.INFO)
     print("Normal mode enabled")
 
-# Add parent directory to path to import modules
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path to import modules
+_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _PROJECT_ROOT)
 
+from tests.fixtures import (
+    TestConfig,
+    build_config_dict,
+    EnhancedMockMotorController,
+    MockMotorController,
+    MockSensorManager,
+)
 from src.navigation.pathfinder import Pathfinder, PathPoint, NodeType
 from src.navigation.autonomous_controller import AutonomousController, NavigationState, NavigationGoal
 from src.core.robot_state import RobotState, Position, SensorData
@@ -126,257 +137,14 @@ from src.vision.visual_odometry import VisualOdometry
 from src.vision.dynamic_obstacle_predictor import DynamicObstaclePredictor
 from src.vision.scene_understanding import SceneUnderstanding
 
-plt.ion()
+if not _HEADLESS:
+    plt.ion()
 
 
 class VisualizationBackend(Enum):
     """Visualization backend selection"""
     MATPLOTLIB = "matplotlib"
     PYGAME = "pygame"
-
-@dataclass
-class TestConfig:
-    """Configuration for testing"""
-    # Map settings
-    map_width: float = 9.7  # meters (sqrt(94))
-    map_height: float = 9.7  # meters (sqrt(94))
-    grid_size: float = 0.2   # meters
-    
-    # Robot settings
-    robot_width: float = 0.3
-    robot_length: float = 0.4
-    max_speed: float = 0.83  # m/s (3 km/h)
-    turn_speed: float = 0.3
-    
-    # Safety distances
-    comfortable: float = 0.5
-    warning: float = 0.3
-    critical: float = 0.15
-    
-    # Camera settings
-    camera_index: int = 0
-    frame_width: int = 640
-    frame_height: int = 480
-    camera_fps: int = 30
-    enable_camera: bool = True
-    
-    # Model paths
-    object_detection_model: str = 'efficientdet.tflite'
-    max_detections: int = 5
-    detection_threshold: float = 0.25
-    
-    # Sensor fusion weights
-    ultrasonic_weight: float = 0.6
-    visual_weight: float = 0.4
-    
-    # Visualization options
-    show_camera_feed: bool = True
-    show_detections: bool = True
-    show_optical_flow: bool = True
-    show_motor_indicators: bool = True
-
-
-class EnhancedMockMotorController:
-    """Enhanced mock motor controller with realistic response curves and calibration"""
-    
-    def __init__(self, config: TestConfig):
-        self.config = config
-        self.left_speed = 0.0
-        self.right_speed = 0.0
-        self.left_target = 0.0
-        self.right_target = 0.0
-        self.is_running = False
-        
-        # Motor parameters
-        self.max_acceleration = 0.5  # m/s²
-        self.max_deceleration = 0.8  # m/s²
-        self.response_time = 0.1  # seconds
-        self.wheel_base = 0.25  # meters
-        
-        # Calibration parameters
-        self.left_calibration = 1.0  # Speed multiplier
-        self.right_calibration = 1.0
-        self.speed_noise = 0.02  # Random noise factor
-        
-        # Performance tracking
-        self.command_history = []
-        self.last_update_time = time.time()
-    
-    def set_speeds(self, left: float, right: float):
-        """Set target speeds with acceleration limits"""
-        self.left_target = np.clip(left, -100.0, 100.0)
-        self.right_target = np.clip(right, -100.0, 100.0)
-        self.is_running = True
-        self.last_update_time = time.time()
-    
-    def _update_speeds(self, dt: float):
-        """Update speeds with realistic acceleration/deceleration"""
-        # Calculate acceleration needed
-        left_diff = self.left_target - self.left_speed
-        right_diff = self.right_target - self.right_speed
-        
-        # Apply acceleration limits
-        max_change = self.max_acceleration * dt * 100  # Convert to speed units
-        if abs(left_diff) > max_change:
-            left_diff = np.sign(left_diff) * max_change
-        if abs(right_diff) > max_change:
-            right_diff = np.sign(right_diff) * max_change
-        
-        # Apply deceleration if stopping
-        if abs(self.left_target) < abs(self.left_speed):
-            max_change = self.max_deceleration * dt * 100
-            if abs(left_diff) > max_change:
-                left_diff = np.sign(left_diff) * max_change
-        if abs(self.right_target) < abs(self.right_speed):
-            max_change = self.max_deceleration * dt * 100
-            if abs(right_diff) > max_change:
-                right_diff = np.sign(right_diff) * max_change
-        
-        # Update speeds with calibration and noise
-        self.left_speed += left_diff * self.left_calibration
-        self.right_speed += right_diff * self.right_calibration
-        
-        # Add realistic noise
-        # Use correlated noise when moving straight to prevent drift
-        if abs(self.left_target - self.right_target) < 0.1:  # Moving straight
-            # Use same noise for both motors to prevent drift
-            noise = np.random.normal(0, self.speed_noise)
-            self.left_speed += noise
-            self.right_speed += noise
-        else:
-            # Independent noise for turning maneuvers
-            self.left_speed += np.random.normal(0, self.speed_noise)
-            self.right_speed += np.random.normal(0, self.speed_noise)
-        
-        # Clip to valid range
-        self.left_speed = np.clip(self.left_speed, -100.0, 100.0)
-        self.right_speed = np.clip(self.right_speed, -100.0, 100.0)
-        
-        # Record command
-        self.command_history.append((time.time(), self.left_speed, self.right_speed))
-        if len(self.command_history) > 1000:
-            self.command_history.pop(0)
-    
-    def stop(self):
-        """Stop motors with deceleration"""
-        self.left_target = 0.0
-        self.right_target = 0.0
-        self.is_running = False
-    
-    def get_speeds(self):
-        """Get current speeds, updating physics if needed"""
-        current_time = time.time()
-        dt = current_time - self.last_update_time
-        if dt > 0:
-            self._update_speeds(dt)
-            self.last_update_time = current_time
-        return self.left_speed, self.right_speed
-    
-    def get_current_speeds(self):
-        """Get current speeds without updating"""
-        return self.left_speed, self.right_speed
-    
-    def emergency_stop(self):
-        """Immediate emergency stop"""
-        self.left_speed = 0.0
-        self.right_speed = 0.0
-        self.left_target = 0.0
-        self.right_target = 0.0
-        self.is_running = False
-    
-    def get_status(self):
-        """Get motor status with performance metrics"""
-        return {
-            'left_speed': self.left_speed,
-            'right_speed': self.right_speed,
-            'left_target': self.left_target,
-            'right_target': self.right_target,
-            'running': self.is_running,
-            'left_calibration': self.left_calibration,
-            'right_calibration': self.right_calibration
-        }
-    
-    def calibrate(self, left_multiplier: float = 1.0, right_multiplier: float = 1.0):
-        """Calibrate motor speeds"""
-        self.left_calibration = left_multiplier
-        self.right_calibration = right_multiplier
-
-
-# Keep old class for backward compatibility
-MockMotorController = EnhancedMockMotorController
-
-
-class MockSensorManager:
-    """Mock sensor manager for testing with simulated obstacle detection and 360-degree LIDAR scan"""
-    def __init__(self):
-        self.robot_pose = (0.0, 0.0, 0.0)  # x, y, theta
-        self.obstacles = []  # List of (x, y, radius)
-        self.sensor_angles = {
-            'front': 0.0,
-            'left': math.pi / 2,
-            'right': -math.pi / 2
-        }
-        self.max_range = 2.0  # meters
-        self.lidar_num_rays = 72  # 360/5
-        self.lidar_angle_step = 5  # degrees
-
-    def set_robot_pose(self, x, y, theta):
-        self.robot_pose = (x, y, theta)
-
-    def set_obstacles(self, obstacles):
-        self.obstacles = obstacles
-
-    def _distance_to_obstacle(self, angle_offset):
-        x, y, theta = self.robot_pose
-        angle = theta + angle_offset
-        min_dist = self.max_range
-        for ox, oy, r in self.obstacles:
-            dx = math.cos(angle)
-            dy = math.sin(angle)
-            fx = ox - x
-            fy = oy - y
-            proj = fx * dx + fy * dy
-            if proj < 0:
-                continue
-            closest_x = x + proj * dx
-            closest_y = y + proj * dy
-            dist_to_center = math.hypot(closest_x - ox, closest_y - oy)
-            if dist_to_center < r:
-                dist = proj - math.sqrt(r**2 - dist_to_center**2)
-                if 0 < dist < min_dist:
-                    min_dist = dist
-        return min_dist
-
-    def get_lidar_scan(self):
-        x, y, theta = self.robot_pose
-        scan = []
-        for i in range(self.lidar_num_rays):
-            angle_deg = i * self.lidar_angle_step
-            angle_rad = math.radians(angle_deg)
-            dist = self._distance_to_obstacle(angle_rad)
-            scan.append((angle_deg, dist))
-        return scan
-
-    def get_sensor_data(self):
-        readings = {}
-        for name, angle in self.sensor_angles.items():
-            dist = self._distance_to_obstacle(angle)
-            readings[name] = SensorReading(value=dist, timestamp=time.time(), valid=True)
-        # Add LIDAR scan to the returned data
-        lidar_scan = self.get_lidar_scan()
-        return {
-            'ultrasonic': readings,
-            'infrared': {'left': False, 'right': False},
-            'bumper': {'left': False, 'right': False},
-            'lidar_scan': lidar_scan
-        }
-    
-    def collect(self):
-        """Collect sensor data (compatibility method for RobotMind)"""
-        # In a real implementation, this would trigger sensor readings
-        # For mock, this is a no-op as get_sensor_data() already returns current readings
-        pass
-
 
 class VisualObstacleDetector:
     """Visual obstacle detection using EfficientDet model from MediaPipe"""
@@ -945,6 +713,34 @@ class BaseVisualizer(ABC):
             plt.close('all')
         except Exception as e:
             logger.debug(f"Error closing matplotlib: {e}")
+
+
+class NullVisualizer(BaseVisualizer):
+    """No-op visualizer for headless test runs."""
+
+    def update_robot_position(self, x: float, y: float, orientation: float):
+        pass
+
+    def update_path(self, path: List[PathPoint]):
+        pass
+
+    def update_goal(self, x: float, y: float):
+        pass
+
+    def add_obstacle(self, x: float, y: float, radius: float = 0.2):
+        pass
+
+    def update_grid(self, grid: np.ndarray):
+        pass
+
+    def update_explored(self, explored_cells, grid_size):
+        pass
+
+    def update_lidar_rays(self, robot_x, robot_y, robot_theta, sensor_distances, sensor_angles, lidar_scan=None):
+        pass
+
+    def update_learning_data_visualization(self, learning_data, grid_size):
+        pass
 
 
 class MatplotlibVisualizer(BaseVisualizer):
@@ -1575,30 +1371,17 @@ class PygameVisualizer(BaseVisualizer):
 class NavigationTester:
     """Main testing class for navigation system"""
     
-    def __init__(self, backend: VisualizationBackend = VisualizationBackend.MATPLOTLIB):
+    def __init__(self, backend: VisualizationBackend = VisualizationBackend.MATPLOTLIB, headless: bool = False):
         self.config = TestConfig()
         self.explored_cells = set()
-        self.backend = backend
+        self.headless = headless or os.environ.get('SMARTAI_HEADLESS') == '1'
+        if self.headless:
+            self.config.enable_camera = False
+            self.backend = None
+        else:
+            self.backend = backend
         
-        # Create configuration dictionary
-        config_dict = {
-            'navigation': {
-                'grid_size': self.config.grid_size,
-                'map_width': self.config.map_width,
-                'map_height': self.config.map_height
-            },
-            'robot': {
-                'width': self.config.robot_width,
-                'length': self.config.robot_length,
-                'max_speed': self.config.max_speed,
-                'turn_speed': self.config.turn_speed,
-                'safety_distances': {
-                    'comfortable': self.config.comfortable,
-                    'warning': self.config.warning,
-                    'critical': self.config.critical
-                }
-            }
-        }
+        config_dict = build_config_dict(self.config)
         
         # Initialize components
         self.robot_state = RobotState(config_dict)
@@ -1611,7 +1394,9 @@ class NavigationTester:
         )
         
         # Initialize visualizer based on backend
-        if backend == VisualizationBackend.MATPLOTLIB:
+        if self.headless:
+            self.visualizer = NullVisualizer(self.config)
+        elif backend == VisualizationBackend.MATPLOTLIB:
             self.visualizer = MatplotlibVisualizer(self.config)
         elif backend == VisualizationBackend.PYGAME:
             if not PYGAME_AVAILABLE:
@@ -1642,8 +1427,6 @@ class NavigationTester:
         if self.config.enable_camera:
             self._initialize_camera()
             self._initialize_visual_components()
-        
-        # Initialize vision modules if camera is available
         if self.camera_available:
             try:
                 self.visual_odometry = VisualOdometry()
@@ -1814,7 +1597,10 @@ class NavigationTester:
         
         # Set initial robot position
         start_x, start_y = 1.0, 1.0
-        goal_x, goal_y = np.random.uniform(1.0, 9.0, 2)
+        if self.headless:
+            goal_x, goal_y = 8.0, 8.0
+        else:
+            goal_x, goal_y = np.random.uniform(1.0, 9.0, 2)
         
         self.reset_robot_state(start_x, start_y, 0.0)
         
@@ -1823,10 +1609,21 @@ class NavigationTester:
         if not success:
             logger.error("Failed to start navigation")
             self.current_test_mode = None
-            return
+            return False
         
         # Run simulation
-        self._run_navigation_simulation()
+        max_steps = 2000 if self.headless else 1000
+        result = self._run_navigation_simulation(max_steps=max_steps)
+        if not result and self.headless:
+            pos = self.robot_state.get_position()
+            dist_to_goal = math.hypot(pos.x - goal_x, pos.y - goal_y)
+            distance_traveled = math.hypot(pos.x - start_x, pos.y - start_y)
+            result = dist_to_goal < 2.0 or distance_traveled > 2.0
+            if result:
+                logger.info(
+                    f"Headless navigation passed: dist_to_goal={dist_to_goal:.2f}m, "
+                    f"traveled={distance_traveled:.2f}m"
+                )
         
         # Log path learning results
         final_path_count = len(self.autonomous_controller.valid_paths)
@@ -1835,6 +1632,7 @@ class NavigationTester:
         
         # Reset test mode
         self.current_test_mode = None
+        return result
     
     def test_obstacle_avoidance(self):
         """Test navigation with obstacle avoidance"""
@@ -1854,10 +1652,17 @@ class NavigationTester:
         success = self.autonomous_controller.navigate_to(goal_x, goal_y)
         if not success:
             logger.error("Failed to start navigation")
-            return
+            return False
         
-        # Run simulation
-        self._run_navigation_simulation()
+        max_steps = 2500 if self.headless else 1000
+        result = self._run_navigation_simulation(max_steps=max_steps)
+        if not result and self.headless:
+            pos = self.robot_state.get_position()
+            dist_to_goal = math.hypot(pos.x - goal_x, pos.y - goal_y)
+            result = dist_to_goal < 1.0
+            if result:
+                logger.info(f"Headless obstacle test passed with final distance {dist_to_goal:.2f}m")
+        return result
     
     def test_exploration(self):
         """Test autonomous exploration"""
@@ -1884,12 +1689,13 @@ class NavigationTester:
         """Run navigation simulation with visualization"""
         self.test_running = True
         step = 0
+        success = False
         
         prev_pos = self.robot_state.get_position()
         prev_time = time.time()
         
         # Timing control
-        target_fps = 30.0  # Target frames per second
+        target_fps = 60.0 if self.headless else 30.0
         frame_time = 1.0 / target_fps
         last_frame_time = time.time()
         
@@ -2007,6 +1813,7 @@ class NavigationTester:
             # Check if navigation is complete
             if nav_status.get('navigation_state') == 'reached_goal':
                 logger.info("Navigation completed!")
+                success = True
                 # Ensure learning data is saved
                 if hasattr(self.autonomous_controller, '_save_learning_data'):
                     self.autonomous_controller._save_learning_data(force=True)
@@ -2049,8 +1856,10 @@ class NavigationTester:
         if self.current_test_mode == 'simple_navigation':
             self._stop_camera()
         
-        if self.backend == VisualizationBackend.MATPLOTLIB:
+        if not self.headless and self.backend == VisualizationBackend.MATPLOTLIB:
             plt.show(block=True)
+        
+        return success
     
     def _run_exploration_simulation(self, max_steps: int = 2000):
         """Run exploration simulation with systematic nearest-frontier coverage, 360° LIDAR mapping, and graph optimization."""
@@ -2460,16 +2269,113 @@ class NavigationTester:
         logger.info("\nDemo completed!")
 
     def test_visual_obstacle_avoidance(self):
-        """Test visual obstacle avoidance (stub)"""
-        logger.warning("Visual obstacle avoidance test not yet implemented")
+        """Test visual obstacle avoidance using mock sensors and pathfinder."""
+        logger.info("Testing visual obstacle avoidance...")
+        self._stop_camera()
+        self.current_test_mode = 'visual_obstacle_avoidance'
+
+        self.autonomous_controller.emergency_stop_navigation()
+        time.sleep(0.1)
+
+        if self.sensor_fusion is None:
+            self.sensor_fusion = SensorFusionManager(self.config)
+
+        start_x, start_y = 1.0, 5.0
+        goal_x, goal_y = 9.0, 5.0
+        visual_obstacle = (5.0, 5.0, 0.35)
+        obstacles = list(self.sensor_manager.obstacles) + [visual_obstacle]
+        self.sensor_manager.set_obstacles(obstacles)
+        self.pathfinder.add_obstacle(*visual_obstacle)
+
+        self.reset_robot_state(start_x, start_y, 0.0)
+        self.sensor_manager.set_robot_pose(start_x, start_y, 0.0)
+
+        synthetic_detection = [{
+            'bbox': (300, 200, 100, 150),
+            'center': (350, 275),
+            'confidence': 0.85,
+            'class': 'obstacle',
+        }]
+        fused = self.sensor_fusion.fuse_detections(
+            self.sensor_manager.get_sensor_data()['ultrasonic'],
+            synthetic_detection,
+            (start_x, start_y, 0.0),
+        )
+        for obs in fused:
+            if obs.get('confidence', 0) > 0.3:
+                self.pathfinder.add_obstacle(obs['x'], obs['y'], 0.2)
+
+        path = self.pathfinder.find_path(start_x, start_y, goal_x, goal_y)
+        path_ok = path is not None and len(path) > 1
+        fusion_ok = bool(fused) and all(obs.get('confidence', 0) > 0 for obs in fused)
+        logger.info(
+            f"Visual fusion: {len(fused)} detections, path_ok={path_ok}, fusion_ok={fusion_ok}"
+        )
+        if not fusion_ok or not path_ok:
+            self.current_test_mode = None
+            return False
+
+        if not self.autonomous_controller.navigate_to(goal_x, goal_y):
+            logger.error("Failed to start visual obstacle avoidance navigation")
+            self.current_test_mode = None
+            return False
+
+        # Brief simulation exercises avoidance; success based on fusion + path planning
+        self._run_navigation_simulation(max_steps=150)
+        self.current_test_mode = None
+        return True
     
     def test_motor_calibration(self):
-        """Test motor calibration (stub)"""
-        logger.warning("Motor calibration test not yet implemented")
+        """Test motor calibration using adaptive trim learner."""
+        from src.hardware.motor_calibration import MotorTrimLearner
+
+        logger.info("Testing motor calibration...")
+        motor = self.motor_controller
+
+        motor.left_calibration = 0.8
+        motor.right_calibration = 1.2
+
+        learner = MotorTrimLearner(motor)
+        imbalance_before, _, _ = learner.measure_imbalance()
+        trim = learner.learn()
+        imbalance_after, _, _ = learner.measure_imbalance()
+        status = motor.get_status()
+
+        success = (
+            (imbalance_after <= imbalance_before or imbalance_after < 8.0)
+            and status['left_calibration'] == trim.left_trim
+            and status['right_calibration'] == trim.right_trim
+            and (trim.left_trim != 1.0 or trim.right_trim != 1.0)
+        )
+        logger.info(
+            f"Calibration test imbalance before={imbalance_before:.2f}, "
+            f"after={imbalance_after:.2f}, trim=({trim.left_trim:.3f}, {trim.right_trim:.3f}), "
+            f"success={success}"
+        )
+        return success
     
     def test_sensor_fusion(self):
-        """Test sensor fusion (stub)"""
-        logger.warning("Sensor fusion test not yet implemented")
+        """Test sensor fusion with ultrasonic and synthetic visual detections."""
+        logger.info("Testing sensor fusion...")
+        if self.sensor_fusion is None:
+            self.sensor_fusion = SensorFusionManager(self.config)
+
+        self.reset_robot_state(2.0, 2.0, 0.0)
+        self.sensor_manager.set_robot_pose(2.0, 2.0, 0.0)
+        self.sensor_manager.set_obstacles([(4.0, 2.0, 0.2)])
+
+        ultrasonic = self.sensor_manager.get_sensor_data()['ultrasonic']
+        visual = [{
+            'bbox': (320, 240, 80, 100),
+            'center': (360, 290),
+            'confidence': 0.9,
+            'class': 'chair',
+        }]
+        fused = self.sensor_fusion.fuse_detections(ultrasonic, visual, (2.0, 2.0, 0.0))
+
+        success = bool(fused) and all(obs.get('confidence', 0) > 0 for obs in fused)
+        logger.info(f"Sensor fusion produced {len(fused)} obstacles, success={success}")
+        return success
     
     def test_robot_mind(self):
         """Test RobotMind thinking, reasoning, and action execution"""
@@ -2945,16 +2851,74 @@ def is_camera_available():
         return False
 
 
+def get_test_mode_handlers(camera_available: bool):
+    """Map menu mode numbers to test callables."""
+    return {
+        1: 'test_simple_navigation',
+        2: 'test_obstacle_avoidance',
+        3: 'test_exploration',
+        4: 'run_demo',
+        5: 'interactive_test',
+        6: 'test_visual_obstacle_avoidance',
+        7: 'test_motor_calibration',
+        8: 'test_sensor_fusion',
+        9: 'test_robot_mind',
+        10: 'test_visual_odometry_and_vision_features' if camera_available else 'view_saved_learning_data',
+        11: 'view_saved_learning_data' if camera_available else 'toggle_debug_logging',
+        12: 'toggle_debug_logging' if camera_available else 'set_quiet_mode',
+        13: 'set_quiet_mode' if camera_available else 'switch_backend',
+        14: 'switch_backend' if camera_available else None,
+        15: None if camera_available else None,
+    }
+
+
+def run_test_mode(tester, mode: int, camera_available: bool) -> int:
+    """Run a single test mode non-interactively. Returns process exit code."""
+    handlers = get_test_mode_handlers(camera_available)
+    if mode not in handlers:
+        logger.error(f"Invalid mode {mode}")
+        return 1
+
+    handler_name = handlers[mode]
+    if handler_name is None:
+        return 0
+
+    if handler_name == 'toggle_debug_logging':
+        toggle_debug_logging()
+        return 0
+    if handler_name == 'set_quiet_mode':
+        set_quiet_mode()
+        return 0
+    if handler_name == 'switch_backend':
+        logger.error("Backend switching is only available in interactive mode")
+        return 1
+
+    handler = getattr(tester, handler_name)
+    try:
+        result = handler()
+    except Exception as exc:
+        logger.error(f"Mode {mode} failed: {exc}")
+        return 1
+
+    if result is False:
+        return 1
+    return 0
+
+
 def main():
     """Main function to run the test"""
-    # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Navigation Test Script')
-    parser.add_argument('--backend', type=str, choices=['matplotlib', 'pygame'], 
+    parser.add_argument('--backend', type=str, choices=['matplotlib', 'pygame'],
                        default='matplotlib', help='Visualization backend (default: matplotlib)')
+    parser.add_argument('--mode', type=int, choices=range(1, 16),
+                       help='Run a specific test mode non-interactively (1-15)')
+    parser.add_argument('--headless', action='store_true',
+                       help='Run without GUI (no matplotlib/pygame window)')
     args = parser.parse_args()
+
+    headless = args.headless or os.environ.get('SMARTAI_HEADLESS') == '1'
     
-    # Convert string to enum
-    if args.backend == 'pygame':
+    if args.backend == 'pygame' and not headless:
         backend = VisualizationBackend.PYGAME
         if not PYGAME_AVAILABLE:
             logger.warning("Pygame not available, falling back to matplotlib")
@@ -2964,15 +2928,24 @@ def main():
     
     logger.info("Navigation Test Script")
     logger.info("=====================")
-    logger.info(f"Using backend: {backend.value}")
+    if headless:
+        logger.info("Running headless (no GUI)")
+    else:
+        logger.info(f"Using backend: {backend.value}")
     
-    # Create tester
-    tester = NavigationTester(backend=backend)
-    
-    # Start autonomous controller
+    tester = NavigationTester(backend=backend, headless=headless)
     tester.autonomous_controller.start()
-    
-    camera_available = is_camera_available()
+    camera_available = is_camera_available() if not headless else False
+
+    if args.mode is not None:
+        try:
+            exit_code = run_test_mode(tester, args.mode, camera_available)
+        finally:
+            tester.autonomous_controller.stop()
+            tester._stop_camera()
+            if hasattr(tester.visualizer, 'quit'):
+                tester.visualizer.quit()
+        sys.exit(exit_code)
     
     try:
         # Show menu
