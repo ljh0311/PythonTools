@@ -1,0 +1,5 @@
+{
+  "left_trim": 1.0,
+  "right_trim": 1.0,
+  "auto_calibrate_on_startup": true
+}

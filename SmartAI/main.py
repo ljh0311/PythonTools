@@ -20,6 +20,12 @@ from loguru import logger
 from src.core.robot_state import RobotMode, RobotState
 from src.gui.robot_gui import RobotGUI
 from src.hardware.motor_controller import MotorController
+from src.hardware.motor_calibration import (
+    load_motor_trim,
+    run_manual_calibration,
+    run_startup_calibration,
+    set_auto_calibrate_on_startup,
+)
 from src.hardware.sensor_manager import SensorManager
 from src.navigation.autonomous_controller import AutonomousController
 from src.navigation.pathfinder import Pathfinder
@@ -278,6 +284,52 @@ class SmartRobotSystem:
                     return jsonify({'status': 'success', 'action': 'emergency_stop'})
                 except Exception as e:
                     return jsonify({'error': str(e)}), 500
+
+            @self.flask_app.route('/api/motor_calibration', methods=['GET', 'POST'])
+            def motor_calibration():
+                """Get or set motor trim calibration values."""
+                try:
+                    cal_path = self.config.get("motor_calibration", {}).get(
+                        "calibration_file", "config/motor_calibration.json"
+                    )
+                    if request.method == 'GET':
+                        status = self.motor_controller.get_status()
+                        persisted = load_motor_trim(cal_path)
+                        return jsonify({
+                            'left_trim': status.get('left_calibration', 1.0),
+                            'right_trim': status.get('right_calibration', 1.0),
+                            'auto_calibrate_on_startup': persisted.auto_calibrate_on_startup,
+                        })
+
+                    data = request.get_json() or {}
+                    left_trim = float(data.get('left_trim', data.get('left_calibration', 1.0)))
+                    right_trim = float(data.get('right_trim', data.get('right_calibration', 1.0)))
+                    self.motor_controller.calibrate(left_trim, right_trim)
+                    if 'auto_calibrate_on_startup' in data:
+                        set_auto_calibrate_on_startup(
+                            bool(data['auto_calibrate_on_startup']), cal_path
+                        )
+                    return jsonify({
+                        'status': 'success',
+                        'left_trim': left_trim,
+                        'right_trim': right_trim,
+                        'auto_calibrate_on_startup': load_motor_trim(cal_path).auto_calibrate_on_startup,
+                    })
+                except Exception as e:
+                    return jsonify({'error': str(e)}), 500
+
+            @self.flask_app.route('/api/motor_calibration/auto', methods=['POST'])
+            def motor_calibration_auto():
+                """Run adaptive motor trim learning."""
+                try:
+                    trim = run_manual_calibration(self.motor_controller, self.config)
+                    return jsonify({
+                        'status': 'success',
+                        'left_trim': trim.left_trim,
+                        'right_trim': trim.right_trim,
+                    })
+                except Exception as e:
+                    return jsonify({'error': str(e)}), 400
             
             @self.flask_app.route('/api/sensors', methods=['GET'])
             def get_sensors():
@@ -385,6 +437,15 @@ class SmartRobotSystem:
             self.motor_controller.start()
             self.sensor_manager.start()
             logger.info("Hardware components started")
+
+            # Optional startup motor trim calibration
+            startup_trim = run_startup_calibration(self.motor_controller, self.config)
+            if startup_trim:
+                logger.info(
+                    "Startup calibration applied: left={:.3f}, right={:.3f}",
+                    startup_trim.left_trim,
+                    startup_trim.right_trim,
+                )
             
             # Start autonomous controller
             self.autonomous_controller.start()
@@ -407,9 +468,9 @@ class SmartRobotSystem:
                 web_url = f"http://{local_ip}:{self.web_port}"
                 
                 logger.info(f"Web server started at {web_url}")
-                print(f"\n🌐 Web Interface Available at: {web_url}")
-                print("📱 You can control the robot from any device on your network!")
-                print("🔧 Use the web interface or continue with the GUI application.\n")
+                print(f"\nWeb Interface Available at: {web_url}")
+                print("You can control the robot from any device on your network.")
+                print("Use the web interface or continue with the GUI application.\n")
                 
                 # # Optionally open browser
                 # try:

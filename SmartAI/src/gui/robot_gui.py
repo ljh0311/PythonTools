@@ -32,6 +32,7 @@ from ..navigation.autonomous_controller import AutonomousController
 from ..vision.visual_odometry import VisualOdometry
 from ..vision.dynamic_obstacle_predictor import DynamicObstaclePredictor
 from ..vision.scene_understanding import SceneUnderstanding
+from .theme import Theme
 
 
 @dataclass
@@ -237,15 +238,14 @@ class RobotGUI:
     
     def __init__(self, robot_state: RobotState, motor_controller: MotorController,
                  sensor_manager: SensorManager, pathfinder: Pathfinder,
-                 autonomous_controller: AutonomousController):
+                 autonomous_controller: AutonomousController, config: Optional[dict] = None):
         
         self.robot_state = robot_state
         self.motor_controller = motor_controller
         self.sensor_manager = sensor_manager
         self.pathfinder = pathfinder
         self.autonomous_controller = autonomous_controller
-        self.vision_fusion = None
-        self.task_boss = None
+        self.config = config or {}
         
         # GUI state
         self.running = False
@@ -322,8 +322,7 @@ class RobotGUI:
             'sensor_updates': deque(maxlen=100),
             'nav_updates': deque(maxlen=100),
             'map_updates': deque(maxlen=100),
-            'camera_updates': deque(maxlen=100),
-            'camera_update_times': deque(maxlen=100),
+            'camera_updates': deque(maxlen=100)
         }
         self.last_perf_log_time = time.time()
         
@@ -335,11 +334,11 @@ class RobotGUI:
     
     def setup_gui(self):
         """Setup the main GUI window and widgets"""
-        # Configure customtkinter - Smart Home Theme
-        ctk.set_appearance_mode("light")  # Light mode for smart home aesthetic
-        ctk.set_default_color_theme("blue")  # Blue theme matches smart home palette
-        
-        # Create main window
+        ctk.set_appearance_mode("system")
+        ctk.set_default_color_theme("blue")
+
+        self._configure_notebook_style()
+
         self.root = ctk.CTk()
         self.root.title("Smart Home Robot Assistant")
         self.root.geometry("1400x900")
@@ -347,120 +346,150 @@ class RobotGUI:
         self.root.minsize(1000, 700)
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
-        
-        # Create main container
-        self.main_frame = ctk.CTkFrame(self.root)
-        self.main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+
+        self.main_frame = ctk.CTkFrame(self.root, fg_color=Theme.SURFACE)
+        self.main_frame.grid(row=0, column=0, sticky="nsew", padx=16, pady=(16, 8))
         self.main_frame.grid_rowconfigure(0, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=1)
-        
-        # Create notebook for tabs
-        self.notebook = ttk.Notebook(self.main_frame)
-        self.notebook.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        
-        # Create tabs
+
+        self.notebook = ttk.Notebook(self.main_frame, style="Robot.TNotebook")
+        self.notebook.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
+
         self.setup_control_tab()
         self.setup_monitoring_tab()
         self.setup_navigation_tab()
         self.setup_settings_tab()
-        
-        # Add status bar at the bottom - Smart Home Theme
-        self.status_bar = ctk.CTkLabel(self.root, text="Ready", anchor="w", height=24, fg_color="#f5f5f5", text_color="#333")
-        self.status_bar.grid(row=1, column=0, sticky="ew")
+
+        self.status_bar = ctk.CTkLabel(
+            self.root,
+            text="Ready",
+            anchor="w",
+            height=28,
+            font=Theme.FONT_SMALL,
+            fg_color=Theme.STATUS_BAR_BG,
+            text_color=Theme.TEXT_SECONDARY,
+            corner_radius=0,
+        )
+        self.status_bar.grid(row=1, column=0, sticky="ew", padx=0, pady=0)
+
+    def _configure_notebook_style(self):
+        """Align ttk notebook tabs with the desktop control theme."""
+        style = ttk.Style()
+        style.configure(
+            "Robot.TNotebook",
+            tabmargins=[4, 4, 4, 0],
+        )
+        style.configure(
+            "Robot.TNotebook.Tab",
+            padding=[16, 8],
+            font=Theme.FONT_BODY,
+        )
     
     def setup_control_tab(self):
         """Setup the manual control tab"""
-        self.control_frame = ctk.CTkFrame(self.notebook)
+        self.control_frame = ctk.CTkFrame(self.notebook, fg_color="transparent")
         self.notebook.add(self.control_frame, text="Manual Control")
-        
-        # Control buttons frame
+
         control_buttons_frame = ctk.CTkFrame(self.control_frame)
-        control_buttons_frame.pack(fill="x", padx=10, pady=10)
-        
-        # Mode selection
-        mode_frame = ctk.CTkFrame(control_buttons_frame)
-        mode_frame.pack(fill="x", padx=5, pady=5)
-        
-        ctk.CTkLabel(mode_frame, text="Robot Mode:").pack(side="left", padx=5)
-        
+        control_buttons_frame.pack(fill="x", padx=16, pady=(16, 8))
+
+        mode_frame = ctk.CTkFrame(control_buttons_frame, fg_color="transparent")
+        mode_frame.pack(fill="x", padx=8, pady=8)
+
+        ctk.CTkLabel(mode_frame, text="Operating mode", font=Theme.FONT_BODY).pack(side="left", padx=8)
+
         self.mode_var = tk.StringVar(value=RobotMode.IDLE.value)
         mode_menu = ctk.CTkOptionMenu(
-            mode_frame, 
+            mode_frame,
             variable=self.mode_var,
             values=[mode.value for mode in RobotMode],
-            command=self.on_mode_change
+            command=self.on_mode_change,
+            width=180,
+            height=Theme.BTN_HEIGHT,
+            font=Theme.FONT_BODY,
         )
-        mode_menu.pack(side="left", padx=5)
-        
-        # Emergency stop button
+        mode_menu.pack(side="left", padx=8)
+
         self.emergency_stop_btn = ctk.CTkButton(
             control_buttons_frame,
-            text="EMERGENCY STOP",
-            fg_color="red",
-            hover_color="darkred",
-            command=self.emergency_stop
+            text="Emergency Stop",
+            fg_color=Theme.DANGER,
+            hover_color=Theme.DANGER_HOVER,
+            height=Theme.EMERGENCY_HEIGHT,
+            font=Theme.FONT_BUTTON,
+            corner_radius=10,
+            command=self.emergency_stop,
         )
-        self.emergency_stop_btn.pack(pady=10)
-        
-        # Movement controls
+        self.emergency_stop_btn.pack(fill="x", padx=8, pady=(4, 12))
+
         movement_frame = ctk.CTkFrame(self.control_frame)
-        movement_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Forward/backward controls
-        fwd_back_frame = ctk.CTkFrame(movement_frame)
-        fwd_back_frame.pack(pady=10)
-        
+        movement_frame.pack(fill="both", expand=True, padx=16, pady=8)
+
+        ctk.CTkLabel(
+            movement_frame,
+            text="Direction pad",
+            font=Theme.FONT_SECTION,
+        ).pack(pady=(8, 12))
+
+        dpad_frame = ctk.CTkFrame(movement_frame, fg_color="transparent")
+        dpad_frame.pack(pady=8)
+
+        btn_kwargs = dict(
+            width=Theme.BTN_MIN_WIDTH,
+            height=Theme.BTN_HEIGHT,
+            font=Theme.FONT_BUTTON,
+            corner_radius=10,
+        )
+
         self.forward_btn = ctk.CTkButton(
-            fwd_back_frame, text="FORWARD", command=lambda: self.move_forward()
+            dpad_frame, text="Forward", command=lambda: self.move_forward(), **btn_kwargs
         )
-        self.forward_btn.pack(pady=5)
-        
-        back_frame = ctk.CTkFrame(fwd_back_frame)
-        back_frame.pack(pady=5)
-        
-        self.backward_btn = ctk.CTkButton(
-            back_frame, text="BACKWARD", command=lambda: self.move_backward()
-        )
-        self.backward_btn.pack(side="left", padx=5)
-        
-        self.stop_btn = ctk.CTkButton(
-            back_frame, text="STOP", command=self.stop_movement
-        )
-        self.stop_btn.pack(side="left", padx=5)
-        
-        # Left/right controls
-        left_right_frame = ctk.CTkFrame(movement_frame)
-        left_right_frame.pack(pady=10)
-        
+        self.forward_btn.grid(row=0, column=1, padx=6, pady=6)
+
         self.left_btn = ctk.CTkButton(
-            left_right_frame, text="TURN LEFT", command=lambda: self.turn_left()
+            dpad_frame, text="Turn left", command=lambda: self.turn_left(), **btn_kwargs
         )
-        self.left_btn.pack(side="left", padx=5)
-        
+        self.left_btn.grid(row=1, column=0, padx=6, pady=6)
+
+        self.stop_btn = ctk.CTkButton(
+            dpad_frame,
+            text="Stop",
+            fg_color=Theme.DANGER,
+            hover_color=Theme.DANGER_HOVER,
+            command=self.stop_movement,
+            **btn_kwargs,
+        )
+        self.stop_btn.grid(row=1, column=1, padx=6, pady=6)
+
         self.right_btn = ctk.CTkButton(
-            left_right_frame, text="TURN RIGHT", command=lambda: self.turn_right()
+            dpad_frame, text="Turn right", command=lambda: self.turn_right(), **btn_kwargs
         )
-        self.right_btn.pack(side="left", padx=5)
-        
-        # Speed control
-        speed_frame = ctk.CTkFrame(movement_frame)
-        speed_frame.pack(pady=10)
-        
-        ctk.CTkLabel(speed_frame, text="Speed:").pack(side="left", padx=5)
-        
+        self.right_btn.grid(row=1, column=2, padx=6, pady=6)
+
+        self.backward_btn = ctk.CTkButton(
+            dpad_frame, text="Backward", command=lambda: self.move_backward(), **btn_kwargs
+        )
+        self.backward_btn.grid(row=2, column=1, padx=6, pady=6)
+
+        speed_frame = ctk.CTkFrame(movement_frame, fg_color="transparent")
+        speed_frame.pack(fill="x", pady=(20, 16), padx=8)
+
+        ctk.CTkLabel(speed_frame, text="Speed", font=Theme.FONT_BODY).pack(side="left", padx=8)
+
         self.speed_var = tk.DoubleVar(value=50.0)
         self.speed_slider = ctk.CTkSlider(
             speed_frame,
             from_=0,
             to=100,
             variable=self.speed_var,
-            number_of_steps=100
+            number_of_steps=100,
+            height=18,
         )
-        self.speed_slider.pack(side="left", padx=5, fill="x", expand=True)
-        
-        self.speed_label = ctk.CTkLabel(speed_frame, text="50%")
-        self.speed_label.pack(side="left", padx=5)
-        
+        self.speed_slider.pack(side="left", padx=8, fill="x", expand=True)
+
+        self.speed_label = ctk.CTkLabel(speed_frame, text="50%", font=Theme.FONT_BODY, width=48)
+        self.speed_label.pack(side="left", padx=8)
+
         self.speed_slider.configure(command=self.on_speed_change)
     
     def setup_monitoring_tab(self):
@@ -476,7 +505,7 @@ class RobotGUI:
         robot_status_frame = ctk.CTkFrame(status_frame)
         robot_status_frame.pack(fill="x", padx=5, pady=5)
         
-        ctk.CTkLabel(robot_status_frame, text="Robot Status", font=("Arial", 16, "bold")).pack()
+        ctk.CTkLabel(robot_status_frame, text="Robot Status", font=Theme.FONT_SECTION).pack(pady=(8, 4))
         
         self.status_labels = {}
         status_items = [
@@ -496,16 +525,21 @@ class RobotGUI:
         sensor_health_frame = ctk.CTkFrame(self.monitoring_frame)
         sensor_health_frame.pack(fill="x", padx=10, pady=10)
         
-        ctk.CTkLabel(sensor_health_frame, text="Sensor Health Status", font=("Arial", 16, "bold")).pack()
-        
-        self.sensor_health_label = ctk.CTkLabel(sensor_health_frame, text="Checking sensor status...", text_color="#FFA500")
+        ctk.CTkLabel(sensor_health_frame, text="Sensor Health", font=Theme.FONT_SECTION).pack(pady=(8, 4))
+
+        self.sensor_health_label = ctk.CTkLabel(
+            sensor_health_frame,
+            text="Checking sensor status...",
+            text_color=Theme.WARNING,
+            font=Theme.FONT_BODY,
+        )
         self.sensor_health_label.pack(pady=5)
         
         # Sensor data
         sensor_frame = ctk.CTkFrame(self.monitoring_frame)
         sensor_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        ctk.CTkLabel(sensor_frame, text="Sensor Data", font=("Arial", 16, "bold")).pack()
+        ctk.CTkLabel(sensor_frame, text="Sensor Data", font=Theme.FONT_SECTION).pack(pady=(8, 4))
         
         # Create sensor display grid
         sensor_grid = ctk.CTkFrame(sensor_frame)
@@ -539,16 +573,27 @@ class RobotGUI:
         # Camera view panel
         camera_panel_frame = ctk.CTkFrame(self.monitoring_frame)
         camera_panel_frame.pack(fill="x", padx=10, pady=10)
-        ctk.CTkLabel(camera_panel_frame, text="Camera View", font=("Arial", 16, "bold")).pack()
-        self.camera_canvas = tk.Canvas(camera_panel_frame, width=320, height=240, bg="#dddddd", highlightthickness=1, highlightbackground="#333")
+        ctk.CTkLabel(camera_panel_frame, text="Camera View", font=Theme.FONT_SECTION).pack(pady=(8, 4))
+        self.camera_canvas = tk.Canvas(
+            camera_panel_frame,
+            width=320,
+            height=240,
+            bg=Theme.BORDER,
+            highlightthickness=1,
+            highlightbackground=Theme.BORDER,
+        )
         self.camera_canvas.pack(pady=5)
         self._camera_imgtk = None  # To prevent garbage collection
 
         # Add camera/vision status
         vision_status_frame = ctk.CTkFrame(self.monitoring_frame)
         vision_status_frame.pack(fill="x", padx=10, pady=5)
-        ctk.CTkLabel(vision_status_frame, text="Camera/Vision Features", font=("Arial", 14, "bold")).pack(side="left", padx=5)
-        self.vision_status_label = ctk.CTkLabel(vision_status_frame, text="Camera: Available" if self.camera_available else "Camera: Not Available", text_color="#00FF00" if self.camera_available else "#FF0000")
+        ctk.CTkLabel(vision_status_frame, text="Vision features", font=Theme.FONT_BODY).pack(side="left", padx=8)
+        cam_color = Theme.SUCCESS if self.camera_available else Theme.DANGER
+        cam_text = "Camera available" if self.camera_available else "Camera unavailable"
+        self.vision_status_label = ctk.CTkLabel(
+            vision_status_frame, text=cam_text, text_color=cam_color, font=Theme.FONT_SMALL
+        )
         self.vision_status_label.pack(side="left", padx=10)
         # Add toggles for vision features
         self.vo_toggle = ctk.CTkCheckBox(vision_status_frame, text="Visual Odometry", command=self.toggle_visual_odometry, state="normal" if self.camera_available else "disabled")
@@ -610,7 +655,7 @@ class RobotGUI:
         map_frame = ctk.CTkFrame(self.navigation_frame)
         map_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        ctk.CTkLabel(map_frame, text="Navigation Map", font=("Arial", 16, "bold")).pack()
+        ctk.CTkLabel(map_frame, text="Navigation Map", font=Theme.FONT_SECTION).pack(pady=(8, 4))
         
         # Create matplotlib figure for map
         self.map_figure = Figure(figsize=(8, 6), dpi=100)
@@ -637,14 +682,99 @@ class RobotGUI:
     
     def setup_settings_tab(self):
         """Setup the settings tab"""
+        from ..hardware.motor_calibration import load_motor_trim
+
         self.settings_frame = ctk.CTkFrame(self.notebook)
         self.notebook.add(self.settings_frame, text="Settings")
+
+        cal_path = self.config.get("motor_calibration", {}).get(
+            "calibration_file", "config/motor_calibration.json"
+        )
+        trim = load_motor_trim(cal_path)
+
+        # Motor trim calibration
+        motor_cal_frame = ctk.CTkFrame(self.settings_frame)
+        motor_cal_frame.pack(fill="x", padx=10, pady=10)
+
+        ctk.CTkLabel(
+            motor_cal_frame,
+            text="Motor Trim (straight-line correction)",
+            font=Theme.FONT_SECTION,
+        ).pack(pady=(8, 4))
+
+        ctk.CTkLabel(
+            motor_cal_frame,
+            text="If the robot veers left, raise Left trim. If it veers right, raise Right trim.",
+            font=Theme.FONT_SMALL,
+            text_color=Theme.TEXT_SECONDARY,
+            wraplength=420,
+        ).pack(padx=8, pady=(0, 8))
+
+        self.left_trim_var = tk.DoubleVar(value=trim.left_trim)
+        self.right_trim_var = tk.DoubleVar(value=trim.right_trim)
+
+        left_row = ctk.CTkFrame(motor_cal_frame, fg_color="transparent")
+        left_row.pack(fill="x", padx=8, pady=4)
+        ctk.CTkLabel(left_row, text="Left trim", width=90, anchor="w").pack(side="left")
+        self.left_trim_slider = ctk.CTkSlider(
+            left_row, from_=0.5, to=1.5, variable=self.left_trim_var, number_of_steps=100
+        )
+        self.left_trim_slider.pack(side="left", fill="x", expand=True, padx=8)
+        self.left_trim_label = ctk.CTkLabel(left_row, text=f"{trim.left_trim:.2f}", width=48)
+        self.left_trim_label.pack(side="left")
+
+        right_row = ctk.CTkFrame(motor_cal_frame, fg_color="transparent")
+        right_row.pack(fill="x", padx=8, pady=4)
+        ctk.CTkLabel(right_row, text="Right trim", width=90, anchor="w").pack(side="left")
+        self.right_trim_slider = ctk.CTkSlider(
+            right_row, from_=0.5, to=1.5, variable=self.right_trim_var, number_of_steps=100
+        )
+        self.right_trim_slider.pack(side="left", fill="x", expand=True, padx=8)
+        self.right_trim_label = ctk.CTkLabel(right_row, text=f"{trim.right_trim:.2f}", width=48)
+        self.right_trim_label.pack(side="left")
+
+        self.left_trim_slider.configure(command=self._on_left_trim_change)
+        self.right_trim_slider.configure(command=self._on_right_trim_change)
+
+        cal_btn_row = ctk.CTkFrame(motor_cal_frame, fg_color="transparent")
+        cal_btn_row.pack(fill="x", padx=8, pady=8)
+
+        ctk.CTkButton(
+            cal_btn_row,
+            text="Save trim",
+            command=self._save_motor_trim,
+            width=120,
+        ).pack(side="left", padx=4)
+
+        ctk.CTkButton(
+            cal_btn_row,
+            text="Auto-calibrate now",
+            command=self._run_auto_calibration,
+            width=140,
+        ).pack(side="left", padx=4)
+
+        self.auto_cal_var = tk.BooleanVar(value=trim.auto_calibrate_on_startup)
+        self.auto_cal_switch = ctk.CTkSwitch(
+            motor_cal_frame,
+            text="Auto-calibrate on startup",
+            variable=self.auto_cal_var,
+            command=self._on_auto_calibrate_toggle,
+        )
+        self.auto_cal_switch.pack(anchor="w", padx=12, pady=(4, 10))
+
+        self.cal_status_label = ctk.CTkLabel(
+            motor_cal_frame,
+            text="",
+            font=Theme.FONT_SMALL,
+            text_color=Theme.TEXT_SECONDARY,
+        )
+        self.cal_status_label.pack(anchor="w", padx=12, pady=(0, 8))
         
         # Configuration display and editing
         config_frame = ctk.CTkFrame(self.settings_frame)
         config_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        ctk.CTkLabel(config_frame, text="Robot Configuration", font=("Arial", 16, "bold")).pack()
+        ctk.CTkLabel(config_frame, text="Robot Configuration", font=Theme.FONT_SECTION).pack(pady=(8, 4))
         
         # Add configuration editing widgets here
         # (This would be a more complex implementation for editing the config file)
@@ -653,7 +783,7 @@ class RobotGUI:
         diagnostics_frame = ctk.CTkFrame(self.settings_frame)
         diagnostics_frame.pack(fill="x", padx=10, pady=10)
         
-        ctk.CTkLabel(diagnostics_frame, text="System Diagnostics", font=("Arial", 16, "bold")).pack()
+        ctk.CTkLabel(diagnostics_frame, text="System Diagnostics", font=Theme.FONT_SECTION).pack(pady=(8, 4))
         
         # Sensor diagnostics button
         sensor_diag_btn = ctk.CTkButton(
@@ -667,7 +797,7 @@ class RobotGUI:
         log_frame = ctk.CTkFrame(self.settings_frame)
         log_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        ctk.CTkLabel(log_frame, text="System Log", font=("Arial", 16, "bold")).pack()
+        ctk.CTkLabel(log_frame, text="System Log", font=Theme.FONT_SECTION).pack(pady=(8, 4))
         
         self.log_text = ctk.CTkTextbox(log_frame, height=200)
         self.log_text.pack(fill="both", expand=True, padx=5, pady=5)
@@ -863,11 +993,11 @@ class RobotGUI:
             
             # Update status bar
             if hasattr(self, 'status_bar'):
-                self.status_bar.configure(text="Last update: OK", text_color="#00FF00")
+                self.status_bar.configure(text="Last update: OK", text_color=Theme.SUCCESS)
         except Exception as e:
             # Show error in status bar and print to console
             if hasattr(self, 'status_bar'):
-                self.status_bar.configure(text=f"Error: {e}", text_color="#FF0000")
+                self.status_bar.configure(text=f"Error: {e}", text_color=Theme.DANGER)
             print(f"Error in _update_displays: {e}")
     
     def _update_status_labels(self, status: Dict[str, Any]):
@@ -890,13 +1020,13 @@ class RobotGUI:
         
         # Color code Safe to Move
         safe_text = "Yes" if status['safe_to_move'] else "No"
-        safe_color = "#00FF00" if status['safe_to_move'] else "#FF0000"
+        safe_color = Theme.SUCCESS if status['safe_to_move'] else Theme.DANGER
         if self._should_update_widget("Safe to Move", safe_text):
             self.status_labels["Safe to Move"].configure(text=safe_text, text_color=safe_color)
         
         # Color code Obstacle Detected
         obs_text = "Yes" if status['obstacle_detected'] else "No"
-        obs_color = "#FF0000" if status['obstacle_detected'] else "#00FF00"
+        obs_color = Theme.DANGER if status['obstacle_detected'] else Theme.SUCCESS
         if self._should_update_widget("Obstacle Detected", obs_text):
             self.status_labels["Obstacle Detected"].configure(text=obs_text, text_color=obs_color)
     
@@ -937,13 +1067,13 @@ class RobotGUI:
             # Update health label with appropriate color
             status = availability.get('overall_status', 'unknown')
             if status == 'all_sensors_available':
-                color = "#00FF00"
+                color = Theme.SUCCESS
             elif status == 'simulation_mode':
-                color = "#FFA500"
+                color = Theme.WARNING
             elif status == 'partial_availability':
-                color = "#FFA500"
+                color = Theme.WARNING
             else:  # no_sensors_available
-                color = "#FF0000"
+                color = Theme.DANGER
             
             if self._should_update_widget("sensor_health", (status, health_message)):
                 self.sensor_health_label.configure(text=health_message, text_color=color)
@@ -952,7 +1082,7 @@ class RobotGUI:
             self._update_status_bar_health(availability)
                 
         except Exception as e:
-            self.sensor_health_label.configure(text=f"Error checking sensor status: {e}", text_color="#FF0000")
+            self.sensor_health_label.configure(text=f"Error checking sensor status: {e}", text_color=Theme.DANGER)
     
     def _update_sensor_health_status(self):
         """Update sensor health status display (fallback)"""
@@ -964,24 +1094,24 @@ class RobotGUI:
                 health_message = self.sensor_manager.get_sensor_health_message()
                 # ... rest of original code ...
             except Exception as e:
-                self.sensor_health_label.configure(text=f"Error checking sensor status: {e}", text_color="#FF0000")
+                self.sensor_health_label.configure(text=f"Error checking sensor status: {e}", text_color=Theme.DANGER)
     
     def _update_status_bar_health(self, availability):
         """Update status bar with system health information"""
         try:
             if hasattr(self, 'status_bar'):
                 if availability['overall_status'] == 'all_sensors_available':
-                    self.status_bar.configure(text="System: All sensors operational", text_color="#00FF00")
+                    self.status_bar.configure(text="System: All sensors operational", text_color=Theme.SUCCESS)
                 elif availability['overall_status'] == 'simulation_mode':
-                    self.status_bar.configure(text="System: Running in simulation mode", text_color="#FFA500")
+                    self.status_bar.configure(text="System: Running in simulation mode", text_color=Theme.WARNING)
                 elif availability['overall_status'] == 'partial_availability':
                     unavailable = self.sensor_manager.get_unavailable_sensors()
-                    self.status_bar.configure(text=f"System: Partial sensor availability - {len(unavailable)} sensors unavailable", text_color="#FFA500")
+                    self.status_bar.configure(text=f"System: Partial sensor availability - {len(unavailable)} sensors unavailable", text_color=Theme.WARNING)
                 else:  # no_sensors_available
-                    self.status_bar.configure(text="System: Sensor not available. Please check your setup", text_color="#FF0000")
+                    self.status_bar.configure(text="System: Sensor not available. Please check your setup", text_color=Theme.DANGER)
         except Exception as e:
             if hasattr(self, 'status_bar'):
-                self.status_bar.configure(text=f"System: Error checking health - {e}", text_color="#FF0000")
+                self.status_bar.configure(text=f"System: Error checking health - {e}", text_color=Theme.DANGER)
     
     def _update_sensor_labels_cached(self, sensor_data_cache: Dict[str, Any]):
         """Update sensor data labels from cache"""
@@ -996,11 +1126,11 @@ class RobotGUI:
                     if sensor_name in ultrasonic_data:
                         reading = ultrasonic_data[sensor_name]
                         if reading.valid:
-                            self.sensor_labels[key].configure(text=f"{reading.value:.1f} cm", text_color="#00FF00")
+                            self.sensor_labels[key].configure(text=f"{reading.value:.1f} cm", text_color=Theme.SUCCESS)
                         else:
-                            self.sensor_labels[key].configure(text="Sensor unavailable", text_color="#FF0000")
+                            self.sensor_labels[key].configure(text="Sensor unavailable", text_color=Theme.DANGER)
                     else:
-                        self.sensor_labels[key].configure(text="No data", text_color="#FFA500")
+                        self.sensor_labels[key].configure(text="No data", text_color=Theme.WARNING)
             
             # Update infrared sensors
             infrared_data = sensor_data.get('infrared', {})
@@ -1011,12 +1141,12 @@ class RobotGUI:
                         reading = infrared_data[sensor_name]
                         if reading.valid:
                             value = "Yes" if reading.value > 0 else "No"
-                            color = "#FF0000" if reading.value > 0 else "#00FF00"
+                            color = Theme.DANGER if reading.value > 0 else Theme.SUCCESS
                             self.sensor_labels[key].configure(text=value, text_color=color)
                         else:
-                            self.sensor_labels[key].configure(text="Sensor unavailable", text_color="#FF0000")
+                            self.sensor_labels[key].configure(text="Sensor unavailable", text_color=Theme.DANGER)
                     else:
-                        self.sensor_labels[key].configure(text="No data", text_color="#FFA500")
+                        self.sensor_labels[key].configure(text="No data", text_color=Theme.WARNING)
             
             # Update bumper sensors
             bumper_data = sensor_data.get('bumper', {})
@@ -1027,20 +1157,20 @@ class RobotGUI:
                         reading = bumper_data[sensor_name]
                         if reading.valid:
                             value = "Pressed" if reading.value > 0 else "Not Pressed"
-                            color = "#FF0000" if reading.value > 0 else "#00FF00"
+                            color = Theme.DANGER if reading.value > 0 else Theme.SUCCESS
                             if self._should_update_widget(key, (value, color)):
                                 self.sensor_labels[key].configure(text=value, text_color=color)
                         else:
                             if self._should_update_widget(key, "Sensor unavailable"):
-                                self.sensor_labels[key].configure(text="Sensor unavailable", text_color="#FF0000")
+                                self.sensor_labels[key].configure(text="Sensor unavailable", text_color=Theme.DANGER)
                     else:
                         if self._should_update_widget(key, "No data"):
-                            self.sensor_labels[key].configure(text="No data", text_color="#FFA500")
+                            self.sensor_labels[key].configure(text="No data", text_color=Theme.WARNING)
                         
         except Exception as e:
             # If there's an error updating sensor labels, show error on all sensors
             for label in self.sensor_labels.values():
-                label.configure(text="Error", text_color="#FF0000")
+                label.configure(text="Error", text_color=Theme.DANGER)
             print(f"Error updating sensor labels: {e}")
     
     def _update_sensor_labels(self):
@@ -1207,6 +1337,64 @@ class RobotGUI:
     def on_speed_change(self, value):
         """Handle speed slider change"""
         self.speed_label.configure(text=f"{int(value)}%")
+
+    def _on_left_trim_change(self, value):
+        self.left_trim_label.configure(text=f"{float(value):.2f}")
+
+    def _on_right_trim_change(self, value):
+        self.right_trim_label.configure(text=f"{float(value):.2f}")
+
+    def _save_motor_trim(self):
+        left = round(self.left_trim_var.get(), 3)
+        right = round(self.right_trim_var.get(), 3)
+        self.motor_controller.calibrate(left, right)
+        self.cal_status_label.configure(
+            text=f"Saved trim: left={left:.2f}, right={right:.2f}",
+            text_color=Theme.SUCCESS,
+        )
+
+    def _on_auto_calibrate_toggle(self):
+        from ..hardware.motor_calibration import set_auto_calibrate_on_startup
+
+        enabled = bool(self.auto_cal_var.get())
+        cal_path = self.config.get("motor_calibration", {}).get(
+            "calibration_file", "config/motor_calibration.json"
+        )
+        set_auto_calibrate_on_startup(enabled, cal_path)
+        state = "enabled" if enabled else "disabled"
+        self.cal_status_label.configure(
+            text=f"Auto-calibrate on startup {state}",
+            text_color=Theme.TEXT_SECONDARY,
+        )
+
+    def _run_auto_calibration(self):
+        from ..hardware.motor_calibration import run_calibration_async
+
+        self.cal_status_label.configure(
+            text="Running auto-calibration...",
+            text_color=Theme.WARNING,
+        )
+
+        def on_complete(trim, error):
+            def update_ui():
+                if error:
+                    self.cal_status_label.configure(
+                        text=str(error),
+                        text_color=Theme.DANGER,
+                    )
+                    return
+                self.left_trim_var.set(trim.left_trim)
+                self.right_trim_var.set(trim.right_trim)
+                self.left_trim_label.configure(text=f"{trim.left_trim:.2f}")
+                self.right_trim_label.configure(text=f"{trim.right_trim:.2f}")
+                self.cal_status_label.configure(
+                    text=f"Calibrated: left={trim.left_trim:.2f}, right={trim.right_trim:.2f}",
+                    text_color=Theme.SUCCESS,
+                )
+
+            self.root.after(0, update_ui)
+
+        run_calibration_async(self.motor_controller, self.config, on_complete)
     
     def navigate_to_target(self):
         """Navigate to target position"""
@@ -1454,15 +1642,6 @@ class RobotGUI:
             if self.scene_understanding and self.scene_understanding_enabled and 'scene_analysis' not in self.vision_futures:
                 future = self.vision_executor.submit(self.scene_understanding.process_frame, frame)
                 self.vision_futures['scene_analysis'] = future
-
-            # Always fuse vision into navigation when available (not GUI-only)
-            if getattr(self, 'vision_fusion', None) and 'vision_fusion' not in self.vision_futures:
-                vf = self.vision_fusion
-                ctx = getattr(self.autonomous_controller, '_smartai_context', None)
-                if ctx is not None:
-                    ctx['last_camera_frame'] = frame
-                future = self.vision_executor.submit(vf.process_frame, frame)
-                self.vision_futures['vision_fusion'] = future
             
             # Reset processing flag when all futures complete
             if not self.vision_futures:
@@ -1665,8 +1844,12 @@ class RobotGUI:
             tk.messagebox.showerror("Error", f"Failed to initialize: {error['exception']}")
             raise error['exception']
         
+        config = args[0] if args else kwargs.get("config", {})
+        
         # Unpack components and create main GUI
         robot_state, motor_controller, sensor_manager, pathfinder, autonomous_controller = result['components']
-        gui = RobotGUI(robot_state, motor_controller, sensor_manager, pathfinder, autonomous_controller)
+        gui = RobotGUI(
+            robot_state, motor_controller, sensor_manager, pathfinder, autonomous_controller, config
+        )
         return gui
  

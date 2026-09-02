@@ -9,6 +9,13 @@ from typing import Tuple, Optional
 import threading
 from loguru import logger
 
+from .motor_calibration import (
+    DEFAULT_CALIBRATION_PATH,
+    MotorTrim,
+    load_motor_trim,
+    save_motor_trim,
+)
+
 try:
     import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
@@ -40,6 +47,19 @@ class MotorController:
         self.running = False
         self.control_thread = None
         self.lock = threading.Lock()
+
+        # Straight-line trim (loaded from JSON if present)
+        cal_config = config.get("motor_calibration", {})
+        self.calibration_path = cal_config.get("calibration_file", DEFAULT_CALIBRATION_PATH)
+        trim = load_motor_trim(self.calibration_path)
+        self.left_trim = trim.left_trim
+        self.right_trim = trim.right_trim
+        self._cmd_left = 0.0
+        self._cmd_right = 0.0
+        # Hidden imbalance used only in simulation so trim learning can be tested locally
+        self._sim_imbalance_left = float(cal_config.get("sim_imbalance_left", 1.0))
+        self._sim_imbalance_right = float(cal_config.get("sim_imbalance_right", 1.0))
+        self.hardware_available = GPIO_AVAILABLE
         
         # Initialize hardware
         self._setup_hardware()
@@ -111,14 +131,27 @@ class MotorController:
         logger.info("Motor controller stopped")
     
     def set_speeds(self, left_speed: float, right_speed: float):
-        """Set motor speeds as percent PWM in [-100, 100]."""
-        self.set_wheel_speeds_pct(left_speed, right_speed)
-
-    def set_wheel_speeds_pct(self, left_pct: float, right_pct: float):
-        """Set rear wheel speeds as percentage PWM in [-100, 100]."""
+        """Set motor speeds (-100 to 100)"""
         with self.lock:
-            self.left_speed = max(-100, min(100, left_pct))
-            self.right_speed = max(-100, min(100, right_pct))
+            self._cmd_left = left_speed
+            self._cmd_right = right_speed
+            self.left_speed = max(-100, min(100, left_speed * self.left_trim))
+            self.right_speed = max(-100, min(100, right_speed * self.right_trim))
+
+    def calibrate(self, left_multiplier: float = 1.0, right_multiplier: float = 1.0, persist: bool = True):
+        """Apply left/right trim multipliers for straight-line driving."""
+        self.left_trim = left_multiplier
+        self.right_trim = right_multiplier
+        if persist:
+            existing = load_motor_trim(self.calibration_path)
+            save_motor_trim(
+                MotorTrim(
+                    left_multiplier,
+                    right_multiplier,
+                    existing.auto_calibrate_on_startup,
+                ),
+                self.calibration_path,
+            )
     
     def move_forward(self, speed: float = 50.0):
         """Move robot forward"""
@@ -231,6 +264,16 @@ class MotorController:
         """Get current motor speeds"""
         with self.lock:
             return self.left_speed, self.right_speed
+
+    def get_actual_speeds(self) -> Tuple[float, float]:
+        """Measured wheel speeds for calibration (simulated when no encoders)."""
+        with self.lock:
+            if GPIO_AVAILABLE:
+                return self.left_speed, self.right_speed
+            return (
+                self._cmd_left * self.left_trim * self._sim_imbalance_left,
+                self._cmd_right * self.right_trim * self._sim_imbalance_right,
+            )
     
     def emergency_stop(self):
         """Emergency stop - immediately stop all motors"""
@@ -259,5 +302,7 @@ class MotorController:
             'left_speed': left_speed,
             'right_speed': right_speed,
             'running': self.running,
-            'hardware_available': GPIO_AVAILABLE
+            'hardware_available': GPIO_AVAILABLE,
+            'left_calibration': self.left_trim,
+            'right_calibration': self.right_trim,
         } 
