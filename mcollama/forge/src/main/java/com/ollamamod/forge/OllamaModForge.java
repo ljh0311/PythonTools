@@ -37,12 +37,11 @@ public class OllamaModForge {
         modEventBus.addListener(this::onClientSetup);
         
         MinecraftForge.EVENT_BUS.register(this);
-        
-        OllamaMod.init();
     }
     
     private void onCommonSetup(FMLCommonSetupEvent event) {
         platform = new ForgePlatform(OllamaChatScreen::new);
+        OllamaMod.init(platform);
         chatHandler = new OllamaChatHandler(platform);
     }
     

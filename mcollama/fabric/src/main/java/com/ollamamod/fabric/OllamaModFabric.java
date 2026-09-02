@@ -36,9 +36,8 @@ public class OllamaModFabric implements ClientModInitializer {
     
     @Override
     public void onInitializeClient() {
-        OllamaMod.init();
-        
         platform = new FabricPlatform(OllamaChatScreen::new);
+        OllamaMod.init(platform);
         chatHandler = new OllamaChatHandler(platform);
         
         MiningEventHandler.register();
