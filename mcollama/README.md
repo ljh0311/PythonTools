@@ -1,5 +1,7 @@
 # Ollama Mod for Minecraft 1.20.1
 
+> **Beta (`1.0.0-beta.1`)** — builds and core chat work; Forge keybind UI and live in-game QA are still open. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
+
 A multi-loader Minecraft mod (Fabric & Forge) that integrates with Ollama AI to provide in-game AI chat capabilities.
 
 ## Features
@@ -102,6 +104,26 @@ Press `O` (default keybinding) to open the Ollama chat GUI. Type your message an
 - `/ollama_clear` — Clear your conversation history
 
 You can also type `@ai <message>` in chat when `enableChatTrigger` is on.
+
+## Testing without Minecraft
+
+From the `mcollama` folder:
+
+```bat
+run_smoke_test.bat
+```
+
+This builds the mod, runs JUnit unit tests, and checks both jars are packaged correctly.
+
+If Ollama is running locally, it also pings `http://localhost:11434`.
+
+Useful flags:
+
+```bat
+python smoke_test_mcollama.py --skip-build
+python smoke_test_mcollama.py --skip-ollama
+python smoke_test_mcollama.py --live-chat --model llama2
+```
 
 ## Architecture
 

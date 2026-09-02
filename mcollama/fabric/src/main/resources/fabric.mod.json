@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ollamamod",
-  "version": "1.0.0",
+  "version": "${version}",
   "name": "Ollama Mod",
   "description": "A Minecraft mod that integrates with Ollama AI to provide in-game AI chat capabilities.",
   "authors": [
