@@ -64,7 +64,7 @@ public class DailySummaryGenerator {
             
             // Show ore probabilities if enabled
             if (OllamaConfig.showOreProbabilities && !stats.oreProbabilities.isEmpty()) {
-                summary.append("  §7Ore Probabilities:\n");
+                summary.append("  §7Ore Share (mined):\n");
                 stats.oreProbabilities.entrySet().stream()
                     .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                     .forEach(entry -> {
@@ -96,8 +96,8 @@ public class DailySummaryGenerator {
         
         // Food consumption stats
         if (OllamaConfig.showFoodStats) {
-            summary.append("\n§6Food Consumption Stats:\n");
-            summary.append("  §7Food Consumed Today: §f").append(stats.totalFoodConsumed).append(" points\n");
+            summary.append("\n§6Hunger Stats:\n");
+            summary.append("  §7Hunger Used: §f").append(stats.totalFoodConsumed).append(" points\n");
             
             if (stats.consumptionRate > 0) {
                 summary.append("  §7Average Consumption: §f")

@@ -111,6 +111,7 @@ Press `O` (default keybinding) to open the Ollama chat GUI. Type your message an
 
 - `/ollama <message>` — Send a message to the AI
 - `/ollama do <request>` — Ask the AI for a command and run it (requires `enableCommandExecution`)
+- `/ollama summary` — Show today's activity summary
 - `/ollama_clear` — Clear your conversation history
 
 You can also type `@ai <message>` in chat when `enableChatTrigger` is on.

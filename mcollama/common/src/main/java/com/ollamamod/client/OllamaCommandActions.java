@@ -1,8 +1,10 @@
 package com.ollamamod.client;
 
 import com.ollamamod.config.OllamaConfig;
+import com.ollamamod.summary.DailySummaryGenerator;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.world.entity.player.Player;
 
 /**
  * Behaviour behind the player-facing entry points. Fabric and Forge can only share the
@@ -17,7 +19,7 @@ public final class OllamaCommandActions {
     public static void sendPrompt(OllamaChatHandler chatHandler, String message) {
         ClientFeedback.info("Thinking\u2026");
 
-        chatHandler.getOllamaClient().sendMessage(message, currentPlayerName())
+        chatHandler.getOllamaClient().sendMessage(message, currentPlayerName(), currentPlayer())
                 .thenAccept(ClientFeedback::aiReply)
                 .exceptionally(throwable -> {
                     ClientFeedback.error(OllamaException.playerMessage(throwable));
@@ -40,7 +42,7 @@ public final class OllamaCommandActions {
 
         ClientFeedback.info("Asking AI for a command\u2026");
 
-        chatHandler.getOllamaClient().sendMessage(request, currentPlayerName())
+        chatHandler.getOllamaClient().sendMessage(request, currentPlayerName(), currentPlayer())
                 .thenAccept(response -> {
                     ClientFeedback.aiReply(response);
                     String command = chatHandler.extractCommandFromResponse(response);
@@ -61,6 +63,18 @@ public final class OllamaCommandActions {
         return minecraft.player != null ? minecraft.player.createCommandSourceStack() : null;
     }
 
+    public static void showDailySummary() {
+        String summary = DailySummaryGenerator.generateDailySummary(currentPlayerName());
+        for (String line : summary.split("\n")) {
+            if (line.isEmpty()) {
+                continue;
+            }
+            for (int i = 0; i < line.length(); i += 250) {
+                ClientFeedback.info(line.substring(i, Math.min(i + 250, line.length())));
+            }
+        }
+    }
+
     public static void clearConversation(OllamaChatHandler chatHandler) {
         chatHandler.getConversationManager().clearSession(currentPlayerName());
         ClientFeedback.info("Conversation cleared.");
@@ -69,5 +83,9 @@ public final class OllamaCommandActions {
     public static String currentPlayerName() {
         Minecraft minecraft = Minecraft.getInstance();
         return minecraft.player != null ? minecraft.player.getName().getString() : "Player";
+    }
+
+    public static Player currentPlayer() {
+        return Minecraft.getInstance().player;
     }
 }

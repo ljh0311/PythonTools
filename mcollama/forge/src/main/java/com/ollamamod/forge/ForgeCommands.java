@@ -29,6 +29,12 @@ public class ForgeCommands {
                     })
                 )
             )
+            .then(literal("summary")
+                .executes(context -> {
+                    OllamaCommandActions.showDailySummary();
+                    return 1;
+                })
+            )
             .then(argument("message", StringArgumentType.greedyString())
                 .executes(context -> {
                     OllamaCommandActions.sendPrompt(chatHandler,

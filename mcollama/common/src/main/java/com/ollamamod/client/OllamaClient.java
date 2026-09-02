@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.ollamamod.OllamaMod;
 import com.ollamamod.config.OllamaConfig;
 import com.ollamamod.session.ConversationManager;
+import com.ollamamod.world.WorldContext;
 
 import java.io.IOException;
 import java.net.ConnectException;
@@ -16,6 +17,8 @@ import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+
+import net.minecraft.world.entity.player.Player;
 
 public class OllamaClient {
     private static final Gson GSON = new Gson();
@@ -36,17 +39,24 @@ public class OllamaClient {
     }
     
     public CompletableFuture<String> sendMessage(String message, String playerName) {
+        return sendMessage(message, playerName, null);
+    }
+
+    public CompletableFuture<String> sendMessage(String message, String playerName, Player player) {
+        final String worldContext = (OllamaConfig.enableWorldContext && player != null)
+            ? WorldContext.gatherContext(player) : "";
+
         return CompletableFuture.supplyAsync(() -> {
             try {
                 String model = OllamaConfig.defaultModel;
                 String context = conversationManager.getContext(playerName);
-                
+
                 // Store player name for command learning context
                 this.currentPlayerName = playerName;
-                
+
                 JsonObject requestBody = new JsonObject();
                 requestBody.addProperty("model", model);
-                requestBody.addProperty("prompt", buildPrompt(message, context));
+                requestBody.addProperty("prompt", buildPrompt(message, context, worldContext));
                 // Non-streaming only: the parser below expects a single JSON object, whereas
                 // a streaming response is newline-delimited JSON.
                 requestBody.addProperty("stream", false);
@@ -123,11 +133,15 @@ public class OllamaClient {
         return "";
     }
     
-    private String buildPrompt(String message, String context) {
+    private String buildPrompt(String message, String context, String worldContext) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("You are ").append(OllamaConfig.overseerPersonality)
               .append(" in Minecraft. ");
-        
+
+        if (!worldContext.isEmpty()) {
+            prompt.append("\n\nWorld Context:\n").append(worldContext);
+        }
+
         if (!context.isEmpty()) {
             prompt.append("\n\nContext:\n").append(context);
         }

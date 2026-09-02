@@ -67,7 +67,7 @@ public class OllamaChatScreen extends Screen {
         setBusy(true);
         
         OllamaModForge.getChatHandler().getOllamaClient()
-            .sendMessage(message, OllamaCommandActions.currentPlayerName())
+            .sendMessage(message, OllamaCommandActions.currentPlayerName(), minecraft.player)
             .thenAccept(response -> showResult(Component.literal(response)))
             .exceptionally(throwable -> {
                 showResult(Component.literal(OllamaException.playerMessage(throwable))
