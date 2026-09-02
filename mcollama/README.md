@@ -4,14 +4,12 @@ A multi-loader Minecraft mod (Fabric & Forge) that integrates with Ollama AI to 
 
 ## Features
 
-- **AI Chat Integration**: Chat with Ollama AI models directly in-game
-- **GUI Interface**: Beautiful chat interface accessible via keybinding
-- **Command Support**: `/ollama` command for quick AI interactions
-- **Conversation Management**: Maintains conversation context per player
-- **World Context**: AI can understand your current world state
-- **Action Recording**: Learn and analyze player behavior patterns
-- **Behavior Analysis**: Advanced analytics on player actions
-- **Multi-Loader Support**: Works on both Fabric and Forge 1.20.1
+- **AI Chat Integration**: Chat with Ollama via `@ai` in chat, `/ollama`, or the GUI (key `O`)
+- **World Context**: Position, biome, dimension, and health are included in prompts when enabled
+- **Daily Summary**: `/ollama summary` reports mining, hunger, and play-time stats
+- **Command Assistance**: `/ollama do` can run whitelisted server commands from AI replies (opt-in, off by default)
+- **Conversation Memory**: Keeps recent turns per player (`maxContextMessages`)
+- **Multi-Loader Support**: Fabric and Forge 1.20.1
 
 ## Requirements
 
@@ -89,17 +87,6 @@ Default whitelist: `give`, `tp`, `teleport`, `gamemode`, `time`, `weather`, `say
 | `showMinerType` | `true` | Show inferred miner type in summary |
 | `showOreProbabilities` | `true` | Show ore share in summary |
 | `minBlocksForAnalysis` | `10` | Minimum blocks before miner-type analysis |
-
-### Recording & limits
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enableActionRecording` | `true` | Record player actions for learning |
-| `recordingInterval` | `1` | Ticks between action samples |
-| `patternLearningThreshold` | `5` | Repetitions before a pattern is learned |
-| `maxPatterns` | `100` | Stored behavior patterns |
-| `maxLearningEntries` | `1000` | Stored learning entries |
-| `maxRecordingQueueSize` | `1000` | Action recording queue size |
 
 ## Usage
 
