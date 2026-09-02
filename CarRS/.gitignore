@@ -11,5 +11,6 @@ __pycache__/
 22 - Sheet1.csv
 quick_add_shortcuts.json
 settings.json
+ml_calibration.json
 data/
 *.xlsx

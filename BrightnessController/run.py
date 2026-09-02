@@ -3,6 +3,8 @@
 Single runtime entrypoint for the unified power-management app.
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import sys
@@ -26,7 +28,14 @@ def main(argv=None) -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["gui", "test-gui"],
+        choices=[
+            "gui",
+            "test-gui",
+            "smoke-battery",
+            "smoke-human",
+            "download-yunet",
+            "human-detection-cli",
+        ],
         default="gui",
         help="Runtime mode to launch.",
     )
@@ -39,9 +48,34 @@ def main(argv=None) -> int:
         return 0
 
     if args.mode == "test-gui":
-        from test_gui import main as test_gui_main
+        from tests.test_gui import main as test_gui_main
 
         test_gui_main()
+        return 0
+
+    if args.mode == "smoke-battery":
+        from tests.smoke_battery_full_learn import main as smoke_main
+
+        code = smoke_main()
+        from tests import test_battery_plateau_learning as plateau
+
+        plateau.main()
+        return int(code or 0)
+
+    if args.mode == "smoke-human":
+        from tests.smoke_human_detection import main as smoke_main
+
+        return int(smoke_main() or 0)
+
+    if args.mode == "download-yunet":
+        from scripts.download_yunet_model import main as download_main
+
+        return int(download_main() or 0)
+
+    if args.mode == "human-detection-cli":
+        from scripts.human_detection_cli import main as cli_main
+
+        cli_main()
         return 0
 
     return 0

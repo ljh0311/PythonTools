@@ -39,6 +39,10 @@ class EnhancedMockMotorController:
         self.is_running = True
         self.last_update_time = time.time()
 
+    def set_wheel_speeds_pct(self, left: float, right: float):
+        """Match production motor API used by AutonomousController."""
+        self.set_speeds(left, right)
+
     def _update_speeds(self, dt: float):
         left_diff = self.left_target - self.left_speed
         right_diff = self.right_target - self.right_speed

@@ -44,20 +44,45 @@ The human detection feature uses computer vision to detect human faces through y
 - Works best in camera-based mode
 - May not work perfectly in all lighting conditions
 
+## Project layout
+
+```
+BrightnessController/
+  run.py                 # Main entry (gui, tests, smokes, scripts)
+  brightness_gui.py      # Primary app GUI
+  brightness_controller.py
+  battery_*.py           # Battery monitoring modules
+  desk_presence.py       # Desk-mode presence tracking
+  face_detector_backend.py
+  tests/                 # Smoke tests and calibration GUI
+  scripts/               # CLI utilities (YuNet download, detection test)
+```
+
+## Running
+
+```bash
+python run.py                      # Main brightness + battery GUI
+python run.py --mode test-gui      # Human detection calibration GUI
+python run.py --mode smoke-battery # Battery learning smoke tests
+python run.py --mode smoke-human   # Presence / face detection smoke tests
+python run.py --mode download-yunet
+python run.py --mode human-detection-cli
+```
+
 ### Testing and Calibration
 
 Use the test tool to calibrate and test human detection:
 
 **Command Line Interface:**
 ```bash
-python test.py
+python run.py --mode human-detection-cli
+# or legacy: python test.py
 ```
 
 **Graphical User Interface (Recommended):**
 ```bash
-python test_gui.py
-# or
-python run_test_gui.py
+python run.py --mode test-gui
+# or legacy: python run_test_gui.py
 ```
 
 The test tools provide:

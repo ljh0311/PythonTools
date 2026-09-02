@@ -2,3 +2,10 @@
 web_version/venv/
 temp/
 logs/
+
+# Runtime surveillance media (keep local only)
+recordings/
+snapshots/motion/*.jpg
+debug-*.log
+web_version/backend/recordings/
+web_version/backend/network_camera_scan.log

@@ -1,0 +1,7 @@
+{
+  "modules": [
+    { "id": "variant_a", "description": "Compact home chassis", "entry": "variant_a_body" },
+    { "id": "variant_b", "description": "Tall navigator with LiDAR mast", "entry": "variant_b_body" },
+    { "id": "variant_c", "description": "Wide stable chassis", "entry": "variant_c_body" }
+  ]
+}

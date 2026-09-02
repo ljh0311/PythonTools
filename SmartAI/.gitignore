@@ -160,3 +160,9 @@ test_results/
 INF2009_Labs/archives/
 INF2009_Labs/jhfiles/*.zip
 robotics_project/*.zip
+
+# Generated OpenSCAD exports (source .scad files stay tracked)
+assets/models/stl/
+assets/models/previews/
+assets/models/exports/*
+!assets/models/exports/.gitkeep

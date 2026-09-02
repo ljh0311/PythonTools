@@ -119,3 +119,121 @@ def run_headless_navigation(
             controller.motor_controller.stop()
 
     return reached
+
+
+def run_headless_patrol_waypoints(
+    waypoints,
+    start=(1.0, 1.0, 0.0),
+    obstacles=None,
+    max_steps_per_leg=800,
+    goal_tolerance=0.35,
+):
+    """Patrol: visit each waypoint in order (point-to-point navigation)."""
+    config = TestConfig(enable_camera=False)
+    config_dict = build_config_dict(config)
+
+    with isolated_learning_data():
+        robot_state = RobotState(config_dict)
+        motor_controller = EnhancedMockMotorController(config)
+        sensor_manager = MockSensorManager()
+        pathfinder = Pathfinder(config_dict)
+        controller = AutonomousController(
+            robot_state, motor_controller, sensor_manager, pathfinder
+        )
+        controller.running = True
+        controller.emergency_stop = False
+
+        if obstacles:
+            for obstacle in obstacles:
+                pathfinder.add_obstacle(*obstacle)
+            sensor_manager.set_obstacles(list(obstacles))
+
+        sx, sy, st = start
+        robot_state.reset_position(sx, sy, st)
+        sensor_manager.set_robot_pose(sx, sy, st)
+        pathfinder.update_robot_position(sx, sy)
+
+        legs_reached = 0
+        try:
+            for gx, gy in waypoints:
+                controller.emergency_stop_navigation()
+                time.sleep(0.01)
+                controller.emergency_stop = False
+                if not controller.navigate_to(gx, gy):
+                    break
+
+                leg_ok = False
+                for _ in range(max_steps_per_leg):
+                    controller._update_navigation()
+                    _update_robot_physics(robot_state, motor_controller, sensor_manager, pathfinder)
+                    pos = robot_state.get_position()
+                    if controller.get_status().get('navigation_state') == 'reached_goal':
+                        leg_ok = True
+                        break
+                    if controller.get_status().get('navigation_state') == 'stuck':
+                        break
+                    if math.hypot(pos.x - gx, pos.y - gy) < goal_tolerance:
+                        leg_ok = True
+                        break
+
+                if leg_ok:
+                    legs_reached += 1
+                else:
+                    break
+        finally:
+            controller.running = False
+            controller.motor_controller.stop()
+
+    return legs_reached, len(waypoints)
+
+
+def run_headless_exploration(
+    start=(5.0, 5.0, 0.0),
+    obstacles=None,
+    max_steps=1500,
+    min_distance_m=1.5,
+):
+    """Patrol-style exploration: start_exploration and measure distance traveled."""
+    config = TestConfig(enable_camera=False)
+    config_dict = build_config_dict(config)
+
+    with isolated_learning_data():
+        robot_state = RobotState(config_dict)
+        motor_controller = EnhancedMockMotorController(config)
+        sensor_manager = MockSensorManager()
+        pathfinder = Pathfinder(config_dict)
+        controller = AutonomousController(
+            robot_state, motor_controller, sensor_manager, pathfinder
+        )
+        controller.running = True
+        controller.emergency_stop = False
+
+        if obstacles:
+            for obstacle in obstacles:
+                pathfinder.add_obstacle(*obstacle)
+            sensor_manager.set_obstacles(list(obstacles))
+
+        sx, sy, st = start
+        robot_state.reset_position(sx, sy, st)
+        sensor_manager.set_robot_pose(sx, sy, st)
+        pathfinder.update_robot_position(sx, sy)
+
+        if not controller.start_exploration():
+            return False, 0.0
+
+        start_pos = robot_state.get_position()
+        try:
+            for _ in range(max_steps):
+                controller._update_navigation()
+                _update_robot_physics(robot_state, motor_controller, sensor_manager, pathfinder)
+                if controller.get_status().get('navigation_state') == 'stuck':
+                    break
+        finally:
+            traveled = getattr(controller, 'exploration_distance', 0.0) or 0.0
+            end_pos = robot_state.get_position()
+            displacement = math.hypot(end_pos.x - start_pos.x, end_pos.y - start_pos.y)
+            controller.stop_exploration()
+            controller.running = False
+
+    distance = max(traveled, displacement)
+    return distance >= min_distance_m, distance
