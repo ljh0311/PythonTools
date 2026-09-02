@@ -20,6 +20,15 @@ public class ForgeCommands {
         if (chatHandler == null) return;
         
         event.getDispatcher().register(literal("ollama")
+            .then(literal("do")
+                .then(argument("request", StringArgumentType.greedyString())
+                    .executes(context -> {
+                        OllamaCommandActions.sendDoRequest(chatHandler,
+                            StringArgumentType.getString(context, "request"));
+                        return 1;
+                    })
+                )
+            )
             .then(argument("message", StringArgumentType.greedyString())
                 .executes(context -> {
                     OllamaCommandActions.sendPrompt(chatHandler,

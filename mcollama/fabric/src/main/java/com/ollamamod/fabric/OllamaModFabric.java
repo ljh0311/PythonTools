@@ -62,6 +62,15 @@ public class OllamaModFabric implements ClientModInitializer {
     private void registerCommands() {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             dispatcher.register(literal("ollama")
+                .then(literal("do")
+                    .then(argument("request", StringArgumentType.greedyString())
+                        .executes(context -> {
+                            OllamaCommandActions.sendDoRequest(chatHandler,
+                                StringArgumentType.getString(context, "request"));
+                            return 1;
+                        })
+                    )
+                )
                 .then(argument("message", StringArgumentType.greedyString())
                     .executes(context -> {
                         OllamaCommandActions.sendPrompt(chatHandler,

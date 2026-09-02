@@ -63,13 +63,15 @@ The mod writes `config/ollamamod.json` in your Minecraft config directory on fir
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enableCommandExecution` | `true` | Allow AI-suggested commands to run (see `/ollama do`) |
-| `confirmBeforeExecute` | `true` | Block destructive commands (`kill`, `ban`, `stop`, etc.) |
-| `commandExecutionWhitelist` | `[]` | When non-empty, only listed command roots may run |
+| `enableCommandExecution` | `false` | Allow `/ollama do` to run server commands from AI replies |
+| `blockDestructiveCommands` | `true` | Refuse commands like `kill`, `ban`, `stop` |
+| `commandExecutionWhitelist` | see below | Only these command roots may run when execution is enabled |
 | `commandExecutionBlacklist` | `[]` | Additional blocked command roots |
 | `enableCommandLearning` | `true` | Record command success/failure for prompts |
 | `enableFailureAnalysis` | `true` | Analyze failed commands |
 | `maxCommandLearningEntries` | `500` | Cap on stored learning entries |
+
+Default whitelist: `give`, `tp`, `teleport`, `gamemode`, `time`, `weather`, `say`, `me`, `tell`, `msg`, `w`, `seed`, `list`, `help`.
 
 ### Daily summary & stats
 
@@ -108,6 +110,7 @@ Press `O` (default keybinding) to open the Ollama chat GUI. Type your message an
 ### Commands
 
 - `/ollama <message>` — Send a message to the AI
+- `/ollama do <request>` — Ask the AI for a command and run it (requires `enableCommandExecution`)
 - `/ollama_clear` — Clear your conversation history
 
 You can also type `@ai <message>` in chat when `enableChatTrigger` is on.

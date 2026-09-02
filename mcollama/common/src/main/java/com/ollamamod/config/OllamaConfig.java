@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class OllamaConfig {
@@ -25,14 +26,14 @@ public class OllamaConfig {
     public static boolean enableChatTrigger = true;
     public static String chatTrigger = "@ai";
     public static boolean enableWorldContext = true;
-    public static boolean enableCommandExecution = true;
-    public static boolean confirmBeforeExecute = true;
+    public static boolean enableCommandExecution = false;
+    public static boolean blockDestructiveCommands = true;
 
     // Command Execution & Learning
     public static boolean enableCommandLearning = true;
     public static boolean enableFailureAnalysis = true;
     public static int maxCommandLearningEntries = 500;
-    public static List<String> commandExecutionWhitelist = new ArrayList<>();
+    public static List<String> commandExecutionWhitelist = defaultWhitelist();
     public static List<String> commandExecutionBlacklist = new ArrayList<>();
 
     // AI Settings
@@ -107,6 +108,13 @@ public class OllamaConfig {
         }
     }
 
+    private static List<String> defaultWhitelist() {
+        return new ArrayList<>(Arrays.asList(
+            "give", "tp", "teleport", "gamemode", "time", "weather",
+            "say", "me", "tell", "msg", "w", "seed", "list", "help"
+        ));
+    }
+
     private static void apply(ConfigData data) {
         if (data.ollamaUrl != null) ollamaUrl = data.ollamaUrl;
         if (data.defaultModel != null) defaultModel = data.defaultModel;
@@ -117,7 +125,7 @@ public class OllamaConfig {
         if (data.chatTrigger != null) chatTrigger = data.chatTrigger;
         enableWorldContext = data.enableWorldContext;
         enableCommandExecution = data.enableCommandExecution;
-        confirmBeforeExecute = data.confirmBeforeExecute;
+        blockDestructiveCommands = data.blockDestructiveCommands;
         enableCommandLearning = data.enableCommandLearning;
         enableFailureAnalysis = data.enableFailureAnalysis;
         maxCommandLearningEntries = data.maxCommandLearningEntries;
@@ -160,7 +168,7 @@ public class OllamaConfig {
         data.chatTrigger = chatTrigger;
         data.enableWorldContext = enableWorldContext;
         data.enableCommandExecution = enableCommandExecution;
-        data.confirmBeforeExecute = confirmBeforeExecute;
+        data.blockDestructiveCommands = blockDestructiveCommands;
         data.enableCommandLearning = enableCommandLearning;
         data.enableFailureAnalysis = enableFailureAnalysis;
         data.maxCommandLearningEntries = maxCommandLearningEntries;
@@ -199,7 +207,7 @@ public class OllamaConfig {
         String chatTrigger;
         boolean enableWorldContext;
         boolean enableCommandExecution;
-        boolean confirmBeforeExecute;
+        boolean blockDestructiveCommands;
         boolean enableCommandLearning;
         boolean enableFailureAnalysis;
         int maxCommandLearningEntries;
