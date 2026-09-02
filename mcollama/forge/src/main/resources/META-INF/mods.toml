@@ -5,6 +5,9 @@ loaderVersion="[47,)"
 modId="ollamamod"
 version="1.0.0"
 displayName="Ollama Mod"
+# Client-only: the mod talks to a local Ollama server and registers only client
+# commands, so servers must not reject a player for having it installed.
+displayTest="IGNORE_ALL_VERSION"
 description='''
 A Minecraft mod that integrates with Ollama AI to provide in-game AI chat capabilities.
 Players can interact with AI models through commands and GUI interfaces.

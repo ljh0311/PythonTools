@@ -4,6 +4,7 @@ import com.ollamamod.OllamaMod;
 import com.ollamamod.client.DailyStatsUpdater;
 import com.ollamamod.client.OllamaChatHandler;
 import com.ollamamod.client.OllamaKeyBindings;
+import com.ollamamod.client.OllamaStartupCheck;
 import com.ollamamod.gui.forge.OllamaChatScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraftforge.common.MinecraftForge;
@@ -62,6 +63,7 @@ public class OllamaModForge {
             // Update daily stats including food tracking
             LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
             if (player != null) {
+                OllamaStartupCheck.runOnce(chatHandler.getOllamaClient());
                 DailyStatsUpdater.onPlayerTick(player);
             }
         }

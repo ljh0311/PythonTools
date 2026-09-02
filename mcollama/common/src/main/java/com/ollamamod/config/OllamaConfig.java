@@ -13,6 +13,8 @@ public class OllamaConfig {
     // Features
     public static boolean enableChatCommand = true;
     public static boolean enableGui = true;
+    public static boolean enableChatTrigger = true;
+    public static String chatTrigger = "@ai";
     public static boolean enableWorldContext = true;
     public static boolean enableCommandExecution = true;
     public static boolean enableBroadcast = false;

@@ -12,11 +12,8 @@
     "sources": "https://github.com/ollamamod/ollamamod"
   },
   "license": "MIT",
-  "environment": "*",
+  "environment": "client",
   "entrypoints": {
-    "main": [
-      "com.ollamamod.fabric.OllamaModFabric"
-    ],
     "client": [
       "com.ollamamod.fabric.OllamaModFabric"
     ]
@@ -29,8 +26,5 @@
     "fabric-api": "*",
     "minecraft": "~1.20.1",
     "architectury": ">=9.1.10"
-  },
-  "suggests": {
-    "another-mod": "*"
   }
 }

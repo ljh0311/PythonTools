@@ -1,6 +1,9 @@
 package com.ollamamod.gui.forge;
 
+import com.ollamamod.client.OllamaCommandActions;
+import com.ollamamod.client.OllamaException;
 import com.ollamamod.forge.OllamaModForge;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -30,12 +33,15 @@ public class OllamaChatScreen extends Screen {
         messageBox = new EditBox(font, centerX - 150, centerY + 60, 300, 20, 
             Component.translatable("gui.ollamamod.chat.placeholder"));
         messageBox.setMaxLength(500);
-        addWidget(messageBox);
+        messageBox.setSuggestion(Component.translatable("gui.ollamamod.chat.placeholder").getString());
+        addRenderableWidget(messageBox);
+        setInitialFocus(messageBox);
         
         responseArea = new MultiLineTextWidget(centerX - 150, centerY - 80, 
             Component.translatable("gui.ollamamod.chat.response_placeholder"), font);
         responseArea.setMaxWidth(300);
-        addWidget(responseArea);
+        responseArea.setMaxRows(10);
+        addRenderableWidget(responseArea);
         
         sendButton = Button.builder(Component.translatable("gui.ollamamod.chat.send"), 
             button -> sendMessage())
@@ -56,34 +62,38 @@ public class OllamaChatScreen extends Screen {
             return;
         }
         
-        String playerName = minecraft.player != null ? 
-            minecraft.player.getName().getString() : "Player";
-        
         responseArea.setMessage(Component.translatable("gui.ollamamod.chat.loading"));
         messageBox.setValue("");
+        setBusy(true);
         
-        OllamaModForge.getChatHandler().getOllamaClient().sendMessage(message, playerName)
-            .thenAccept(response -> {
-                if (minecraft != null && minecraft.screen == this) {
-                    minecraft.execute(() -> {
-                        responseArea.setMessage(Component.literal(response));
-                    });
-                }
-            })
+        OllamaModForge.getChatHandler().getOllamaClient()
+            .sendMessage(message, OllamaCommandActions.currentPlayerName())
+            .thenAccept(response -> showResult(Component.literal(response)))
             .exceptionally(throwable -> {
-                if (minecraft != null && minecraft.screen == this) {
-                    minecraft.execute(() -> {
-                        responseArea.setMessage(Component.literal("Error: " + throwable.getMessage()));
-                    });
-                }
+                showResult(Component.literal(OllamaException.playerMessage(throwable))
+                    .withStyle(ChatFormatting.RED));
                 return null;
             });
     }
     
+    private void showResult(Component result) {
+        minecraft.execute(() -> {
+            if (minecraft.screen != this) {
+                return;
+            }
+            setBusy(false);
+            responseArea.setMessage(result);
+        });
+    }
+    
+    private void setBusy(boolean busy) {
+        sendButton.active = !busy;
+        messageBox.setEditable(!busy);
+    }
+    
     private void clearChat() {
-        String playerName = minecraft.player != null ? 
-            minecraft.player.getName().getString() : "Player";
-        OllamaModForge.getChatHandler().getConversationManager().clearSession(playerName);
+        OllamaModForge.getChatHandler().getConversationManager()
+            .clearSession(OllamaCommandActions.currentPlayerName());
         responseArea.setMessage(Component.translatable("gui.ollamamod.chat.response_placeholder"));
     }
     
