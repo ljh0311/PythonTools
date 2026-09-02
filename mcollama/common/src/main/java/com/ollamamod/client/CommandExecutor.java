@@ -49,7 +49,7 @@ public class CommandExecutor {
                 resultListener.registerCommand(commandId, command);
                 
                 // Execute command
-                int resultCode = source.getServer().getCommands().performCommand(
+                int resultCode = source.getServer().getCommands().performPrefixedCommand(
                     source, command
                 );
                 

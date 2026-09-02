@@ -1,8 +1,7 @@
 package com.ollamamod.gui.fabric;
 
-package com.ollamamod.gui.fabric;
-
 import com.ollamamod.fabric.OllamaModFabric;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineTextWidget;
@@ -89,10 +88,10 @@ public class OllamaChatScreen extends Screen {
     }
     
     @Override
-    public void render(com.mojang.blaze3d.vertex.PoseStack matrices, int mouseX, int mouseY, float delta) {
-        renderBackground(matrices);
-        super.render(matrices, mouseX, mouseY, delta);
-        drawCenteredString(matrices, font, title, width / 2, 20, 0xFFFFFF);
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+        renderBackground(graphics);
+        super.render(graphics, mouseX, mouseY, delta);
+        graphics.drawCenteredString(font, title, width / 2, 20, 0xFFFFFF);
     }
     
     @Override

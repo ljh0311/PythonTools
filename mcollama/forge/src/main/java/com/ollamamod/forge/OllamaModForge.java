@@ -41,12 +41,12 @@ public class OllamaModForge {
     }
     
     private void onCommonSetup(FMLCommonSetupEvent event) {
-        platform = new ForgePlatform(() -> new OllamaChatScreen(null));
+        platform = new ForgePlatform(OllamaChatScreen::new);
         chatHandler = new OllamaChatHandler(platform);
     }
     
     private void onClientSetup(FMLClientSetupEvent event) {
-        keyBindings = new OllamaKeyBindings(platform, () -> new OllamaChatScreen(null));
+        keyBindings = new OllamaKeyBindings(platform, OllamaChatScreen::new);
         keyBindings.register();
     }
     

@@ -34,7 +34,7 @@ public class OllamaModFabric implements ModInitializer, ClientModInitializer {
     public void onInitialize() {
         OllamaMod.init();
         
-        platform = new FabricPlatform(() -> new OllamaChatScreen(null));
+        platform = new FabricPlatform(OllamaChatScreen::new);
         chatHandler = new OllamaChatHandler(platform);
         
         // Register mining event handler
@@ -80,7 +80,7 @@ public class OllamaModFabric implements ModInitializer, ClientModInitializer {
     
     @Override
     public void onInitializeClient() {
-        keyBindings = new OllamaKeyBindings(platform, () -> new OllamaChatScreen(null));
+        keyBindings = new OllamaKeyBindings(platform, OllamaChatScreen::new);
         keyBindings.register();
         
         // Handle key press events

@@ -26,8 +26,12 @@ subprojects {
     }
 
     dependencies {
-        minecraft "com.mojang:minecraft:1.20.1"
+        minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
         mappings loom.officialMojangMappings()
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.release = 17
     }
 }
 
