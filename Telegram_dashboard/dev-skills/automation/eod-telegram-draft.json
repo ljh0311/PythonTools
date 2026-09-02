@@ -1,0 +1,20 @@
+{
+  "name": "telegram-dev-notify-eod",
+  "description": "Draft automation: weekday EOD summary → Telegram via dashboard API. Not wired to isomer/HAT.",
+  "schedule": "0 18 * * 1-5",
+  "timezone": "local",
+  "steps": [
+    {
+      "skill": "end-of-day-summary",
+      "action": "generate_and_save",
+      "output": "docs/eod/eod-{date}.md"
+    },
+    {
+      "skill": "telegram-dev-notify",
+      "action": "send",
+      "script": "scripts/send_notify.py",
+      "args": ["--file", "docs/eod/eod-{date}.md"]
+    }
+  ],
+  "notes": "Copy dev-skills to ~/.cursor/skills/ before enabling. Requires running Telegram Dashboard."
+}

@@ -1,4 +1,4 @@
-import { api } from "./api.js";
+import { api, ensureAuthenticated } from "./api.js";
 import { initTheme } from "./theme.js";
 
 function showToast(message) {
@@ -68,6 +68,17 @@ function bindForms() {
   });
 }
 
-initTheme();
-bindForms();
-refresh().catch((error) => showToast(error.message));
+async function init() {
+  const authed = await ensureAuthenticated();
+  if (!authed) return;
+
+  initTheme();
+  bindForms();
+  try {
+    await refresh();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+init();

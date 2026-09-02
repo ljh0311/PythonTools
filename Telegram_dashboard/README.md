@@ -41,6 +41,15 @@ Telegram_dashboard/
 └── .env.example
 ```
 
+## Versions
+
+| Version | What it does | Setup |
+|---------|--------------|-------|
+| **v0.1** | Bot inbox — PMs to bot + groups the bot is in | `TELEGRAM_BOT_TOKEN` + webhook |
+| **v0.2** | Your personal account — all chats you are in | [docs/user-inbox.md](docs/user-inbox.md) |
+
+Both can run together. Filter by source in the Inbox UI.
+
 ## Quick start on your laptop
 
 See **[SETUP_LAPTOP.md](SETUP_LAPTOP.md)** for copy-paste steps (clone → install → run → open browser).
@@ -53,6 +62,7 @@ See **[SETUP_LAPTOP.md](SETUP_LAPTOP.md)** for copy-paste steps (clone → insta
 | **Docker** | [docker_mode.md](docker_mode.md) |
 | **OpenClaw agent** | [docs/openclaw-integration.md](docs/openclaw-integration.md) |
 | **OpenClaw + Docker (same laptop)** | [docs/openclaw-docker-laptop.md](docs/openclaw-docker-laptop.md) |
+| **User inbox (v0.2)** | [docs/user-inbox.md](docs/user-inbox.md) |
 
 ## Setup
 

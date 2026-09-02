@@ -3,35 +3,33 @@ GUI application for controlling screen brightness based on camera or screen cont
 Includes eye health monitoring for safe brightness levels.
 """
 
-import os
-import threading
-import time
 import tkinter as tk
-from tkinter import messagebox, ttk
-from typing import Dict, List, Optional, Tuple
-
-from PIL import Image, ImageGrab, ImageTk
-import cv2
-import numpy as np
-import screen_brightness_control as sbc
-
-from brightness_controller import BrightnessController
-from brightness_policy import BatteryBrightnessPolicyConfig
-from gui_components import (
-    ActionBar,
-    CollapsibleSection,
-    ContextHint,
-    ScrollablePanel,
-    StatusBanner,
-    WindowAutoSizer,
-)
-from gui_theme import APP_COLORS, apply_app_theme
-from power_management_system import PowerManagementSystem
+from tkinter import ttk, messagebox, scrolledtext
+import os
 
 # Reduce noisy OpenCV backend logs (best-effort).
 os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
-
+import screen_brightness_control as sbc
+from PIL import ImageGrab, Image, ImageTk
+import numpy as np
+import threading
+import time
+from typing import Optional, List, Tuple, Dict
+from brightness_controller import BrightnessController
+from brightness_policy import BatteryBrightnessPolicyConfig
+from camera_devices import enumerate_camera_names, get_camera_name
+from issue_diagnostics import build_fallback_summary, format_issue_log, sanitize_summary
+from power_management_system import PowerManagementSystem
+from battery_analytics import (
+    format_duration_minutes,
+    format_learned_full_status,
+    format_progress_caption,
+    relative_charge_percent,
+)
+from battery_ui_components import BatteryMonitorPanel
+from desk_presence import PresenceState
+import cv2
 
 
 class BrightnessGUI:
@@ -45,16 +43,21 @@ class BrightnessGUI:
             pass
         self.root = tk.Tk()
         self.root.title("Brightness Control - Eye Health Monitor")
-        self.root.minsize(480, 520)
+        self.root.geometry("560x640")
+        self.root.minsize(480, 420)
         self.root.resizable(True, True)
-        apply_app_theme(self.root)
 
         # Initialize controllers and state
         self.controller = BrightnessController()
-        self.power_system = PowerManagementSystem(self.controller)
+        self._battery_full_slider_dragging = False
+        self.power_system = PowerManagementSystem(
+            self.controller,
+            on_battery_data_changed=self._on_battery_data_changed,
+        )
         self.active_mode = None
         self.running = False
         self.control_thread: Optional[threading.Thread] = None
+        self._stop_in_progress = False
         self.screen_brightness_history = []
         self.history_size = 5
 
@@ -68,6 +71,7 @@ class BrightnessGUI:
         # Camera selection
         self.available_cameras = []  # Will be populated asynchronously
         self.selected_camera_index = 0
+        self._camera_name_cache: List[str] = []
         self.camera_enumeration_thread: Optional[threading.Thread] = None
 
         # Camera preview state
@@ -83,6 +87,16 @@ class BrightnessGUI:
         self.grace_period_enabled = tk.BooleanVar(value=True)
         self.adaptive_grace_enabled = tk.BooleanVar(value=True)
         self.distance_detection_enabled = tk.BooleanVar(value=True)
+        self.desk_mode_enabled = tk.BooleanVar(value=True)
+        self.desk_motion_enabled = tk.BooleanVar(value=True)
+        self.desk_input_enabled = tk.BooleanVar(value=True)
+        self.last_seen_window_var = tk.IntVar(value=180)
+        self.away_timeout_var = tk.IntVar(value=45)
+        self.look_away_floor_var = tk.IntVar(value=20)
+        self.leave_active_var = tk.IntVar(value=45)
+        self.enter_active_var = tk.DoubleVar(value=2.5)
+        self.brightness_restore_var = tk.DoubleVar(value=3.0)
+        self.input_window_var = tk.IntVar(value=60)
         self.human_present = False
         self.last_human_detection_time = None
 
@@ -103,10 +117,12 @@ class BrightnessGUI:
             "manycam",
             "xsplit",
         )
+        self.presence_states: List[str] = []
         self.issue_events: List[Dict[str, str]] = []
         self.last_issue_summary_time = 0.0
         self.issue_summary_cooldown_seconds = 90.0
         self.issue_summary_in_progress = False
+        self.pending_issue_summary = False
 
         # Brightness classification thresholds (0-255 scale)
         # Adjusted for eye health recommendations
@@ -146,40 +162,12 @@ class BrightnessGUI:
         }
 
         self._setup_gui()
+        self._sync_desk_mode_settings()
         self._start_camera_enumeration()
         self._update_current_brightness()
-
-    def _schedule_window_fit(self) -> None:
-        if hasattr(self, "window_auto_sizer"):
-            self.window_auto_sizer.schedule_fit()
-
-    def _on_root_configure(self, event=None) -> None:
-        if event is not None and event.widget is not self.root:
-            return
-        wrap = max(self.root.winfo_width() - 56, 280)
-        for attr in ("control_hint", "detection_hint", "health_label", "camera_warning_label"):
-            widget = getattr(self, attr, None)
-            if widget is not None:
-                try:
-                    widget.configure(wraplength=wrap)
-                except tk.TclError:
-                    pass
-
-    def _set_runtime_banner(self, state: str, detail: str = "") -> None:
-        if hasattr(self, "status_banner"):
-            self._schedule_gui_update(lambda: self.status_banner.set_state(state, detail))
-            self._schedule_window_fit()
-
-    def _update_detection_hint(self, text: str, level: str = "info") -> None:
-        if hasattr(self, "detection_hint"):
-            def apply_hint():
-                previous = getattr(self, "_last_detection_hint_text", "")
-                self.detection_hint.show_hint(text, level)
-                if text != previous:
-                    self._last_detection_hint_text = text
-                    self._schedule_window_fit()
-
-            self._schedule_gui_update(apply_hint)
+        self.power_system.start_battery_tracking()
+        self._refresh_battery_panel()
+        self._schedule_battery_ui_refresh()
 
     def _schedule_gui_update(self, func, *args, **kwargs):
         """Schedule a GUI update to run on the main thread."""
@@ -195,47 +183,87 @@ class BrightnessGUI:
         return any(keyword in lowered for keyword in self.known_virtual_camera_keywords)
 
     def _record_issue(self, level: str, source: str, message: str) -> None:
-        """Track warnings/errors and trigger concise summarization."""
+        """Track warnings/errors and refresh the Diagnostics panel."""
         level = level.upper()
         icon = "ℹ️" if level == "INFO" else ("⚠️" if level == "WARN" else "❌")
-        print(f"{icon} {source}: {message}")
+        if getattr(self, "diagnostics_mode", False) or level != "INFO":
+            print(f"{icon} {source}: {message}")
         self.issue_events.append({"level": level, "source": source, "message": message})
         if len(self.issue_events) > 25:
             self.issue_events = self.issue_events[-25:]
+        self._update_issue_panel()
         if level in ("WARN", "ERROR"):
-            self._maybe_summarize_issues_with_ollama()
+            self.pending_issue_summary = True
+            if not self.running:
+                self._maybe_summarize_issues_with_ollama()
+
+    def _update_issue_panel(self) -> None:
+        if not hasattr(self, "issue_log_text"):
+            return
+
+        log_text = format_issue_log(self.issue_events)
+        warn_count = sum(1 for e in self.issue_events if e["level"] in ("WARN", "ERROR"))
+        if warn_count:
+            status = f"{warn_count} warning(s) logged — review Diagnostics below."
+            status_color = "#B86E00"
+        elif self.issue_events:
+            status = "Informational events recorded. No warnings yet."
+            status_color = "#1F6F8B"
+        else:
+            status = "No runtime issues recorded."
+            status_color = "gray"
+
+        def apply_panel_updates() -> None:
+            self.issue_status_label.config(text=status, foreground=status_color)
+            self.issue_log_text.config(state="normal")
+            self.issue_log_text.delete("1.0", "end")
+            self.issue_log_text.insert("1.0", log_text)
+            self.issue_log_text.config(state="disabled")
+
+        self._schedule_gui_update(apply_panel_updates)
+
+    def _apply_issue_summary(self, summary_text: str) -> None:
+        if hasattr(self, "issue_summary_text"):
+            def apply_summary() -> None:
+                self.issue_summary_text.config(state="normal")
+                self.issue_summary_text.delete("1.0", "end")
+                self.issue_summary_text.insert("1.0", summary_text)
+                self.issue_summary_text.config(state="disabled")
+
+            self._schedule_gui_update(apply_summary)
+        if getattr(self, "diagnostics_mode", False):
+            print("\n📌 Issue Summary (Diagnostics)")
+            print(summary_text)
 
     def _summarize_issues_fallback(self) -> str:
-        """Create a short local summary when Ollama is unavailable."""
-        recent = self.issue_events[-6:]
-        unique = []
-        seen = set()
-        for item in recent:
-            key = (item["level"], item["source"], item["message"])
-            if key not in seen:
-                unique.append(item)
-                seen.add(key)
-        lines = ["- Keep camera in use by one app at a time to avoid backend open failures."]
-        for item in unique[:3]:
-            lines.append(f"- {item['level']} in {item['source']}: {item['message']}")
-        return "\n".join(lines)
+        return build_fallback_summary(self.issue_events)
 
-    def _maybe_summarize_issues_with_ollama(self) -> None:
-        """Throttle and generate brief issue summary using Ollama."""
+    def _refresh_issue_summary(self) -> None:
+        self.last_issue_summary_time = 0.0
+        self._maybe_summarize_issues_with_ollama(force=True)
+
+    def _maybe_summarize_issues_with_ollama(self, force: bool = False) -> None:
+        """Generate a summary for the Diagnostics panel (not mid-session console spam)."""
         now = time.time()
         if self.issue_summary_in_progress:
             return
-        if now - self.last_issue_summary_time < self.issue_summary_cooldown_seconds:
-            return
+        if not force:
+            if self.running:
+                return
+            if now - self.last_issue_summary_time < self.issue_summary_cooldown_seconds:
+                return
         if not self.issue_events:
             return
 
         self.issue_summary_in_progress = True
         self.last_issue_summary_time = now
+        self.pending_issue_summary = False
         recent = self.issue_events[-8:]
+        fallback = self._summarize_issues_fallback()
 
-        def run_summary():
+        def run_summary() -> None:
             try:
+                summary_text = fallback
                 try:
                     import ollama  # type: ignore
 
@@ -249,7 +277,8 @@ class BrightnessGUI:
                                 "role": "system",
                                 "content": (
                                     "Summarize runtime warnings/errors in 3-5 short bullet points. "
-                                    "Each bullet must include issue and recommended fix."
+                                    "Each bullet must include the issue and a recommended fix. "
+                                    "Do not reply with None or empty bullets."
                                 ),
                             },
                             {
@@ -258,16 +287,217 @@ class BrightnessGUI:
                             },
                         ],
                     )
-                    summary_text = response["message"]["content"].strip()
+                    summary_text = sanitize_summary(
+                        response["message"]["content"].strip(),
+                        fallback,
+                    )
                 except Exception:
-                    summary_text = self._summarize_issues_fallback()
-
-                print("\n📌 Issue Summary")
-                print(summary_text)
+                    summary_text = fallback
+                self._apply_issue_summary(summary_text)
             finally:
                 self.issue_summary_in_progress = False
 
         threading.Thread(target=run_summary, daemon=True).start()
+
+    def _on_battery_data_changed(self) -> None:
+        """Refresh battery tab when cycle data is persisted."""
+        self._schedule_gui_update(self._refresh_battery_panel)
+
+    def _schedule_battery_ui_refresh(self) -> None:
+        """Poll battery UI every 15 seconds while the app is open."""
+        self._refresh_battery_panel()
+        self.root.after(15000, self._schedule_battery_ui_refresh)
+
+    def _refresh_battery_panel(self) -> None:
+        """Update battery dashboard widgets from live tracker data."""
+        if not hasattr(self, "battery_panel"):
+            return
+
+        try:
+            live = self.power_system.get_battery_live_status()
+        except Exception:
+            return
+
+        snapshot = live.get("snapshot")
+        insights = live.get("insights")
+        if insights is None:
+            return
+
+        percent = snapshot.percentage if snapshot else 0
+        charging = snapshot.power_plugged if snapshot else False
+        full_pct = insights.effective_full_percent
+        rel_percent = relative_charge_percent(percent, full_pct)
+        self.battery_panel.gauge.update_state(
+            percent,
+            charging=charging,
+            full_percent=full_pct,
+        )
+        if hasattr(self.battery_panel, "gauge_caption"):
+            self.battery_panel.gauge_caption.config(
+                text=format_progress_caption(percent, full_pct)
+            )
+
+        time_to_full = (
+            format_duration_minutes(insights.time_to_full_minutes)
+            if insights.time_to_full_minutes is not None
+            else ("Full" if charging and rel_percent >= 100 else "—")
+        )
+        self.battery_panel.time_to_full_card.set_value(
+            time_to_full,
+            "Based on current charge rate" if charging else "Plug in to estimate",
+        )
+
+        runtime = (
+            format_duration_minutes(insights.estimated_runtime_minutes)
+            if insights.estimated_runtime_minutes is not None
+            else "—"
+        )
+        self.battery_panel.runtime_card.set_value(
+            runtime,
+            f"Avg full charge lasts {format_duration_minutes(insights.avg_discharge_minutes)}"
+            if insights.avg_discharge_minutes
+            else "Needs more discharge history",
+        )
+
+        session_kind = live.get("session_kind")
+        session_minutes = live.get("session_minutes") or 0.0
+        if session_kind:
+            start_pct = live.get("session_start_percent")
+            kind_label = "Charging" if session_kind == "charge" else "On battery"
+            if full_pct != 100 and start_pct is not None:
+                start_rel = relative_charge_percent(int(start_pct), full_pct)
+                session_detail = (
+                    f"{kind_label} {start_rel}% → {rel_percent}% "
+                    f"(OS {start_pct}%→{percent}%)"
+                )
+            else:
+                session_detail = f"{kind_label} from {start_pct}% → {percent}%"
+            self.battery_panel.session_card.set_value(
+                format_duration_minutes(session_minutes),
+                session_detail,
+            )
+        else:
+            self.battery_panel.session_card.set_value("—", "No active session")
+
+        learned = insights.learned_full_percent
+        trickle = insights.trickle_plateau_percent
+        if learned is not None and trickle is not None and trickle != learned:
+            learned_text = (
+                f"Learned from cycles: {learned}% • "
+                f"Trickle/full plateau ~{trickle}%"
+            )
+        elif learned is not None and trickle is not None:
+            learned_text = f"Learned: {learned}% (trickle/full plateau ~{trickle}%)"
+        elif learned is not None:
+            learned_text = f"Learned from cycles: {learned}%"
+        elif trickle is not None:
+            learned_text = f"Trickle/full plateau ~{trickle}% (collecting more data…)"
+        else:
+            learned_text = "Learned: collecting data…"
+        self.battery_panel.learned_label.config(text=learned_text)
+        auto_note = (
+            "High-confidence learned values apply automatically."
+            if insights.auto_apply_learned_full
+            else "Auto-apply is off; use Apply learned value."
+        )
+        if hasattr(self.battery_panel, "auto_apply_label"):
+            self.battery_panel.auto_apply_label.config(text=auto_note)
+        if learned is not None:
+            self.battery_panel.apply_learned_btn.config(state="normal")
+        else:
+            self.battery_panel.apply_learned_btn.config(state="disabled")
+
+        if not self._battery_full_slider_dragging:
+            self.battery_panel.full_percent_var.set(insights.effective_full_percent)
+        self.battery_panel.full_value_label.config(
+            text=f"{insights.effective_full_percent}%"
+        )
+
+        self.battery_panel.habit_label.config(text=insights.habit_summary)
+
+        if snapshot is None:
+            status = "Battery monitoring unavailable on this device."
+        elif full_pct != 100 and rel_percent >= 99:
+            status = (
+                f"Fully charged to learned level — "
+                f"{format_learned_full_status(rel_percent, full_pct, percent)}"
+            )
+        elif charging:
+            if full_pct != 100:
+                status = (
+                    f"Charging • {format_learned_full_status(rel_percent, full_pct, percent)}"
+                )
+            else:
+                status = f"Charging • {rel_percent}%"
+        elif full_pct != 100:
+            status = (
+                f"On battery • {format_learned_full_status(rel_percent, full_pct, percent)} "
+                f"• {snapshot.time_left_text()} remaining"
+            )
+        else:
+            status = f"On battery • {snapshot.time_left_text()} remaining (OS estimate)"
+        self.battery_panel.status_label.config(text=status)
+
+        rows = self._build_cycle_history_rows()
+        self.battery_panel.history.set_rows(rows)
+
+    def _build_cycle_history_rows(self) -> List[tuple]:
+        data = self.power_system.get_charge_cycle_data()
+        rows: List[tuple] = []
+        for kind, key in (("Charge", "charge_cycles"), ("Discharge", "discharge_cycles")):
+            for cycle in reversed(data.get(key) or []):
+                if not isinstance(cycle, dict):
+                    continue
+                end = str(cycle.get("end") or "")[:16].replace("T", " ")
+                start_pct = cycle.get("start_percent", "?")
+                end_pct = cycle.get("percent", "?")
+                duration = format_duration_minutes(float(cycle.get("duration") or 0))
+                rate = cycle.get("rate_per_hour")
+                rate_text = f"{rate:.1f}" if isinstance(rate, (int, float)) else "—"
+                rows.append((end, kind, f"{start_pct}→{end_pct}", duration, rate_text))
+                if len(rows) >= 12:
+                    return rows
+        return rows
+
+    def _on_full_battery_percent_changed(self, _value=None) -> None:
+        if not hasattr(self, "battery_panel"):
+            return
+        percent = int(round(self.battery_panel.full_percent_var.get()))
+        self.battery_panel.full_value_label.config(text=f"{percent}%")
+        self.power_system.set_full_battery_percent(percent)
+        self._refresh_battery_panel()
+
+    def _on_apply_learned_full_percent(self) -> None:
+        learned = self.power_system.apply_learned_full_battery_percent()
+        if learned is None:
+            messagebox.showinfo(
+                "Battery calibration",
+                "Not enough completed charge cycles yet to learn a full-battery level.",
+            )
+            return
+        self._refresh_battery_panel()
+
+    def _sync_desk_mode_settings(self) -> None:
+        """Push desk-mode settings from the GUI to the active controller."""
+        self.controller.update_desk_mode_settings(
+            enabled=self.desk_mode_enabled.get(),
+            use_motion=self.desk_motion_enabled.get(),
+            use_input_activity=self.desk_input_enabled.get(),
+            last_seen_window_seconds=float(self.last_seen_window_var.get()),
+            away_timeout_seconds=float(self.away_timeout_var.get()),
+            look_away_floor=self.look_away_floor_var.get(),
+            leave_active_seconds=float(self.leave_active_var.get()),
+            enter_active_seconds=float(self.enter_active_var.get()),
+            input_window_seconds=float(self.input_window_var.get()),
+            brightness_restore_seconds=float(self.brightness_restore_var.get()),
+        )
+
+    def _presence_label(self, state: PresenceState) -> Tuple[str, str]:
+        if state == PresenceState.ACTIVE:
+            return "✅ Active", "green"
+        if state == PresenceState.LOOK_AWAY:
+            return "🟡 At desk (look away)", "#B8860B"
+        return "❌ Away", "red"
 
     def _get_policy_config(self) -> BatteryBrightnessPolicyConfig:
         """Build battery-aware policy config from UI controls."""
@@ -288,10 +518,12 @@ class BrightnessGUI:
                 lambda: self.power_status_label.config(text=status_text, foreground=color)
             )
 
-    def _apply_power_aware_brightness(self, raw_brightness: float) -> None:
-        """Apply brightness with optional battery-aware caps."""
+    def _apply_power_aware_brightness(
+        self, raw_brightness: float, presence_state: Optional[PresenceState] = None
+    ) -> None:
+        """Apply brightness with optional battery-aware caps and presence state."""
         self.power_system.set_policy(self._get_policy_config())
-        result = self.power_system.apply_brightness(raw_brightness)
+        result = self.power_system.apply_brightness(raw_brightness, presence_state)
 
         snapshot = result.snapshot
         decision = result.decision
@@ -341,62 +573,15 @@ class BrightnessGUI:
             
             self.display_brightness_labels[display] = label
 
-        self._schedule_window_fit()
+    def _refresh_camera_name_cache(self) -> None:
+        """Load friendly camera names for the current machine."""
+        self._camera_name_cache = enumerate_camera_names()
 
     def _get_camera_name(self, index: int) -> str:
-        """
-        Get the name of a camera by its index.
-        
-        Args:
-            index: Camera index
-            
-        Returns:
-            Camera name or "Camera {index}" if name cannot be retrieved
-        """
-        # Try to get camera name using Windows DirectShow via COM (pywin32)
-        try:
-            import win32com.client
-            dev_enum = win32com.client.Dispatch("SystemDeviceEnum")
-            moniker_enum = dev_enum.CreateClassEnumerator(
-                "{860BB310-5D01-11d0-BD3B-00A0C911CE86}",  # CLSID_VideoInputDeviceCategory
-                0
-            )
-            moniker_enum.Reset()
-            device_index = 0
-            while True:
-                moniker = moniker_enum.Next(1)
-                if not moniker:
-                    break
-                if device_index == index:
-                    # Get the device name from property bag
-                    try:
-                        prop_bag = moniker.BindToStorage(None, None, "{55272A00-42CB-11CE-8135-00AA004BB851}")
-                        name = prop_bag.Read("FriendlyName")
-                        if name:
-                            return name
-                    except Exception:
-                        pass
-                    # Fallback: try to get display name
-                    try:
-                        bind_ctx = win32com.client.Dispatch("BindCtx")
-                        display_name = moniker.GetDisplayName(bind_ctx, None)
-                        if display_name and "\\" in display_name:
-                            parts = display_name.split("\\")
-                            if len(parts) > 0:
-                                return parts[-1]
-                    except Exception:
-                        pass
-                    return f"Camera {index}"
-                device_index += 1
-        except ImportError:
-            # pywin32 not available - will fall back to default name
-            pass
-        except Exception:
-            # Error getting name - will fall back to default name
-            pass
-        
-        # Fallback: return default name
-        return f"Camera {index}"
+        """Get a friendly camera label for an OpenCV device index."""
+        if not self._camera_name_cache:
+            self._refresh_camera_name_cache()
+        return get_camera_name(index, self._camera_name_cache)
 
     def _list_available_cameras(self) -> Tuple[List[Tuple[int, str]], List[Tuple[int, str]]]:
         """
@@ -421,29 +606,28 @@ class BrightnessGUI:
             unusable = []
             checked_indices = set()
             skipped_virtual = []
-            
+            self._refresh_camera_name_cache()
+
             # Try up to 10 camera indices
             for i in range(10):
                 cap = None
                 try:
-                    # Try to get camera name first to see if camera is detected
                     name = self._get_camera_name(i)
                     checked_indices.add(i)
-                    if self._is_known_virtual_camera(name):
-                        skipped_virtual.append((i, name))
-                        continue
-                    
+
                     # Try with DirectShow backend first (Windows)
                     cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
                     if cap.isOpened():
                         ret, _ = cap.read()
                         if ret:
                             available.append((i, name))
+                        elif self._is_known_virtual_camera(name):
+                            skipped_virtual.append((i, name))
                         else:
-                            # Camera opened but cannot read - mark as unusable
                             unusable.append((i, name))
+                    elif self._is_known_virtual_camera(name):
+                        skipped_virtual.append((i, name))
                     else:
-                        # Camera detected but cannot be opened - mark as unusable
                         unusable.append((i, name))
                     if cap:
                         cap.release()
@@ -470,23 +654,20 @@ class BrightnessGUI:
                         # Try to get camera name first
                         name = self._get_camera_name(i)
                         checked_indices.add(i)
-                        if self._is_known_virtual_camera(name):
-                            skipped_virtual.append((i, name))
-                            continue
-                        
+
                         cap = cv2.VideoCapture(i)
                         if cap.isOpened():
                             ret, _ = cap.read()
                             if ret:
                                 available.append((i, name))
-                            else:
-                                # Camera opened but cannot read - mark as unusable
-                                if (i, name) not in unusable:
-                                    unusable.append((i, name))
-                        else:
-                            # Camera detected but cannot be opened - mark as unusable
-                            if (i, name) not in unusable:
+                            elif self._is_known_virtual_camera(name):
+                                skipped_virtual.append((i, name))
+                            elif (i, name) not in unusable:
                                 unusable.append((i, name))
+                        elif self._is_known_virtual_camera(name):
+                            skipped_virtual.append((i, name))
+                        elif (i, name) not in unusable:
+                            unusable.append((i, name))
                         if cap:
                             cap.release()
                     except Exception:
@@ -508,7 +689,7 @@ class BrightnessGUI:
             
             # Default to camera 0 if none found
             if not available:
-                available = [(0, "Camera 0")]
+                available = [(0, self._get_camera_name(0))]
 
             if skipped_virtual:
                 sample_names = ", ".join(name for _, name in skipped_virtual[:2])
@@ -518,12 +699,17 @@ class BrightnessGUI:
                     "Camera Enumeration",
                     f"Skipped {len(skipped_virtual)} known virtual cameras: {sample_names}{extra}",
                 )
-            summary_level = "WARN" if unusable else "INFO"
             self._record_issue(
-                summary_level,
+                "INFO",
                 "Camera Enumeration",
-                f"Found {len(available)} usable camera(s); {len(unusable)} unusable candidate(s).",
+                f"Found {len(available)} usable camera(s).",
             )
+            if unusable:
+                self._record_issue(
+                    "WARN",
+                    "Camera Enumeration",
+                    f"{len(unusable)} camera candidate(s) could not be opened.",
+                )
             
             return available, unusable
         finally:
@@ -557,7 +743,6 @@ class BrightnessGUI:
         else:
             # Show camera selection frame for camera-based mode
             self.camera_selection_frame.pack(fill="x", padx=10, pady=3)
-        self._schedule_window_fit()
 
     def _start_camera_enumeration(self):
         """Start camera enumeration in a background thread."""
@@ -598,7 +783,6 @@ class BrightnessGUI:
             self.camera_warning_label.config(text=warning_text)
         else:
             self.camera_warning_label.config(text="")
-        self._schedule_window_fit()
 
     def _refresh_camera_list(self):
         """Refresh the list of available cameras."""
@@ -756,7 +940,45 @@ class BrightnessGUI:
             self.camera_preview_label.config(image=photo, text="")
             # Keep a reference to prevent garbage collection
             self.camera_preview_label.image = photo
-            self._schedule_window_fit()
+
+    def _create_scrollable_frame(self, parent: ttk.Frame) -> ttk.Frame:
+        """Return an inner frame inside a vertically scrollable tab area."""
+        container = ttk.Frame(parent)
+        container.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(container, highlightthickness=0, borderwidth=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+
+        window_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        def _sync_scroll_region(_event=None) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _sync_canvas_width(event) -> None:
+            canvas.itemconfig(window_id, width=event.width)
+
+        inner.bind("<Configure>", _sync_scroll_region)
+        canvas.bind("<Configure>", _sync_canvas_width)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        def _on_mousewheel(event) -> None:
+            bbox = canvas.bbox("all")
+            if bbox and bbox[3] > canvas.winfo_height():
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _bind_wheel(_event) -> None:
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        def _unbind_wheel(_event) -> None:
+            canvas.unbind_all("<MouseWheel>")
+
+        canvas.bind("<Enter>", _bind_wheel)
+        canvas.bind("<Leave>", _unbind_wheel)
+        return inner
 
     def _setup_gui(self):
         """Set up the GUI components."""
@@ -772,31 +994,20 @@ class BrightnessGUI:
             button.pack(side="left", padx=5)
             return button
         
-        def create_frame(parent, text, **kwargs):
+        def create_frame(parent, text, padx=8, **kwargs):
             pady = kwargs.pop("pady", 3)
             frame = ttk.LabelFrame(parent, text=text, **kwargs)
-            frame.pack(fill="x", padx=10, pady=pady)
+            frame.pack(fill="x", padx=padx, pady=pady)
             return frame
 
         # Create notebook (tabbed interface)
-        self.status_banner = StatusBanner(self.root)
-        self.status_banner.pack(fill="x", padx=8, pady=(8, 0))
-
         notebook = ttk.Notebook(self.root)
-        notebook.pack(fill="both", expand=True, padx=8, pady=8)
+        notebook.pack(fill="both", expand=True, padx=5, pady=5)
 
         # Control Tab (merged with Statistics)
         control_tab = ttk.Frame(notebook)
         notebook.add(control_tab, text="Control")
-        control_scroll = ScrollablePanel(control_tab)
-        control_scroll.pack(fill="both", expand=True)
-        control_content = control_scroll.content
-
-        self.control_hint = ContextHint(
-            control_content,
-            text="Tip: Use Camera mode for ambient-light and presence detection. Screen mode adjusts from display content.",
-        )
-        self.control_hint.pack(fill="x", padx=12, pady=(8, 4))
+        control_content = self._create_scrollable_frame(control_tab)
 
         # Mode selection
         mode_frame = create_frame(control_content, "Mode")
@@ -920,24 +1131,46 @@ class BrightnessGUI:
         self.category_selector.place(x=0, y=-10)  # Will be positioned dynamically
 
         # Control buttons
-        button_frame = ActionBar(control_content)
-        button_frame.pack(fill="x", padx=4, pady=3)
+        button_frame = ttk.Frame(control_content, padding=5)
+        button_frame.pack(fill="x", padx=8, pady=3)
 
-        self.start_button = button_frame.add_button("Start", self.start_control, primary=True)
-        self.stop_button = button_frame.add_button("Stop", self.stop_control, state="disabled")
-        self.test_button = button_frame.add_button("Test (5s)", self.start_test_control)
-        self.help_button = button_frame.add_button("Health Info", self.show_health_info)
-        self.human_info_button = button_frame.add_button("Detection Info", self.show_human_detection_info)
+        self.start_button = create_button(button_frame, "Start", self.start_control)
+        self.stop_button = create_button(button_frame, "Stop", self.stop_control, state="disabled")
+        self.test_button = create_button(button_frame, "Test (5s)", self.start_test_control)
+        self.help_button = create_button(button_frame, "Health Info", self.show_health_info)
+        self.human_info_button = create_button(button_frame, "Detection Info", self.show_human_detection_info)
 
-        # Settings Tab
+        self.stop_progress_frame = ttk.Frame(button_frame)
+        self.stop_status_label = ttk.Label(
+            self.stop_progress_frame,
+            text="Stopping…",
+            foreground="#1F6F8B",
+        )
+        self.stop_status_label.pack(side="left", padx=(8, 6))
+        self.stop_progress = ttk.Progressbar(
+            self.stop_progress_frame,
+            mode="indeterminate",
+            length=180,
+        )
+        self.stop_progress.pack(side="left")
+
+        # Settings Tab — scrollable, two-column layout
         settings_tab = ttk.Frame(notebook)
         notebook.add(settings_tab, text="Settings")
-        settings_scroll = ScrollablePanel(settings_tab)
-        settings_scroll.pack(fill="both", expand=True)
-        settings_content = settings_scroll.content
+        settings_content = self._create_scrollable_frame(settings_tab)
 
-        # Human detection frame
-        human_detection_frame = create_frame(settings_content, "Detection")
+        settings_columns = ttk.Frame(settings_content)
+        settings_columns.pack(fill="both", expand=True, padx=4, pady=4)
+        settings_columns.columnconfigure(0, weight=1, uniform="settings_col")
+        settings_columns.columnconfigure(1, weight=1, uniform="settings_col")
+
+        settings_left = ttk.Frame(settings_columns)
+        settings_left.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        settings_right = ttk.Frame(settings_columns)
+        settings_right.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+
+        # Human detection frame (left column)
+        human_detection_frame = create_frame(settings_left, "Detection", padx=4)
 
         # Main toggle
         main_toggle_frame = ttk.Frame(human_detection_frame)
@@ -956,30 +1189,21 @@ class BrightnessGUI:
 
         self.distance_detection_checkbox = ttk.Checkbutton(
             modes_frame,
-            text="Distance Detection (ignore background faces)",
+            text="Distance Detection",
             variable=self.distance_detection_enabled,
         )
         self.distance_detection_checkbox.pack(anchor="w", pady=1)
 
-        advanced_section = CollapsibleSection(
-            human_detection_frame,
-            "Advanced detection options",
-            expanded=False,
-            on_layout_change=self._schedule_window_fit,
-        )
-        advanced_section.pack(fill="x", pady=(0, 5))
-        advanced_body = advanced_section.body
-
         self.strict_detection_checkbox = ttk.Checkbutton(
-            advanced_body,
-            text="Strict Detection (fewer false positives, needs clearer face)",
+            modes_frame,
+            text="Strict Detection",
             variable=self.strict_detection_enabled,
         )
         self.strict_detection_checkbox.pack(anchor="w", pady=1)
 
         self.auto_strict_checkbox = ttk.Checkbutton(
-            advanced_body,
-            text="Auto-relax on instability",
+            modes_frame,
+            text="Auto-Strict",
             variable=self.auto_strict_enabled,
         )
         self.auto_strict_checkbox.pack(anchor="w", pady=1)
@@ -990,32 +1214,95 @@ class BrightnessGUI:
 
         self.grace_period_checkbox = ttk.Checkbutton(
             grace_frame,
-            text="Grace Period (keep presence briefly when you look away)",
+            text="Grace Period",
             variable=self.grace_period_enabled,
         )
         self.grace_period_checkbox.pack(anchor="w", pady=1)
 
         self.adaptive_grace_checkbox = ttk.Checkbutton(
-            advanced_body,
-            text="Adaptive grace timing",
+            grace_frame,
+            text="Adaptive Timing",
             variable=self.adaptive_grace_enabled,
         )
         self.adaptive_grace_checkbox.pack(anchor="w", pady=1)
+
+        desk_frame = ttk.LabelFrame(human_detection_frame, text="Desk Mode", padding="5")
+        desk_frame.pack(fill="x", pady=(0, 5))
+
+        ttk.Checkbutton(
+            desk_frame,
+            text="Enable desk mode (motion, input, last-seen)",
+            variable=self.desk_mode_enabled,
+            command=self._sync_desk_mode_settings,
+        ).pack(anchor="w", pady=1)
+        ttk.Checkbutton(
+            desk_frame,
+            text="Use camera motion",
+            variable=self.desk_motion_enabled,
+            command=self._sync_desk_mode_settings,
+        ).pack(anchor="w", pady=1)
+        ttk.Checkbutton(
+            desk_frame,
+            text="Use keyboard/mouse activity",
+            variable=self.desk_input_enabled,
+            command=self._sync_desk_mode_settings,
+        ).pack(anchor="w", pady=1)
+
+        def _desk_slider_row(parent, row, label, var, from_, to_, unit=""):
+            ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w")
+            ttk.Scale(
+                parent,
+                from_=from_,
+                to=to_,
+                variable=var,
+                orient="horizontal",
+                command=lambda _v: self._sync_desk_mode_settings(),
+            ).grid(row=row, column=1, sticky="ew", padx=6)
+            value_label = ttk.Label(parent, textvariable=var, width=5)
+            value_label.grid(row=row, column=2, sticky="e")
+            if unit:
+                ttk.Label(parent, text=unit).grid(row=row, column=3, sticky="w")
+            return value_label
+
+        desk_sliders = ttk.Frame(desk_frame)
+        desk_sliders.pack(fill="x", pady=4)
+        desk_sliders.columnconfigure(1, weight=1)
+        _desk_slider_row(
+            desk_sliders, 0, "Look-away floor (%)", self.look_away_floor_var, 10, 40
+        )
+        _desk_slider_row(
+            desk_sliders, 1, "Stay Active (s)", self.leave_active_var, 15, 90, "s"
+        )
+        _desk_slider_row(
+            desk_sliders, 2, "Confirm Active (s)", self.enter_active_var, 1, 8, "s"
+        )
+        _desk_slider_row(
+            desk_sliders, 3, "Input window (s)", self.input_window_var, 30, 120, "s"
+        )
+        _desk_slider_row(
+            desk_sliders, 4, "Restore brightness (s)", self.brightness_restore_var, 1, 10, "s"
+        )
+        _desk_slider_row(
+            desk_sliders, 5, "Last seen window (s)", self.last_seen_window_var, 60, 300, "s"
+        )
+
+        create_label(
+            desk_frame,
+            "Stay Active = all signals quiet before Look-away. Input window keeps Active while typing.",
+            font=("Arial", 8),
+            foreground="gray",
+        )
 
         # Status display
         status_frame = ttk.LabelFrame(human_detection_frame, text="Status", padding="5")
         status_frame.pack(fill="x")
 
-        self.human_present_label = create_label(status_frame, "Present: Waiting to start")
+        self.human_present_label = create_label(status_frame, "Present: N/A")
         self.detection_status_label = create_label(status_frame, "Status: Standard Mode")
-        self.detection_hint = ContextHint(
-            status_frame,
-            text="When running, tips appear here if your face is not detected.",
-        )
-        self.detection_hint.pack(anchor="w", pady=(4, 0))
+        self.presence_status_label = create_label(status_frame, "Presence: N/A")
 
         # Power-aware battery frame
-        power_frame = create_frame(settings_content, "Power Saver")
+        power_frame = create_frame(settings_left, "Power Saver", padx=4)
 
         self.power_aware_checkbox = ttk.Checkbutton(
             power_frame,
@@ -1093,7 +1380,7 @@ class BrightnessGUI:
         )
 
         # Diagnostics section
-        diagnostics_frame = create_frame(settings_content, "Diagnostics")
+        diagnostics_frame = create_frame(settings_right, "Diagnostics", padx=4)
         
         self.diagnostics_mode_var = tk.BooleanVar(value=False)
         self.diagnostics_checkbox = ttk.Checkbutton(
@@ -1106,13 +1393,52 @@ class BrightnessGUI:
         
         diagnostics_info_label = create_label(
             diagnostics_frame,
-            "When enabled, shows detailed error messages and diagnostics.",
+            "Verbose mode also prints summaries to the terminal. Issue summaries stay in this panel during a session.",
             font=("Arial", 8),
             foreground="gray"
         )
 
+        self.issue_status_label = ttk.Label(
+            diagnostics_frame,
+            text="No runtime issues recorded.",
+            foreground="gray",
+            wraplength=240,
+        )
+        self.issue_status_label.pack(anchor="w", pady=(6, 2))
+
+        create_label(diagnostics_frame, "Recent events:", pady=(4, 0))
+        self.issue_log_text = scrolledtext.ScrolledText(
+            diagnostics_frame,
+            height=5,
+            wrap="word",
+            state="disabled",
+            font=("Consolas", 9),
+        )
+        self.issue_log_text.pack(fill="x", pady=(0, 6))
+
+        summary_header = ttk.Frame(diagnostics_frame)
+        summary_header.pack(fill="x")
+        ttk.Label(summary_header, text="Summary & fixes:").pack(side="left")
+        ttk.Button(
+            summary_header,
+            text="Refresh summary",
+            command=self._refresh_issue_summary,
+        ).pack(side="right")
+
+        self.issue_summary_text = scrolledtext.ScrolledText(
+            diagnostics_frame,
+            height=4,
+            wrap="word",
+            state="disabled",
+            font=("Segoe UI", 9),
+        )
+        self.issue_summary_text.pack(fill="x", pady=(2, 0))
+        self._apply_issue_summary(
+            "Summaries appear here after you stop a session or press Refresh summary."
+        )
+
         # Camera Test/Preview section
-        camera_preview_frame = create_frame(settings_content, "Camera Test")
+        camera_preview_frame = create_frame(settings_right, "Camera Test", padx=4)
         
         # Preview button
         preview_button_frame = ttk.Frame(camera_preview_frame)
@@ -1136,16 +1462,23 @@ class BrightnessGUI:
         )
         self.camera_preview_label.pack(pady=5, padx=5)
 
-        self.notebook = notebook
-        self.window_auto_sizer = WindowAutoSizer(
-            self.root,
-            chrome_height=self.status_banner.winfo_reqheight() + 88,
+        # Battery monitoring tab
+        battery_tab = ttk.Frame(notebook)
+        notebook.add(battery_tab, text="Battery")
+        battery_content = self._create_scrollable_frame(battery_tab)
+        self.battery_panel = BatteryMonitorPanel(battery_content)
+        self.battery_panel.pack(fill="both", expand=True, padx=4, pady=4)
+        self.battery_panel.full_slider.config(command=self._on_full_battery_percent_changed)
+        self.battery_panel.full_slider.bind(
+            "<ButtonPress-1>", lambda _e: setattr(self, "_battery_full_slider_dragging", True)
         )
-        self.window_auto_sizer.register(control_content)
-        self.window_auto_sizer.register(settings_content)
-        self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self._schedule_window_fit())
-        self.root.bind("<Configure>", self._on_root_configure, add="+")
-        self._schedule_window_fit()
+        self.battery_panel.full_slider.bind(
+            "<ButtonRelease-1>",
+            lambda _e: setattr(self, "_battery_full_slider_dragging", False),
+        )
+        self.battery_panel.apply_learned_btn.config(
+            command=self._on_apply_learned_full_percent
+        )
 
     def show_health_info(self):
         """Show information about brightness and eye health."""
@@ -1183,12 +1516,22 @@ Detection Modes:
   - Requires better lighting and clearer face positioning
   - More conservative detection parameters
   - Better for environments with many objects
-• Auto-relax on instability: Switches to standard detection when results flicker
+• Auto-Strict Detection: Automatically switches to strict mode when instability is detected
+  - Monitors detection stability in real-time
+  - Switches to strict mode if too many rapid changes occur
+  - Helps maintain consistent detection without manual intervention
 • Grace Period: Maintains human detection for 3 seconds when face is temporarily blocked
   - Prevents flickering when you look away briefly
   - Handles temporary face blocking or turning
   - Reduces false negatives from momentary detection loss
 • Adaptive Grace Period: Automatically adjusts grace period timing based on your behavior patterns
+
+Desk Mode (recommended for normal desk work):
+• Treats you as present using face, camera motion, or keyboard/mouse activity
+• Look-away floor keeps a dim but usable brightness when you are not facing the webcam
+• Stay Active / Confirm Active / Restore brightness use hysteresis to stop Active↔Look-away flicker
+• 0% brightness only after the last-seen window expires (you have truly stepped away)
+• Tune these under Settings → Detection → Desk Mode
   - Learns from your recent face loss patterns (last 10 events)
   - Adjusts duration between 1-8 seconds based on your typical behavior
   - Provides personalized timing for optimal user experience
@@ -1416,6 +1759,17 @@ Note: This feature requires a working webcam and may not work perfectly in all l
         # Default fallback
         return "healthy_mid", "Healthy Mid"
 
+    def _presence_session_stats(self) -> Tuple[float, int, int, int]:
+        """Return at-desk %, active count, look-away count, away count."""
+        if not self.presence_states:
+            return 0.0, 0, 0, 0
+        total = len(self.presence_states)
+        active = sum(1 for state in self.presence_states if state == PresenceState.ACTIVE.value)
+        look_away = sum(1 for state in self.presence_states if state == PresenceState.LOOK_AWAY.value)
+        away = sum(1 for state in self.presence_states if state == PresenceState.AWAY.value)
+        at_desk_pct = ((active + look_away) / total) * 100
+        return at_desk_pct, active, look_away, away
+
     def update_unhealthy_time(self, is_current_healthy: bool):
         """Update the time spent in unhealthy brightness ranges."""
         current_time = time.time()
@@ -1589,70 +1943,53 @@ Note: This feature requires a working webcam and may not work perfectly in all l
         print("📹 Starting camera-based brightness control")
         iteration_count = 0
         while self.running and self.active_mode == "camera":
-            brightness = self.controller.get_brightness_from_camera()
+            if not self.running:
+                break
+            self._sync_desk_mode_settings()
+            ambient, presence_state = self.controller.get_brightness_from_camera()
+            if not self.running:
+                break
             iteration_count += 1
             
             # Update human detection status
             if self.human_detection_enabled.get():
-                # Check if brightness is 0 (no human detected)
-                self.human_present = brightness > 0.0
+                self.human_present = presence_state != PresenceState.AWAY
                 self.last_human_detection_time = time.time()
                 
-                # Update GUI label (thread-safe)
-                status_text = "Present" if self.human_present else "Not detected"
-                status_color = APP_COLORS["success"] if self.human_present else APP_COLORS["danger"]
+                present_text, present_color = self._presence_label(presence_state)
                 self._schedule_gui_update(
-                    lambda t=status_text, c=status_color: self.human_present_label.config(
+                    lambda t=present_text, c=present_color: self.human_present_label.config(
                         text=f"Present: {t}",
                         foreground=c,
                     )
                 )
-                if self.human_present:
-                    self._update_detection_hint(
-                        "Face detected — brightness follows ambient light.",
-                        "success",
-                    )
-                else:
-                    detection_status = self.controller.human_detector.get_detection_status()
-                    if detection_status.get("grace_period_active"):
-                        self._update_detection_hint(
-                            "Grace period active — presence held briefly while face is lost.",
-                            "info",
-                        )
-                    else:
-                        self._update_detection_hint(
-                            "No face detected. Face the camera, add light, or disable Strict Detection in Advanced options.",
-                            "warning",
-                        )
-
+                
                 # Update auto-strict setting if changed
-                if hasattr(self.controller, 'auto_strict_detection'):
-                    if self.controller.auto_strict_detection != self.auto_strict_enabled.get():
-                        self.controller.update_auto_strict_setting(self.auto_strict_enabled.get())
+                if self.controller.human_detector.auto_strict_detection != self.auto_strict_enabled.get():
+                    self.controller.update_auto_strict_setting(self.auto_strict_enabled.get())
                 
                 # Update grace period setting if changed
-                if hasattr(self.controller, 'grace_period_enabled'):
-                    if self.controller.grace_period_enabled != self.grace_period_enabled.get():
-                        self.controller.update_grace_period_setting(self.grace_period_enabled.get())
+                if self.controller.human_detector.grace_period_enabled != self.grace_period_enabled.get():
+                    self.controller.update_grace_period_setting(self.grace_period_enabled.get())
                 
                 # Update adaptive grace period setting if changed
-                if hasattr(self.controller, 'adaptive_grace_period'):
-                    if self.controller.adaptive_grace_period != self.adaptive_grace_enabled.get():
-                        self.controller.update_adaptive_grace_period_setting(self.adaptive_grace_enabled.get())
+                if self.controller.human_detector.adaptive_grace_period != self.adaptive_grace_enabled.get():
+                    self.controller.update_adaptive_grace_period_setting(self.adaptive_grace_enabled.get())
                 
                 # Update distance detection setting if changed
-                if hasattr(self.controller, 'enable_distance_detection'):
-                    if self.controller.human_detector.enable_distance_detection != self.distance_detection_enabled.get():
-                        self.controller.human_detector.enable_distance_detection = self.distance_detection_enabled.get()
+                if self.controller.enable_distance_detection != self.distance_detection_enabled.get():
+                    self.controller.enable_distance_detection = self.distance_detection_enabled.get()
+                    self.controller.human_detector.enable_distance_detection = (
+                        self.distance_detection_enabled.get()
+                    )
                 
-                # Update detection status (thread-safe)
+                presence_status = self.controller.get_presence_status()
                 detection_status = self.controller.human_detector.get_detection_status()
                 mode_text = "Strict Mode" if detection_status.get("strict_mode", False) else "Standard Mode"
                 auto_text = " (Auto-switched)" if detection_status.get("auto_switched", False) else ""
                 stability_text = f" - {detection_status.get('stability_percentage', 0):.0f}% stable"
                 grace_text = " [Grace Period]" if detection_status.get("grace_period_active", False) else ""
                 
-                # Add adaptive grace period info
                 if detection_status.get("adaptive_grace_period", False):
                     current_duration = detection_status.get("current_grace_duration", 3.0)
                     face_loss_count = detection_status.get("face_loss_count", 0)
@@ -1662,31 +1999,51 @@ Note: This feature requires a working webcam and may not work perfectly in all l
                 
                 status_text_full = f"Status: {mode_text}{auto_text}{stability_text}{grace_text}{adaptive_text}"
                 status_color = "orange" if detection_status.get("strict_mode", False) else "blue"
+                presence_line = (
+                    f"Presence: {presence_state.value} "
+                    f"({presence_status.get('source', 'n/a')})"
+                )
                 self._schedule_gui_update(
                     lambda: self.detection_status_label.config(
                         text=status_text_full,
                         foreground=status_color
                     )
                 )
+                self._schedule_gui_update(
+                    lambda pl=presence_line: self.presence_status_label.config(text=pl)
+                )
             
             # Only print camera brightness every 100 iterations to reduce spam
             if iteration_count % 100 == 0:
-                human_status = "👤 Present" if self.human_present else "👤 Not Detected"
-                print(f"📹 Camera reading #{iteration_count}: {brightness:.1f} ({human_status})")
+                human_status = {
+                    PresenceState.ACTIVE: "👤 Active",
+                    PresenceState.LOOK_AWAY: "👀 Look away",
+                    PresenceState.AWAY: "🚪 Away",
+                }.get(presence_state, "👤 Unknown")
+                print(f"📹 Camera reading #{iteration_count}: {ambient:.1f} ({human_status})")
 
-            # Store the brightness value for session tracking
-            self.camera_brightness_values.append(brightness)
+            # Store ambient reading for session tracking
+            self.camera_brightness_values.append(ambient)
+            if self.human_detection_enabled.get():
+                self.presence_states.append(presence_state.value)
 
-            self._apply_power_aware_brightness(brightness)
+            if not self.running:
+                break
+            self._apply_power_aware_brightness(ambient, presence_state)
+            if not self.running:
+                break
             time.sleep(0.1)
 
     def start_control(self):
         """Start the brightness control."""
+        if self._stop_in_progress:
+            return
         self.active_mode = self.mode_var.get()
         self.running = True
 
         # Reset session tracking
         self.camera_brightness_values = []
+        self.presence_states = []
         self.session_start_time = time.time()
         self.time_in_unhealthy_range = 0
         self.last_health_check_time = None
@@ -1699,16 +2056,6 @@ Note: This feature requires a working webcam and may not work perfectly in all l
         # Disable start button immediately
         self.start_button.config(state="disabled")
         self.stop_button.config(state="normal")
-
-        mode_label = "Camera" if self.active_mode == "camera" else "Screen"
-        self._set_runtime_banner(
-            "running",
-            f"{mode_label} mode — brightness control is active.",
-        )
-        self._update_detection_hint(
-            "Monitoring for your presence. Tips will appear if detection struggles.",
-            "info",
-        )
 
         if self.active_mode == "camera":
             # Show loading indicator
@@ -1725,7 +2072,13 @@ Note: This feature requires a working webcam and may not work perfectly in all l
                         strict_detection=self.strict_detection_enabled.get(),
                         enable_distance_detection=self.distance_detection_enabled.get()
                     )
-                    self.power_system = PowerManagementSystem(self.controller)
+                    self.power_system.stop_battery_tracking()
+                    self.power_system = PowerManagementSystem(
+                        self.controller,
+                        on_battery_data_changed=self._on_battery_data_changed,
+                    )
+                    self.power_system.start_battery_tracking()
+                    self._sync_desk_mode_settings()
                     self.controller.setup_camera()
                     
                     # Start control thread
@@ -1778,18 +2131,65 @@ Note: This feature requires a working webcam and may not work perfectly in all l
     def stop_test_control(self):
         """Stop the test run and reset buttons."""
         self.stop_control()
-        self.test_button.config(state="normal")
-        self.start_button.config(state="normal")
+
+    def _show_stop_progress(self, message: str = "Stopping…") -> None:
+        self.stop_status_label.config(text=message)
+        if not self.stop_progress_frame.winfo_ismapped():
+            self.stop_progress_frame.pack(side="left", padx=(4, 0))
+        self.stop_progress.start(12)
+        self.stop_button.config(state="disabled")
+        self.start_button.config(state="disabled")
+        self.test_button.config(state="disabled")
+
+    def _hide_stop_progress(self) -> None:
+        self.stop_progress.stop()
+        if self.stop_progress_frame.winfo_ismapped():
+            self.stop_progress_frame.pack_forget()
+
+    def _release_control_camera(self) -> None:
+        if self.active_mode == "camera" and hasattr(self, "controller"):
+            try:
+                self.controller.cleanup()
+            except Exception:
+                pass
 
     def stop_control(self):
-        """Stop the brightness control."""
-        self.running = False
-        if self.control_thread:
-            self.control_thread.join()
-        if self.active_mode == "camera":
-            self.controller.cleanup()
+        """Stop brightness control without blocking the UI thread."""
+        if self._stop_in_progress:
+            return
+        if not self.running and not (
+            self.control_thread and self.control_thread.is_alive()
+        ):
+            return
 
-            # Calculate and display final session stats
+        self._stop_in_progress = True
+        self.running = False
+        stopped_mode = self.active_mode
+        worker_thread = self.control_thread
+        self._show_stop_progress("Stopping brightness control…")
+
+        def stop_worker() -> None:
+            if stopped_mode == "camera":
+                self._release_control_camera()
+            if worker_thread and worker_thread.is_alive():
+                worker_thread.join(timeout=8.0)
+            if worker_thread and worker_thread.is_alive():
+                self._record_issue(
+                    "WARN",
+                    "Stop Control",
+                    "Control thread did not exit within 8 seconds; UI recovered anyway.",
+                )
+            self._schedule_gui_update(
+                lambda: self._finalize_stop_control(stopped_mode)
+            )
+
+        threading.Thread(target=stop_worker, daemon=True).start()
+
+    def _finalize_stop_control(self, stopped_mode: Optional[str]) -> None:
+        """Complete stop on the main thread after the worker releases resources."""
+        if stopped_mode == "camera":
+            self._release_control_camera()
+
             if self.camera_brightness_values:
                 avg_brightness = np.mean(self.camera_brightness_values)
                 category, display_name = self.classify_brightness(avg_brightness)
@@ -1804,9 +2204,11 @@ Note: This feature requires a working webcam and may not work perfectly in all l
                     
                     # Calculate time when human was present
                     if self.human_detection_enabled.get():
-                        zero_brightness_count = sum(1 for b in self.camera_brightness_values if b == 0.0)
+                        at_desk_pct, active_count, look_away_count, away_count = (
+                            self._presence_session_stats()
+                        )
                         total_readings = len(self.camera_brightness_values)
-                        human_present_time = total_session_time * (total_readings - zero_brightness_count) / total_readings
+                        human_present_time = total_session_time * (at_desk_pct / 100.0)
                         
                         # Calculate healthy percentage only for time when human was present
                         healthy_time = human_present_time - self.time_in_unhealthy_range
@@ -1836,10 +2238,11 @@ Note: This feature requires a working webcam and may not work perfectly in all l
 
                 # Human detection statistics
                 if self.human_detection_enabled.get():
-                    zero_brightness_count = sum(1 for b in self.camera_brightness_values if b == 0.0)
-                    human_detection_percentage = ((len(self.camera_brightness_values) - zero_brightness_count) / len(self.camera_brightness_values)) * 100
-                    print(f"  Human Detection: {human_detection_percentage:.1f}% of time")
-                    print(f"  Time without human: {zero_brightness_count} readings")
+                    at_desk_pct, active_count, look_away_count, away_count = (
+                        self._presence_session_stats()
+                    )
+                    print(f"  At desk: {at_desk_pct:.1f}% of time")
+                    print(f"  Active: {active_count} | Look away: {look_away_count} | Away: {away_count} readings")
 
                 if self.session_start_time is not None:
                     elapsed_seconds = int(time.time() - self.session_start_time)
@@ -1856,11 +2259,14 @@ Note: This feature requires a working webcam and may not work perfectly in all l
                     # Prepare human detection summary
                     human_detection_summary = ""
                     if self.human_detection_enabled.get():
-                        zero_brightness_count = sum(1 for b in self.camera_brightness_values if b == 0.0)
-                        human_detection_percentage = ((len(self.camera_brightness_values) - zero_brightness_count) / len(self.camera_brightness_values)) * 100
-                        human_detection_summary = f"\nHuman detection: {human_detection_percentage:.1f}% of time"
-                        if zero_brightness_count > 0:
-                            human_detection_summary += f"\nTime without human: {zero_brightness_count} readings"
+                        at_desk_pct, active_count, look_away_count, away_count = (
+                            self._presence_session_stats()
+                        )
+                        human_detection_summary = (
+                            f"\nAt desk: {at_desk_pct:.1f}% of time"
+                            f"\nActive/Look away/Away readings: "
+                            f"{active_count}/{look_away_count}/{away_count}"
+                        )
                     
                     if unhealthy_minutes > 0:
                         self._thread_safe_messagebox(
@@ -1884,21 +2290,15 @@ Note: This feature requires a working webcam and may not work perfectly in all l
                         )
                         self._thread_safe_messagebox("showinfo", "Session Summary", summary_msg)
 
+        self._hide_stop_progress()
         self.start_button.config(state="normal")
         self.stop_button.config(state="disabled")
-        self.test_button.config(state="normal")  # Enable test button
+        self.test_button.config(state="normal")
         self.active_mode = None
-        self._set_runtime_banner("idle")
-        self._update_detection_hint(
-            "When running, tips appear here if your face is not detected.",
-            "info",
-        )
-        self._schedule_gui_update(
-            lambda: self.human_present_label.config(
-                text="Present: Waiting to start",
-                foreground=APP_COLORS["text_muted"],
-            )
-        )
+        self.control_thread = None
+        self._stop_in_progress = False
+        if self.pending_issue_summary:
+            self._maybe_summarize_issues_with_ollama(force=True)
 
     def run(self):
         """Start the GUI application."""
@@ -1907,10 +2307,26 @@ Note: This feature requires a working webcam and may not work perfectly in all l
 
     def on_closing(self):
         """Handle application closing."""
-        self.stop_control()
-        # Stop camera preview if active
+        if self.running or (
+            self.control_thread and self.control_thread.is_alive()
+        ):
+            self.stop_control()
+            self.root.after(200, self._close_when_stopped)
+            return
         if self.camera_preview_active:
             self._stop_camera_preview()
+        self.power_system.stop_battery_tracking()
+        self.root.destroy()
+
+    def _close_when_stopped(self) -> None:
+        if self._stop_in_progress or (
+            self.control_thread and self.control_thread.is_alive()
+        ):
+            self.root.after(200, self._close_when_stopped)
+            return
+        if self.camera_preview_active:
+            self._stop_camera_preview()
+        self.power_system.stop_battery_tracking()
         self.root.destroy()
 
 

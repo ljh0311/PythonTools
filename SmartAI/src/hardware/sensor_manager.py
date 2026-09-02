@@ -328,7 +328,7 @@ class SensorManager:
         # Threading
         self.running = False
         self.update_thread = None
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         
         # Initialize all sensors
         self._setup_sensors()
@@ -489,13 +489,13 @@ class SensorManager:
             if distance > 0:
                 distances.append(distance)
         
-        return min(distances) if distances else float('inf')
+        return min(distances) if distances else None
     
     def is_obstacle_detected(self) -> bool:
         """Check if any obstacle is detected"""
         # Check ultrasonic sensors
         min_distance = self.get_min_distance()
-        if min_distance < self.config['robot']['safety_distances']['critical']:
+        if min_distance is not None and min_distance < self.config['robot']['safety_distances']['critical']:
             return True
         
         # Check infrared sensors

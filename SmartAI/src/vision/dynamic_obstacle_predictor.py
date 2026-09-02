@@ -147,8 +147,16 @@ class DynamicObstaclePredictor:
             bbox = detection.bounding_box
             category = detection.categories[0]
             
-            # Filter out non-obstacle classes (customize based on your needs)
-            obstacle_classes = ['person', 'car', 'truck', 'bicycle', 'motorcycle', 'dog', 'cat']
+            # Indoor obstacle classes — shared furniture set + dynamic movers
+            from ..core.proximity_context import FURNITURE_CLASSES, PERSON_CLASSES
+            obstacle_classes = (
+                set(PERSON_CLASSES)
+                | set(FURNITURE_CLASSES)
+                | {
+                    "car", "truck", "bicycle", "motorcycle", "dog", "cat",
+                    "wall", "obstacle", "bowl",
+                }
+            )
             if category.category_name.lower() not in obstacle_classes:
                 return None
             

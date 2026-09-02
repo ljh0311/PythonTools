@@ -19,6 +19,8 @@ import functools
 import threading
 
 import report_ai_insights
+import task_store
+import task_tab
 
 # Constants
 DATE_FORMAT = "%d-%m-%Y"
@@ -462,6 +464,7 @@ class TimeLoggerApp:
         self.create_view_tab()
         self.create_payroll_tab()
         self.create_report_tab()
+        self.tasks_tab = task_tab.attach_tasks_tab(self.notebook, self.conn, self.root)
         
         # Initialize date range with available dates
         self.update_date_range()
@@ -666,8 +669,23 @@ class TimeLoggerApp:
                 is_default INTEGER DEFAULT 0
             )
         ''')
-        
+
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                notes TEXT DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'todo',
+                due_date TEXT DEFAULT '',
+                created_date TEXT NOT NULL,
+                completed_date TEXT DEFAULT '',
+                urgency INTEGER NOT NULL DEFAULT 3,
+                effort INTEGER NOT NULL DEFAULT 3
+            )
+        ''')
+
         self.conn.commit()
+        task_store.ensure_tasks_table(self.conn)
         DateUtils.migrate_stored_dates_to_db_format(self.cursor, self.conn)
         
     def ensure_csv_exists(self):
@@ -712,7 +730,7 @@ class TimeLoggerApp:
         except Exception as e:
             print(f"Error adding record to CSV: {str(e)}")
             return False
-        
+
     def create_log_tab(self):
         """Create the tab for logging new work entries"""
         log_frame = ttk.Frame(self.notebook)
@@ -782,7 +800,7 @@ class TimeLoggerApp:
 
         time_hint = ttk.Label(
             time_section,
-            text="Tip: accepts 930 or 9:30. Use Up/Down for ±15 min.",
+            text="Tip: accepts 930 or 9:30. Use Up/Down for Â±15 min.",
             font=("Arial", 8)
         )
         time_hint.grid(row=0, column=2, rowspan=2, padx=(10, 5), pady=5, sticky="w")
@@ -888,7 +906,7 @@ class TimeLoggerApp:
         from_entry = ttk.Entry(date_section, textvariable=self.from_date_var, width=12)
         from_entry.grid(row=0, column=2, padx=2, pady=5, sticky="w")
         add_date_picker_button(
-            date_section, self.from_date_var, self.root, title="Filter — From date"
+            date_section, self.from_date_var, self.root, title="Filter â€” From date"
         ).grid(row=0, column=3, padx=2, pady=5)
 
         ttk.Label(date_section, text="To:").grid(row=0, column=4, padx=(10, 2), pady=5, sticky="w")
@@ -896,7 +914,7 @@ class TimeLoggerApp:
         to_entry = ttk.Entry(date_section, textvariable=self.to_date_var, width=12)
         to_entry.grid(row=0, column=5, padx=2, pady=5, sticky="w")
         add_date_picker_button(
-            date_section, self.to_date_var, self.root, title="Filter — To date"
+            date_section, self.to_date_var, self.root, title="Filter â€” To date"
         ).grid(row=0, column=6, padx=2, pady=5)
         
         # Filter buttons
@@ -1054,7 +1072,7 @@ class TimeLoggerApp:
 
     def update_treeview_sort_headers(self):
         """Update treeview header text to reflect active sort state."""
-        arrow = "▼" if self.tree_sort_desc else "▲"
+        arrow = "â–¼" if self.tree_sort_desc else "â–²"
         label_map = {
             "id": "ID",
             "date": "Date",
@@ -1208,7 +1226,7 @@ class TimeLoggerApp:
         self.default_period_var = tk.BooleanVar()
         ttk.Checkbutton(
             add_frame,
-            text="Set as default (used by “Current Payroll Period” in Reports)",
+            text="Set as default (used by â€œCurrent Payroll Periodâ€ in Reports)",
             variable=self.default_period_var,
         ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(10, 4))
 
@@ -1240,7 +1258,7 @@ class TimeLoggerApp:
             self.period_type_var.set("Yearly")
             self.apply_period_type()
 
-        ttk.Button(pattern_frame, text="Monthly (26th–25th)", command=set_monthly_pattern).grid(
+        ttk.Button(pattern_frame, text="Monthly (26thâ€“25th)", command=set_monthly_pattern).grid(
             row=0, column=0, padx=4, pady=4
         )
         ttk.Button(pattern_frame, text="Bi-weekly", command=set_biweekly_pattern).grid(
@@ -1343,12 +1361,12 @@ class TimeLoggerApp:
         ttk.Label(run_row, text="From:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(0, 2))
         self.report_from_var = tk.StringVar()
         ttk.Entry(run_row, textvariable=self.report_from_var, width=11).pack(side=tk.LEFT, padx=2)
-        ttk.Button(run_row, text="📅", width=3, command=lambda: self.show_calendar_popup("report_from")).pack(side=tk.LEFT, padx=1)
+        ttk.Button(run_row, text="ðŸ“…", width=3, command=lambda: self.show_calendar_popup("report_from")).pack(side=tk.LEFT, padx=1)
 
         ttk.Label(run_row, text="To:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(8, 2))
         self.report_to_var = tk.StringVar()
         ttk.Entry(run_row, textvariable=self.report_to_var, width=11).pack(side=tk.LEFT, padx=2)
-        ttk.Button(run_row, text="📅", width=3, command=lambda: self.show_calendar_popup("report_to")).pack(side=tk.LEFT, padx=1)
+        ttk.Button(run_row, text="ðŸ“…", width=3, command=lambda: self.show_calendar_popup("report_to")).pack(side=tk.LEFT, padx=1)
 
         self.comparison_frame = ttk.Frame(run_row)
         self.comparison_frame.pack(side=tk.LEFT, padx=(12, 6))
@@ -1448,12 +1466,12 @@ class TimeLoggerApp:
         self.stats_work_days_var = tk.StringVar()
         ttk.Label(current_stats, textvariable=self.stats_work_days_var).grid(row=2, column=3, padx=5, pady=5, sticky="w")
 
-        # Earnings projection — dedicated tab for space
+        # Earnings projection â€” dedicated tab for space
         projection_box = ttk.LabelFrame(proj_tab, text="Earnings projection (forward model)")
         projection_box.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
         projection_box.columnconfigure(0, weight=1)
 
-        self.stats_projection_headline_var = tk.StringVar(value="—")
+        self.stats_projection_headline_var = tk.StringVar(value="â€”")
         tk.Label(
             projection_box,
             textvariable=self.stats_projection_headline_var,
@@ -1462,7 +1480,7 @@ class TimeLoggerApp:
         ).grid(row=0, column=0, sticky="w", padx=8, pady=(6, 0))
         ttk.Label(
             projection_box,
-            text="30 days after report end · weekday work rate × recent $/day (see below)",
+            text="30 days after report end Â· weekday work rate Ã— recent $/day (see below)",
             foreground="gray",
         ).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 4))
 
@@ -1554,7 +1572,7 @@ class TimeLoggerApp:
         )
         self.report_ai_text.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
 
-        # Charts (right pane — no fixed min size so the paned window can grow charts)
+        # Charts (right pane â€” no fixed min size so the paned window can grow charts)
         self.chart_frame = ttk.LabelFrame(self.report_paned, text="Charts")
         self.report_paned.add(self.chart_frame, weight=5)
 
@@ -1832,7 +1850,7 @@ class TimeLoggerApp:
         date_row.columnconfigure(0, weight=1)
         ttk.Entry(date_row, textvariable=date_var).grid(row=0, column=0, sticky="ew")
         add_date_picker_button(
-            date_row, date_var, edit_window, title="Edit — work date"
+            date_row, date_var, edit_window, title="Edit â€” work date"
         ).grid(row=0, column=1, padx=(6, 0))
         
         # Start time
@@ -2377,15 +2395,15 @@ class TimeLoggerApp:
     def get_trend_indicator(self, trend_value):
         """Convert a trend value to a visual indicator"""
         if abs(trend_value) < 0.01:  # Nearly flat
-            return "→ Stable"
+            return "â†’ Stable"
         elif trend_value > 0.05:  # Strong positive
-            return "↑↑ Strong Increase"
+            return "â†‘â†‘ Strong Increase"
         elif trend_value > 0:  # Mild positive
-            return "↑ Increasing"
+            return "â†‘ Increasing"
         elif trend_value < -0.05:  # Strong negative
-            return "↓↓ Strong Decrease"
+            return "â†“â†“ Strong Decrease"
         else:  # Mild negative
-            return "↓ Decreasing"
+            return "â†“ Decreasing"
 
     def refresh_report_ai_insights(self):
         """Regenerate AI / heuristic coaching from the last successful report."""
@@ -2406,7 +2424,7 @@ class TimeLoggerApp:
         if hasattr(self, "report_ai_text"):
             self.report_ai_text.configure(state="normal")
             self.report_ai_text.delete("1.0", tk.END)
-            self.report_ai_text.insert(tk.END, "Generating insights…")
+            self.report_ai_text.insert(tk.END, "Generating insightsâ€¦")
             self.report_ai_text.configure(state="disabled")
 
         def worker():
@@ -2415,7 +2433,7 @@ class TimeLoggerApp:
                 text = f"{body}\n\n{foot}"
             except Exception as e:
                 text = report_ai_insights.heuristic_insights(ctx)
-                text = f"{text}\n\n— Source: built-in rules (error: {e}) —"
+                text = f"{text}\n\nâ€” Source: built-in rules (error: {e}) â€”"
             self.root.after(0, functools.partial(self._finish_report_ai, text))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -2538,17 +2556,17 @@ class TimeLoggerApp:
 
         summary_lines = [
             "What this is",
-            f"• Adds expected earnings for the {projection_days} days right after your report end "
+            f"â€¢ Adds expected earnings for the {projection_days} days right after your report end "
             f"({period_end.strftime(DATE_FORMAT)}), not a full calendar month.",
-            "• Each future day = P(you work that weekday in the report) × (avg earnings on that weekday in the recent window, or recent overall avg).",
+            "â€¢ Each future day = P(you work that weekday in the report) Ã— (avg earnings on that weekday in the recent window, or recent overall avg).",
             "",
             "Inputs",
-            f"• Report range: {period_start.strftime(DATE_FORMAT)} → {period_end.strftime(DATE_FORMAT)}",
-            f"• Recent window: {recent_start.strftime(DATE_FORMAT)} → {recent_end.strftime(DATE_FORMAT)} "
+            f"â€¢ Report range: {period_start.strftime(DATE_FORMAT)} â†’ {period_end.strftime(DATE_FORMAT)}",
+            f"â€¢ Recent window: {recent_start.strftime(DATE_FORMAT)} â†’ {recent_end.strftime(DATE_FORMAT)} "
             f"({recent_window_days} days ending on the latest day in this report)",
-            f"• Avg earnings per reported day (full range): ${overall_avg:.2f}",
-            f"• Avg earnings per day in recent window: ${baseline_recent_avg:.2f}",
-            f"• Horizon summed: {horizon_start.strftime(DATE_FORMAT)} → {horizon_end.strftime(DATE_FORMAT)}",
+            f"â€¢ Avg earnings per reported day (full range): ${overall_avg:.2f}",
+            f"â€¢ Avg earnings per day in recent window: ${baseline_recent_avg:.2f}",
+            f"â€¢ Horizon summed: {horizon_start.strftime(DATE_FORMAT)} â†’ {horizon_end.strftime(DATE_FORMAT)}",
             "",
             "By weekday",
         ]
@@ -2629,8 +2647,8 @@ class TimeLoggerApp:
                 earnings_change = ((curr_earnings - prev_earnings) / prev_earnings * 100) if prev_earnings else 0
                 
                 # Format with up/down indicators
-                hours_prefix = "▲" if hours_change >= 0 else "▼"
-                earnings_prefix = "▲" if earnings_change >= 0 else "▼"
+                hours_prefix = "â–²" if hours_change >= 0 else "â–¼"
+                earnings_prefix = "â–²" if earnings_change >= 0 else "â–¼"
                 
                 # Update comparison display
                 self.compare_hours_var.set(f"{hours_prefix} {abs(hours_change):.1f}%")
@@ -3619,10 +3637,10 @@ class TimeLoggerApp:
         """Open the shared date picker for a StringVar (reports regenerate on confirm)."""
         if date_var_name == "report_from":
             date_var = self.report_from_var
-            title = "Report range — From"
+            title = "Report range â€” From"
         elif date_var_name == "report_to":
             date_var = self.report_to_var
-            title = "Report range — To"
+            title = "Report range â€” To"
         elif hasattr(self, date_var_name):
             date_var = getattr(self, date_var_name)
             title = date_var_name.replace("_", " ").title()
@@ -3891,26 +3909,26 @@ class TimeLoggerApp:
                 # Add recommendation about working hours
                 avg_daily_hours = total_hours / work_days
                 if avg_daily_hours > 8:
-                    recommendations.append("⚠️ **Your average daily hours (%.2f) exceed 8 hours**. Consider taking more breaks to prevent burnout.\n" % avg_daily_hours)
+                    recommendations.append("âš ï¸ **Your average daily hours (%.2f) exceed 8 hours**. Consider taking more breaks to prevent burnout.\n" % avg_daily_hours)
                 elif avg_daily_hours < 4:
-                    recommendations.append("📊 **Your average daily hours (%.2f) are below 4**. Consider increasing work hours if you want to boost earnings.\n" % avg_daily_hours)
+                    recommendations.append("ðŸ“Š **Your average daily hours (%.2f) are below 4**. Consider increasing work hours if you want to boost earnings.\n" % avg_daily_hours)
                 else:
-                    recommendations.append("✅ **Your average daily hours (%.2f) are in a healthy range**.\n" % avg_daily_hours)
+                    recommendations.append("âœ… **Your average daily hours (%.2f) are in a healthy range**.\n" % avg_daily_hours)
                     
                 # Add recommendation about hourly rate
                 if max_rate > avg_rate * 1.5:
-                    recommendations.append("💡 **Your hourly rate varies significantly** (from $%.2f to $%.2f). Try to prioritize higher-paying work when possible.\n" % (min_rate, max_rate))
+                    recommendations.append("ðŸ’¡ **Your hourly rate varies significantly** (from $%.2f to $%.2f). Try to prioritize higher-paying work when possible.\n" % (min_rate, max_rate))
                 
                 # Add recommendation about work coverage
                 if coverage < 50:
-                    recommendations.append("📅 **Your work coverage is low (%.1f%%)**. Consider distributing work more evenly throughout the period.\n" % coverage)
+                    recommendations.append("ðŸ“… **Your work coverage is low (%.1f%%)**. Consider distributing work more evenly throughout the period.\n" % coverage)
                 
                 # Add recommendation based on day of week analysis if we have that data
                 if 'most_hours_day' in locals():
-                    recommendations.append("📈 **%s is your most productive day** in terms of hours worked.\n" % most_hours_day)
+                    recommendations.append("ðŸ“ˆ **%s is your most productive day** in terms of hours worked.\n" % most_hours_day)
                     
                 if 'most_earnings_day' in locals() and most_earnings_day != most_hours_day:
-                    recommendations.append("💰 **%s is your most profitable day**, which differs from your most productive day. Consider focusing more on high-value work on %s.\n" % (most_earnings_day, most_earnings_day))
+                    recommendations.append("ðŸ’° **%s is your most profitable day**, which differs from your most productive day. Consider focusing more on high-value work on %s.\n" % (most_earnings_day, most_earnings_day))
                     
                 # Add projected earnings from recent trend + expected workdays.
                 daily_earnings_map = {}
@@ -3930,14 +3948,14 @@ class TimeLoggerApp:
                 monthly_projection = proj_detail["total"]
                 recommendations.append("\n## Projections\n\n")
                 recommendations.append(
-                    "💼 **Forward earnings estimate**: About **$%.2f** over the **30 days after** your report end, "
+                    "ðŸ’¼ **Forward earnings estimate**: About **$%.2f** over the **30 days after** your report end, "
                     "using weekday work rates from this period and your **last 28 days** of daily earnings.\n"
                     % monthly_projection
                 )
                 clip = "\n".join(proj_detail["summary_lines"][:6])
                 recommendations.append("\n<details>\n%s\n</details>\n" % clip)
                 yearly_projection = monthly_projection * 12
-                recommendations.append("🗓️ **Yearly projection**: This translates to roughly $%.2f per year.\n" % yearly_projection)
+                recommendations.append("ðŸ—“ï¸ **Yearly projection**: This translates to roughly $%.2f per year.\n" % yearly_projection)
                 
                 # Add section about next steps
                 recommendations.append("\n## Next Steps\n\n")

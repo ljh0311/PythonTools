@@ -1,5 +1,9 @@
 import { api } from "./api.js";
-import { collectFiltersFromForm, inboxState } from "./inbox.js";
+import {
+  buildAiFilterPayload,
+  collectFiltersFromForm,
+  displayName,
+} from "./inbox.js";
 
 function escapeHtml(value) {
   return String(value)
@@ -17,16 +21,7 @@ function formatTime(iso) {
 
 function buildFilterPayload() {
   collectFiltersFromForm();
-  const { q, userIds, chatType, direction, topics, dateFrom, dateTo } = inboxState.filters;
-  return {
-    q: q || undefined,
-    user_ids: userIds.length ? userIds.join(",") : undefined,
-    chat_type: chatType || undefined,
-    direction: direction || undefined,
-    topics: topics || undefined,
-    date_from: dateFrom || undefined,
-    date_to: dateTo || undefined,
-  };
+  return buildAiFilterPayload();
 }
 
 function renderRedactionNotice(container, result) {
@@ -59,6 +54,88 @@ function renderOriginals(container, originals, visible) {
   container.appendChild(block);
 }
 
+function truncateText(text, max = 220) {
+  const value = String(text || "").trim();
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 1)}…`;
+}
+
+function providerBadge(provider) {
+  const normalized = provider || "none";
+  const cls =
+    normalized === "fallback"
+      ? "provider-badge provider-fallback"
+      : normalized === "ollama" || normalized === "gemini"
+        ? "provider-badge provider-ai"
+        : "provider-badge";
+  return `<span class="${cls}">via ${escapeHtml(normalized)}</span>`;
+}
+
+function renderMessageHighlights(messages = [], { title = "Recent messages" } = {}) {
+  if (!messages.length) return "";
+  return `
+    <section class="message-highlights" aria-label="${escapeHtml(title)}">
+      <div class="highlights-header">
+        <strong>${escapeHtml(title)}</strong>
+        <span class="highlights-count">${messages.length} shown</span>
+      </div>
+      <ul class="highlight-list">
+        ${messages
+          .map(
+            (item) => `
+          <li class="highlight-item highlight-${escapeHtml(item.direction || "incoming")}">
+            <div class="highlight-meta">
+              <strong>${escapeHtml(displayName(item))}</strong>
+              ${
+                item.chat_title
+                  ? `<span class="highlight-chat">${escapeHtml(item.chat_title)}</span>`
+                  : ""
+              }
+              <time>${formatTime(item.created_at)}</time>
+            </div>
+            <p class="highlight-text">${escapeHtml(truncateText(item.text))}</p>
+          </li>`
+          )
+          .join("")}
+      </ul>
+    </section>`;
+}
+
+function renderFallbackNotice() {
+  return `
+    <p class="fallback-notice">
+      AI is off or failed. Showing a short overview and recent messages instead of a full summary.
+    </p>`;
+}
+
+function renderDegradationNotice(result) {
+  if (!result?.degraded && !result?.failure_reason) return "";
+  const text = result.failure_reason || "Using fallback provider";
+  return `<p class="degradation-notice">${escapeHtml(text)}</p>`;
+}
+
+function renderSummaryBody(result) {
+  const isFallback = result.provider === "fallback";
+  const highlights = result.message_highlights || result.originals || [];
+
+  if (isFallback && highlights.length) {
+    return `
+      ${renderFallbackNotice()}
+      ${renderDegradationNotice(result)}
+      <p class="insight-lead">${escapeHtml(result.summary || "")}</p>
+      ${renderMessageHighlights(highlights)}`;
+  }
+
+  if (isFallback) {
+    return `
+      ${renderFallbackNotice()}
+      ${renderDegradationNotice(result)}
+      <p class="insight-lead">${escapeHtml(result.summary || "")}</p>`;
+  }
+
+  return `<p class="insight-text">${escapeHtml(result.summary || "")}</p>`;
+}
+
 function renderSummary(result) {
   const panel = document.getElementById("summary-panel");
   panel.hidden = false;
@@ -67,23 +144,35 @@ function renderSummary(result) {
       <strong>Filtered summary</strong>
       <span class="badge">${escapeHtml(result.summary_type || "brief")}</span>
       ${result.cached ? '<span class="badge">cached</span>' : ""}
+      ${providerBadge(result.provider)}
       <button type="button" class="btn btn-ghost btn-sm" id="copy-summary">Copy</button>
     </div>
-    <p class="insight-text">${escapeHtml(result.summary)}</p>
-    <p class="summary-meta">${result.message_count} messages · via ${escapeHtml(providerLabel(result))}</p>
-    ${providerNotice(result)}
-    <label class="toggle-originals">
+    ${renderDegradationNotice(result)}
+    ${
+      result.name_corrections?.length
+        ? `<p class="summary-corrections">Names corrected: ${result.name_corrections
+            .map((item) => `${escapeHtml(item.from)} → ${escapeHtml(item.to)}`)
+            .join(", ")}</p>`
+        : ""
+    }
+    ${renderSummaryBody(result)}
+    <p class="summary-meta">${result.message_count} messages</p>
+    ${
+      !result.message_highlights?.length && (result.originals || []).length
+        ? `<label class="toggle-originals">
       <input type="checkbox" id="toggle-originals" />
       View original messages
-    </label>`;
+    </label>`
+        : ""
+    }`;
 
   renderRedactionNotice(panel, result);
   renderOriginals(panel, result.originals || [], false);
 
-  panel.querySelector("#copy-summary").addEventListener("click", () => {
+  panel.querySelector("#copy-summary")?.addEventListener("click", () => {
     navigator.clipboard.writeText(result.summary).catch(() => {});
   });
-  panel.querySelector("#toggle-originals").addEventListener("change", (event) => {
+  panel.querySelector("#toggle-originals")?.addEventListener("change", (event) => {
     renderOriginals(panel, result.originals || [], event.target.checked);
   });
 }
@@ -92,30 +181,14 @@ function priorityClass(priority) {
   return `priority-${priority || "medium"}`;
 }
 
-function providerLabel(result) {
-  const provider = result.provider || "unknown";
-  if (provider === "fallback") {
-    return "basic (AI unavailable)";
-  }
-  return provider;
-}
-
-function providerNotice(result) {
-  if (result.provider !== "fallback") {
-    if (result.messages_total && result.messages_analyzed && result.messages_total > result.messages_analyzed) {
-      return `<p class="summary-meta">Analyzed latest ${result.messages_analyzed} of ${result.messages_total} messages.</p>`;
-    }
-    return "";
-  }
-  const reason =
-    result.fallback_reason ||
-    "Configure GEMINI_API_KEY or run Ollama locally for AI-generated summaries and reply drafts.";
-  return `<p class="provider-warning">${escapeHtml(reason)}</p>`;
-}
-
 function statusBadge(status) {
   if (!status || status === "pending") return "";
   return `<span class="badge status-${status}">${escapeHtml(status)}</span>`;
+}
+
+function renderTruncationNotice(result) {
+  if (!result.truncated_for_ai) return "";
+  return `<p class="summary-meta">Analyzed ${result.messages_analyzed} of ${result.messages_total} filtered messages (most recent).</p>`;
 }
 
 function renderSuggestions(result, onSent) {
@@ -123,13 +196,19 @@ function renderSuggestions(result, onSent) {
   panel.hidden = false;
 
   const suggestions = (result.suggestions || []).filter((item) => item.status !== "dismissed");
+  const isFallback = result.provider === "fallback";
   panel.innerHTML = `
     <div class="insight-header">
       <strong>Suggested actions</strong>
-      <span class="summary-meta">via ${escapeHtml(providerLabel(result))}</span>
+      ${providerBadge(result.provider)}
     </div>
-    ${providerNotice(result)}
-    <p class="insight-text">${escapeHtml(result.summary || "")}</p>
+    ${renderTruncationNotice(result)}
+    ${renderDegradationNotice(result)}
+    ${
+      isFallback
+        ? `${renderFallbackNotice()}<p class="insight-lead">${escapeHtml(result.summary || "")}</p>${renderMessageHighlights(result.message_highlights || [])}`
+        : `<p class="insight-text">${escapeHtml(result.summary || "")}</p>`
+    }
     <div class="suggestion-cards">
       ${
         suggestions.length
@@ -225,9 +304,64 @@ function renderSuggestions(result, onSent) {
   });
 }
 
+function renderIntelSection(title, text, tone = "default") {
+  return `
+    <section class="intel-section intel-${escapeHtml(tone)}">
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(text || "No summary available.")}</p>
+    </section>`;
+}
+
+function renderIntel(result) {
+  const panel = document.getElementById("intel-panel");
+  const summaryPanel = document.getElementById("summary-panel");
+  const suggestionsPanel = document.getElementById("suggestions-panel");
+  if (summaryPanel) summaryPanel.hidden = true;
+  if (suggestionsPanel) suggestionsPanel.hidden = true;
+  panel.hidden = false;
+  const isFallback = result.provider === "fallback";
+  panel.innerHTML = `
+    <div class="insight-header">
+      <strong>Conversation intel</strong>
+      ${providerBadge(result.provider)}
+    </div>
+    ${renderTruncationNotice(result)}
+    ${renderDegradationNotice(result)}
+    ${isFallback ? renderFallbackNotice() : ""}
+    ${renderIntelSection("What people talked about", result.topics_summary)}
+    ${renderIntelSection("What people felt", result.sentiment_summary, "sentiment")}
+    ${renderIntelSection("What they need from you", result.needs_summary, "needs")}
+    ${
+      result.key_points?.length
+        ? `<section class="intel-section">
+            <h3>Key points</h3>
+            <ul class="intel-points">
+              ${result.key_points.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+            </ul>
+          </section>`
+        : ""
+    }
+    ${isFallback ? renderMessageHighlights(result.message_highlights || []) : ""}
+    <p class="summary-meta">${escapeHtml(String(result.message_count || 0))} messages</p>
+    <button type="button" class="btn btn-ghost btn-sm" id="copy-intel">Copy</button>`;
+
+  renderRedactionNotice(panel, result);
+  panel.querySelector("#copy-intel")?.addEventListener("click", () => {
+    const lines = [
+      "Conversation intel",
+      `What people talked about: ${result.topics_summary || ""}`,
+      `What people felt: ${result.sentiment_summary || ""}`,
+      `What they need from you: ${result.needs_summary || ""}`,
+      ...(result.key_points?.length ? ["Key points:", ...result.key_points.map((item) => `- ${item}`)] : []),
+    ];
+    navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
+  });
+}
+
 export function bindInsights(onError, onSent = () => {}) {
   document.getElementById("btn-summarize").addEventListener("click", async () => {
     const panel = document.getElementById("summary-panel");
+    document.getElementById("intel-panel").hidden = true;
     const summaryType = document.getElementById("summary-type").value;
     panel.hidden = false;
     panel.innerHTML = `<p class="summary-loading">Generating summary…</p>`;
@@ -242,11 +376,25 @@ export function bindInsights(onError, onSent = () => {}) {
 
   document.getElementById("btn-suggest").addEventListener("click", async () => {
     const panel = document.getElementById("suggestions-panel");
+    document.getElementById("intel-panel").hidden = true;
     panel.hidden = false;
     panel.innerHTML = `<p class="summary-loading">Generating suggestions…</p>`;
     try {
       const result = await api.suggestActions(buildFilterPayload());
       renderSuggestions(result, onSent);
+    } catch (error) {
+      panel.innerHTML = `<p class="error-text">${escapeHtml(error.message)}</p>`;
+      onError(error.message);
+    }
+  });
+
+  document.getElementById("btn-intel").addEventListener("click", async () => {
+    const panel = document.getElementById("intel-panel");
+    panel.hidden = false;
+    panel.innerHTML = `<p class="summary-loading">Analyzing conversation intel…</p>`;
+    try {
+      const result = await api.getConversationIntel(buildFilterPayload());
+      renderIntel(result);
     } catch (error) {
       panel.innerHTML = `<p class="error-text">${escapeHtml(error.message)}</p>`;
       onError(error.message);

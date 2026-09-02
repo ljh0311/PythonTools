@@ -1,6 +1,6 @@
 {
   "Getgo": {"mileage_rate": 0.39, "hour_rate": 8, "pricing_type": "mileage"},
-  "Getgo EV": {"mileage_rate": 0.35, "hour_rate": 9, "pricing_type": "mileage"},
+  "Getgo(EV)": {"mileage_rate": 0.35, "hour_rate": 9, "pricing_type": "mileage"},
   "Tribecar": {"usual_fuel_amount": 20, "hour_rate": 8.5, "pricing_type": "fuel"},
   "Car Club": {"mileage_rate": 0.3, "hour_rate": 9.5, "pricing_type": "mileage"},
   "Econ": {"usual_fuel_amount": 15, "hour_rate": 7.5, "pricing_type": "fuel"},

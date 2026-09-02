@@ -1,17 +1,20 @@
 import React from 'react';
-import { Box, Button, Typography, Switch, FormControlLabel, Paper, Tooltip } from '@mui/material';
+import { Box, Button, Typography, Switch, FormControlLabel, Paper, Tooltip, CircularProgress } from '@mui/material';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import StopIcon from '@mui/icons-material/Stop';
 
 export default function RecordingControls({
   isRecording,
+  recordingBusy = false,
+  motionDetectionEnabled,
   motionTriggered,
   onToggleRecording,
+  onToggleMotionDetection,
   onToggleMotionTriggered,
   apiReachable = true,
   disabled = false,
 }) {
-  const blocked = disabled || !apiReachable;
+  const blocked = disabled || !apiReachable || recordingBusy;
 
   return (
     <Paper
@@ -25,35 +28,66 @@ export default function RecordingControls({
       }}
     >
       <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-        Recording
+        Recording & motion
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         {blocked
           ? 'Connect the API to control recording from the dashboard.'
-          : 'Toggle recording on all active camera feeds.'}
+          : 'Motion detection shows the live pill on feeds. Motion triggered only auto-starts recording.'}
       </Typography>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-        <Tooltip title={blocked ? 'API required' : isRecording ? 'Stop all recordings' : 'Start recording on all cameras'}>
+        <Tooltip
+          title={
+            blocked && recordingBusy
+              ? 'Stopping recordings…'
+              : blocked
+                ? 'API required'
+                : isRecording
+                  ? 'Stop all recordings'
+                  : 'Start recording on all cameras'
+          }
+        >
           <span>
             <Button
               variant={isRecording ? 'contained' : 'outlined'}
               color={isRecording ? 'error' : 'primary'}
               disabled={blocked}
-              startIcon={isRecording ? <StopIcon /> : <FiberManualRecordIcon />}
+              startIcon={
+                recordingBusy ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : isRecording ? (
+                  <StopIcon />
+                ) : (
+                  <FiberManualRecordIcon />
+                )
+              }
               onClick={onToggleRecording}
             >
-              {isRecording ? 'Stop all' : 'Record all'}
+              {recordingBusy ? 'Please wait…' : isRecording ? 'Stop all' : 'Record all'}
             </Button>
           </span>
         </Tooltip>
 
-        <Tooltip title="Motion-triggered recording is configured on the server">
+        <Tooltip title="Shows the Motion pill on feeds, snapshots, and alerts">
+          <FormControlLabel
+            control={
+              <Switch
+                checked={motionDetectionEnabled}
+                onChange={(e) => onToggleMotionDetection?.(e.target.checked)}
+                disabled={blocked}
+              />
+            }
+            label="Motion detection"
+          />
+        </Tooltip>
+
+        <Tooltip title="Automatically start recording when motion is detected (requires motion detection)">
           <FormControlLabel
             control={
               <Switch
                 checked={motionTriggered}
                 onChange={(e) => onToggleMotionTriggered?.(e.target.checked)}
-                disabled={blocked || isRecording}
+                disabled={blocked || isRecording || !motionDetectionEnabled}
               />
             }
             label="Motion triggered"

@@ -1,0 +1,173 @@
+[
+  {
+    "session_id": "20260619_174942_f25277",
+    "camera_id": "webcam_0",
+    "started_at": 1781862582.039842,
+    "ended_at": 1781862584.8417296,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_174942_f25277_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_174942_f25277_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_174942_f25277"
+  },
+  {
+    "session_id": "20260619_175322_415c60",
+    "camera_id": "webcam_0",
+    "started_at": 1781862802.3477263,
+    "ended_at": 1781862810.1338706,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_175322_415c60_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_175322_415c60_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_175322_415c60"
+  },
+  {
+    "session_id": "20260619_175331_7fd382",
+    "camera_id": "webcam_0",
+    "started_at": 1781862811.0297928,
+    "ended_at": 1781862813.1197166,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_175331_7fd382_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_175331_7fd382_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_175331_7fd382"
+  },
+  {
+    "session_id": "20260619_175508_27ca78",
+    "camera_id": "webcam_0",
+    "started_at": 1781862908.2499683,
+    "ended_at": 1781862910.2532997,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_175508_27ca78_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_175508_27ca78_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_175508_27ca78"
+  },
+  {
+    "session_id": "20260619_183440_d6e559",
+    "camera_id": "webcam_0",
+    "started_at": 1781865280.4860728,
+    "ended_at": 1781865291.356972,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_183440_d6e559_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_183440_d6e559_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_183440_d6e559"
+  },
+  {
+    "session_id": "20260619_183549_2f20ea",
+    "camera_id": "webcam_0",
+    "started_at": 1781865349.5366254,
+    "ended_at": 1781865351.6458135,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_183549_2f20ea_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_183549_2f20ea_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_183549_2f20ea"
+  },
+  {
+    "session_id": "20260619_183811_c73b11",
+    "camera_id": "webcam_0",
+    "started_at": 1781865491.8140235,
+    "ended_at": 1781865507.7996202,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_183811_c73b11_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_183811_c73b11_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_183811_c73b11"
+  },
+  {
+    "session_id": "20260619_183839_c4206b",
+    "camera_id": "webcam_0",
+    "started_at": 1781865519.7059119,
+    "ended_at": 1781865522.2051969,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_183839_c4206b_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_183839_c4206b_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_183839_c4206b"
+  },
+  {
+    "session_id": "20260619_183842_66449a",
+    "camera_id": "webcam_0",
+    "started_at": 1781865522.5664878,
+    "ended_at": 1781865527.9769926,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_183842_66449a_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_183842_66449a_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_183842_66449a"
+  },
+  {
+    "session_id": "20260619_183915_ff331f",
+    "camera_id": "webcam_0",
+    "started_at": 1781865555.9095564,
+    "ended_at": 1781865563.173839,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_183915_ff331f_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_183915_ff331f_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_183915_ff331f"
+  },
+  {
+    "session_id": "20260619_183946_92fc26",
+    "camera_id": "webcam_0",
+    "started_at": 1781865586.4690483,
+    "ended_at": 1781865589.6687677,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260619_183946_92fc26_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260619_183946_92fc26_last.jpg",
+    "label": "webcam_0 \u00b7 20260619_183946_92fc26"
+  },
+  {
+    "session_id": "20260720_120733_ab16f4",
+    "camera_id": "webcam_0",
+    "started_at": 1784520453.0958028,
+    "ended_at": 1784520461.8242698,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260720_120733_ab16f4_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260720_120733_ab16f4_last.jpg",
+    "label": "webcam_0 \u00b7 20260720_120733_ab16f4"
+  },
+  {
+    "session_id": "20260720_120742_076e3e",
+    "camera_id": "webcam_0",
+    "started_at": 1784520462.2331686,
+    "ended_at": 1784520466.7906013,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260720_120742_076e3e_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260720_120742_076e3e_last.jpg",
+    "label": "webcam_0 \u00b7 20260720_120742_076e3e"
+  },
+  {
+    "session_id": "20260720_120800_990fd3",
+    "camera_id": "webcam_0",
+    "started_at": 1784520480.825201,
+    "ended_at": 1784520485.1975734,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260720_120800_990fd3_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260720_120800_990fd3_last.jpg",
+    "label": "webcam_0 \u00b7 20260720_120800_990fd3"
+  },
+  {
+    "session_id": "20260720_120810_04b095",
+    "camera_id": "webcam_0",
+    "started_at": 1784520490.8934145,
+    "ended_at": 1784520494.909702,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260720_120810_04b095_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260720_120810_04b095_last.jpg",
+    "label": "webcam_0 \u00b7 20260720_120810_04b095"
+  },
+  {
+    "session_id": "20260720_120815_47aa43",
+    "camera_id": "webcam_0",
+    "started_at": 1784520496.001575,
+    "ended_at": 1784520509.2711852,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260720_120815_47aa43_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260720_120815_47aa43_last.jpg",
+    "label": "webcam_0 \u00b7 20260720_120815_47aa43"
+  },
+  {
+    "session_id": "20260720_144945_11a620",
+    "camera_id": "webcam_0",
+    "started_at": 1784530185.261051,
+    "ended_at": 1784530208.0198932,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260720_144945_11a620_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260720_144945_11a620_last.jpg",
+    "label": "webcam_0 \u00b7 20260720_144945_11a620"
+  },
+  {
+    "session_id": "20260720_144945_17a3b8",
+    "camera_id": "webcam_1",
+    "started_at": 1784530186.0682673,
+    "ended_at": 1784530203.3751802,
+    "first_snapshot": "snapshots/motion/webcam_1_evt_20260720_144945_17a3b8_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_1_evt_20260720_144945_17a3b8_last.jpg",
+    "label": "webcam_1 \u00b7 20260720_144945_17a3b8"
+  },
+  {
+    "session_id": "20260720_145018_6fa291",
+    "camera_id": "webcam_0",
+    "started_at": 1784530218.6297302,
+    "ended_at": 1784530232.6437473,
+    "first_snapshot": "snapshots/motion/webcam_0_evt_20260720_145018_6fa291_first.jpg",
+    "last_snapshot": "snapshots/motion/webcam_0_evt_20260720_145018_6fa291_last.jpg",
+    "label": "webcam_0 \u00b7 20260720_145018_6fa291"
+  }
+]

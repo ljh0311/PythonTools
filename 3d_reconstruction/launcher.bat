@@ -3,20 +3,20 @@ chcp 65001 >nul
 echo Starting 3D Reconstruction Launcher...
 echo.
 
-REM Check if Python is installed
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo Error: Python is not installed or not in PATH
-    echo Please install Python 3.7 or higher and try again
+REM Change to the script directory
+cd /d "%~dp0"
+
+REM Use project-local virtual environment
+set "PYTHON_EXE=%~dp0venv\Scripts\python.exe"
+if not exist "%PYTHON_EXE%" (
+    echo Error: Project virtual environment not found.
+    echo Run setup_venv.bat first to create it.
     pause
     exit /b 1
 )
 
-REM Change to the script directory
-cd /d "%~dp0"
-
 REM Launch the basic launcher GUI
-python src\basic_launcher_gui.py
+"%PYTHON_EXE%" src\basic_launcher_gui.py
 
 if errorlevel 1 (
     echo.

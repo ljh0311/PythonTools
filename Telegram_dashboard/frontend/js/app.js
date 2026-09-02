@@ -1,9 +1,23 @@
 import { api, connectWebSocket, ensureAuthenticated } from "./api.js";
 import { renderCommandChart } from "./chart.js";
+import {
+  renderSetupWarnings,
+  renderTopbarStatus,
+  setConnectionStatus,
+  updateSendFormAvailability,
+} from "./connection-status.js";
+import {
+  loadComposeRecipients,
+  readComposeTarget,
+  resolveChatTarget,
+  setComposeTarget,
+} from "./compose.js";
 import { bindInsights } from "./insights.js";
-import { bindInbox, loadInbox, renderUserFilter } from "./inbox.js";
+import { bindInbox, loadInbox, loadTopicSuggestions, refreshInboxEmptyStateIfNeeded, renderUserFilter, runTopicBackfill, setOperatorUser } from "./inbox.js";
 import { initTheme } from "./theme.js";
 import { initNavigation } from "./navigation.js";
+import { initSidebar } from "./sidebar.js";
+import { bindDevNotify } from "./dev-notify.js";
 import { bindWorkflow, loadWorkflowSettings } from "./workflow.js";
 
 const state = {
@@ -80,15 +94,14 @@ function renderQuickActions(actions = []) {
     button.addEventListener("click", async (event) => {
       const row = event.target.closest(".action-row");
       const command = row.querySelector(".action-command").value.trim();
-      const chatId =
-        document.getElementById("chat-id")?.value.trim() ||
-        document.getElementById("chat-id-tools")?.value.trim();
-      if (!chatId) {
-        showToast("Enter a chat ID in Inbox or Tools before running a quick action.");
+      const chatTarget =
+        readComposeTarget("chat-id") || readComposeTarget("chat-id-tools");
+      if (!chatTarget) {
+        showToast("Pick @username or a chat before running a quick action.");
         return;
       }
       try {
-        await api.sendMessage(chatId, command);
+        await api.sendMessage(chatTarget, command);
         showToast(`Sent ${command}`);
         await refreshDashboard();
       } catch (error) {
@@ -125,16 +138,18 @@ function escapeHtml(value) {
 
 function prefillReply(chatId) {
   state.nav?.showView("inbox");
-  for (const id of ["chat-id", "chat-id-tools"]) {
-    const field = document.getElementById(id);
-    if (field) field.value = chatId;
-  }
+  setComposeTarget(chatId);
   document.getElementById("message-text")?.focus();
   document.querySelector(".compose-bar")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  showToast(`Chat ID ${chatId} ready for reply.`);
+  const display = document.getElementById("chat-id")?.value || chatId;
+  showToast(`Reply to ${display} ready.`);
 }
 
-async function submitSend(chatId, text, clearFields = []) {
+async function submitSend(chatTarget, text, clearFields = []) {
+  const chatId = resolveChatTarget(chatTarget);
+  if (!chatId) {
+    throw new Error("Pick @username or a chat from the list.");
+  }
   await api.sendMessage(chatId, text);
   clearFields.forEach((id) => {
     const el = document.getElementById(id);
@@ -145,6 +160,13 @@ async function submitSend(chatId, text, clearFields = []) {
 }
 
 async function refreshDashboard() {
+  const [userAccountStatus, setupStatus] = await Promise.all([
+    api.getUserAccountStatus(),
+    api.getSetupStatus(),
+  ]);
+  setOperatorUser(userAccountStatus.user);
+  renderSetupWarnings(setupStatus.warnings);
+
   const [metrics, users, , , events, analytics, quickActions, botStatus] =
     await Promise.all([
       api.getMetrics(),
@@ -155,6 +177,8 @@ async function refreshDashboard() {
       api.getAnalytics(),
       api.getQuickActions(),
       api.getBotStatus(),
+      loadComposeRecipients(),
+      loadTopicSuggestions(),
     ]);
 
   renderMetrics(metrics);
@@ -163,14 +187,10 @@ async function refreshDashboard() {
   renderCommandChart(document.getElementById("command-chart"), analytics);
   renderQuickActions(quickActions);
 
-  const status = document.getElementById("bot-status");
-  if (botStatus.configured && botStatus.bot) {
-    status.textContent = `Connected as @${botStatus.bot.username}`;
-  } else if (botStatus.configured) {
-    status.textContent = "Bot token configured, unable to verify bot.";
-  } else {
-    status.textContent = "Telegram bot token not configured.";
-  }
+  setConnectionStatus(botStatus, userAccountStatus);
+  renderTopbarStatus();
+  updateSendFormAvailability();
+  refreshInboxEmptyStateIfNeeded();
 }
 
 function bindForms() {
@@ -180,13 +200,13 @@ function bindForms() {
 
   document.getElementById("send-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const chatId = document.getElementById("chat-id").value.trim();
+    const chatTarget = document.getElementById("chat-id").value.trim();
     const text = document.getElementById("message-text").value.trim();
     try {
-      await submitSend(chatId, text, ["message-text"]);
+      await submitSend(chatTarget, text, ["message-text"]);
       const toolsMsg = document.getElementById("message-text-tools");
       if (toolsMsg) toolsMsg.value = "";
-      document.getElementById("chat-id-tools").value = chatId;
+      setComposeTarget(resolveChatTarget(chatTarget) || chatTarget, ["chat-id-tools"]);
     } catch (error) {
       showToast(error.message);
     }
@@ -194,11 +214,30 @@ function bindForms() {
 
   document.getElementById("send-form-tools")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const chatId = document.getElementById("chat-id-tools").value.trim();
+    const chatTarget = document.getElementById("chat-id-tools").value.trim();
     const text = document.getElementById("message-text-tools").value.trim();
     try {
-      await submitSend(chatId, text, ["message-text-tools"]);
-      document.getElementById("chat-id").value = chatId;
+      await submitSend(chatTarget, text, ["message-text-tools"]);
+      setComposeTarget(resolveChatTarget(chatTarget) || chatTarget, ["chat-id"]);
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  document.getElementById("send-form-user")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const chatTarget = document.getElementById("chat-id-user").value.trim();
+    const text = document.getElementById("message-text-user").value.trim();
+    const chatId = resolveChatTarget(chatTarget);
+    if (!chatId) {
+      showToast("Pick @username or a chat from the list.");
+      return;
+    }
+    try {
+      await api.sendUserMessage(chatId, text);
+      document.getElementById("message-text-user").value = "";
+      showToast("Sent from your personal account.");
+      await refreshDashboard();
     } catch (error) {
       showToast(error.message);
     }
@@ -243,7 +282,8 @@ function handleRealtime(message) {
   if (
     event === "reply_mode_updated" ||
     event === "chat_reply_updated" ||
-    event === "chat_relationship_updated"
+    event === "chat_relationship_updated" ||
+    event === "chat_profile_learned"
   ) {
     loadWorkflowSettings().catch(() => {});
   }
@@ -258,10 +298,30 @@ async function init() {
   if (!authed) return;
 
   initTheme();
-  state.nav = initNavigation();
+  const sidebar = initSidebar();
+  state.nav = initNavigation(() => sidebar.closeSidebar());
   bindForms();
-  bindInbox(prefillReply, (error) => showToast(error.message));
+  bindDevNotify(
+    (message) => showToast(message),
+    () => refreshDashboard()
+  );
+  bindInbox(
+    prefillReply,
+    (error) => showToast(error.message),
+    (message) => showToast(message),
+    {
+      onOpenTools: () => state.nav?.showView("tools"),
+      onRefresh: () => refreshDashboard().catch((error) => showToast(error.message)),
+    }
+  );
   bindWorkflow((message) => showToast(message), (error) => showToast(error));
+
+  document.getElementById("workflow-generate-tags")?.addEventListener("click", () => {
+    runTopicBackfill({
+      onError: (error) => showToast(error.message || String(error)),
+      onNotify: showToast,
+    }).catch((error) => showToast(error.message || String(error)));
+  });
   bindInsights(
     (error) => showToast(error),
     (message) => showToast(message || "Suggestion updated.")

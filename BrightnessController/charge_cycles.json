@@ -1,1 +1,593 @@
-{"charge_cycles": [{"start": "2025-06-26T17:07:39.880681", "end": "2025-06-26T17:33:28.064227", "duration": 25.8030591, "percent": 99, "start_percent": 95, "percent_change": 4, "rate_per_hour": 9.30122273757843}], "discharge_cycles": [{"start": "2025-06-14T22:24:46.289767", "end": "2025-06-14T22:27:27.888221", "duration": 2.693307566666667, "percent": 32, "start_percent": 39, "percent_change": -7, "rate_per_hour": -155.94208593109434}, {"start": "2025-06-15T14:27:29.042262", "end": "2025-06-15T15:04:15.781862", "duration": 36.77899333333333, "percent": 70, "start_percent": 95, "percent_change": -25, "rate_per_hour": -40.78415051780464}, {"start": "2025-06-20T22:04:56.210270", "end": "2025-06-20T22:09:50.352894", "duration": 4.902377066666667, "percent": 77, "start_percent": 84, "percent_change": -7, "rate_per_hour": -85.6727245351561}, {"start": "2025-06-26T14:37:22.242358", "end": "2025-06-26T15:27:52.804701", "duration": 50.509372383333336, "percent": 5, "start_percent": 94, "percent_change": -89, "rate_per_hour": -105.72295294965987}, {"start": "2025-07-07T00:23:13.042169", "end": "2025-07-07T00:53:23.525119", "duration": 30.174715833333334, "percent": 25, "start_percent": 82, "percent_change": -57, "rate_per_hour": -113.33992402413952}, {"start": "2025-07-11T16:45:52.088340", "end": "2025-07-11T16:46:33.760865", "duration": 0.6945420833333333, "percent": 16, "start_percent": 17, "percent_change": -1, "rate_per_hour": -86.38785386774619}, {"start": "2025-07-29T15:59:20.909428", "end": "2025-07-29T16:24:40.388810", "duration": 25.324656366666666, "percent": 35, "start_percent": 86, "percent_change": -51, "rate_per_hour": -120.83085968454425}, {"start": "2026-01-20T22:42:49.465780", "end": "2026-01-20T23:12:34.619520", "duration": 29.752562333333334, "percent": 8, "start_percent": 72, "percent_change": -64, "rate_per_hour": -129.06451407372901}, {"start": "2026-01-24T10:24:21.506396", "end": "2026-01-24T10:45:59.266650", "duration": 21.629337566666667, "percent": 15, "start_percent": 55, "percent_change": -40, "rate_per_hour": -110.96040239802258}, {"start": "2026-01-25T20:47:54.007627", "end": "2026-01-25T20:54:34.356002", "duration": 6.672472916666666, "percent": 47, "start_percent": 60, "percent_change": -13, "rate_per_hour": -116.89818898353217}, {"start": "2026-01-29T10:27:48.842756", "end": "2026-01-29T10:47:37.782397", "duration": 19.81566068333333, "percent": 24, "start_percent": 65, "percent_change": -41, "rate_per_hour": -124.1442331553987}, {"start": "2026-02-01T21:34:26.426746", "end": "2026-02-01T21:43:55.056514", "duration": 9.4771628, "percent": 26, "start_percent": 43, "percent_change": -17, "rate_per_hour": -107.62714765224884}, {"start": "2026-02-08T18:27:06.169678", "end": "2026-02-08T18:29:06.010413", "duration": 1.9973455833333333, "percent": 22, "start_percent": 28, "percent_change": -6, "rate_per_hour": -180.2392149881257}], "charge_thresholds": {"80": {"times": [], "average": 0}, "85": {"times": [], "average": 0}, "90": {"times": [], "average": 0}, "95": {"times": [], "average": 0}, "100": {"times": [], "average": 0}}, "discharge_thresholds": {"20": {"times": [18.925670370833334, 41.99655681310862, 24.173956895833335, 18.925670370833334, 41.99655681310862, 24.173956895833335, 18.925670370833334, 41.99655681310862, 24.173956895833335, 18.925670370833334], "average": 27.42142226101592}, "15": {"times": [21.629337566666667, 44.83416200318352, 26.498375828125, 21.629337566666667, 44.83416200318352, 26.498375828125, 21.629337566666667, 44.83416200318352, 26.498375828125, 21.629337566666667], "average": 30.051496376059227}, "10": {"times": [47.671767193258425, 28.822794760416667, 47.671767193258425, 28.822794760416667, 47.671767193258425, 28.822794760416667, 47.671767193258425, 28.822794760416667, 47.671767193258425, 28.822794760416667], "average": 38.247280976837544}, "5": {"times": [50.509372383333336, 50.509372383333336, 50.509372383333336, 50.509372383333336, 50.509372383333336, 50.509372383333336, 50.509372383333336, 50.509372383333336, 50.509372383333336, 50.509372383333336], "average": 50.509372383333336}, "0": {"times": [], "average": 0}}, "charge_range_stats": {"0-49": {"cycles": [], "avg_rate": 0, "avg_time": 0}, "50-79": {"cycles": [], "avg_rate": 0, "avg_time": 0}, "80-100": {"cycles": [{"start_percent": 95, "end_percent": 99, "duration": 25.8030591, "rate_per_hour": 9.30122273757843}], "avg_rate": 9.30122273757843, "avg_time": 25.8030591}}}
+{
+  "charge_cycles": [
+    {
+      "start": "2025-06-26T17:07:39.880681",
+      "end": "2025-06-26T17:33:28.064227",
+      "duration": 25.8030591,
+      "percent": 99,
+      "start_percent": 95,
+      "percent_change": 4,
+      "rate_per_hour": 9.30122273757843
+    },
+    {
+      "start": "2026-07-05T16:56:57.029446",
+      "end": "2026-07-05T16:57:57.030377",
+      "duration": 1.0000155166666667,
+      "percent": 79,
+      "start_percent": 79,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-13T16:43:11.595172",
+      "end": "2026-07-13T16:43:41.595775",
+      "duration": 0.50001005,
+      "percent": 72,
+      "start_percent": 72,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-13T16:44:05.274299",
+      "end": "2026-07-13T16:50:05.282721",
+      "duration": 6.000140366666667,
+      "percent": 72,
+      "start_percent": 72,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-20T10:49:32.711813",
+      "end": "2026-07-20T10:50:02.712264",
+      "duration": 0.5000075166666667,
+      "percent": 80,
+      "start_percent": 80,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-20T10:50:22.382696",
+      "end": "2026-07-20T11:11:22.416665",
+      "duration": 21.00056615,
+      "percent": 80,
+      "start_percent": 80,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-20T11:13:06.074887",
+      "end": "2026-07-20T11:13:06.074893",
+      "duration": 1.0000000000000001e-07,
+      "percent": 80,
+      "start_percent": 80,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-20T11:13:23.421697",
+      "end": "2026-07-20T12:02:53.549472",
+      "duration": 49.502129583333335,
+      "percent": 80,
+      "start_percent": 80,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-21T15:42:49.683287",
+      "end": "2026-07-21T15:42:49.683295",
+      "duration": 1.3333333333333334e-07,
+      "percent": 80,
+      "start_percent": 80,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-21T15:42:57.837137",
+      "end": "2026-07-21T15:50:27.848365",
+      "duration": 7.500187133333333,
+      "percent": 80,
+      "start_percent": 80,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-21T15:50:44.895756",
+      "end": "2026-07-21T15:52:44.897479",
+      "duration": 2.000028716666667,
+      "percent": 80,
+      "start_percent": 80,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-21T16:48:54.596300",
+      "end": "2026-07-21T16:53:24.604813",
+      "duration": 4.500141883333333,
+      "percent": 50,
+      "start_percent": 48,
+      "percent_change": 2,
+      "rate_per_hour": 26.66582590305218
+    },
+    {
+      "start": "2026-07-21T16:53:33.859448",
+      "end": "2026-07-21T17:32:33.977699",
+      "duration": 39.00197085,
+      "percent": 72,
+      "start_percent": 50,
+      "percent_change": 22,
+      "rate_per_hour": 33.84444353021714
+    },
+    {
+      "start": "2026-07-28T09:29:50.470872",
+      "end": "2026-07-28T10:56:20.709629",
+      "duration": 86.50397928333334,
+      "percent": 72,
+      "start_percent": 11,
+      "percent_change": 61,
+      "rate_per_hour": 42.31019232088864
+    },
+    {
+      "start": "2026-07-28T11:37:01.163600",
+      "end": "2026-07-28T13:54:31.981202",
+      "duration": 137.51362669999997,
+      "percent": 80,
+      "start_percent": 37,
+      "percent_change": 43,
+      "rate_per_hour": 18.761777010132484,
+      "plateau_percent": 80,
+      "is_trickle_full": true
+    },
+    {
+      "start": "2026-07-28T14:25:02.163698",
+      "end": "2026-07-28T16:31:04.305863",
+      "duration": 126.03570275,
+      "percent": 80,
+      "start_percent": 30,
+      "percent_change": 50,
+      "rate_per_hour": 23.802779169254087,
+      "plateau_percent": 80,
+      "is_trickle_full": true
+    },
+    {
+      "start": "2026-07-29T19:34:58.023507",
+      "end": "2026-07-29T20:50:28.116968",
+      "duration": 75.50155768333335,
+      "percent": 80,
+      "start_percent": 29,
+      "percent_change": 51,
+      "rate_per_hour": 40.528965148430075
+    },
+    {
+      "start": "2026-08-11T14:34:37.929094",
+      "end": "2026-08-11T14:34:37.929092",
+      "duration": 0.0,
+      "percent": 100,
+      "start_percent": 100,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    }
+  ],
+  "discharge_cycles": [
+    {
+      "start": "2025-06-14T22:24:46.289767",
+      "end": "2025-06-14T22:27:27.888221",
+      "duration": 2.693307566666667,
+      "percent": 32,
+      "start_percent": 39,
+      "percent_change": -7,
+      "rate_per_hour": -155.94208593109434
+    },
+    {
+      "start": "2025-06-15T14:27:29.042262",
+      "end": "2025-06-15T15:04:15.781862",
+      "duration": 36.77899333333333,
+      "percent": 70,
+      "start_percent": 95,
+      "percent_change": -25,
+      "rate_per_hour": -40.78415051780464
+    },
+    {
+      "start": "2025-06-20T22:04:56.210270",
+      "end": "2025-06-20T22:09:50.352894",
+      "duration": 4.902377066666667,
+      "percent": 77,
+      "start_percent": 84,
+      "percent_change": -7,
+      "rate_per_hour": -85.6727245351561
+    },
+    {
+      "start": "2025-06-26T14:37:22.242358",
+      "end": "2025-06-26T15:27:52.804701",
+      "duration": 50.509372383333336,
+      "percent": 5,
+      "start_percent": 94,
+      "percent_change": -89,
+      "rate_per_hour": -105.72295294965987
+    },
+    {
+      "start": "2025-07-07T00:23:13.042169",
+      "end": "2025-07-07T00:53:23.525119",
+      "duration": 30.174715833333334,
+      "percent": 25,
+      "start_percent": 82,
+      "percent_change": -57,
+      "rate_per_hour": -113.33992402413952
+    },
+    {
+      "start": "2025-07-11T16:45:52.088340",
+      "end": "2025-07-11T16:46:33.760865",
+      "duration": 0.6945420833333333,
+      "percent": 16,
+      "start_percent": 17,
+      "percent_change": -1,
+      "rate_per_hour": -86.38785386774619
+    },
+    {
+      "start": "2025-07-29T15:59:20.909428",
+      "end": "2025-07-29T16:24:40.388810",
+      "duration": 25.324656366666666,
+      "percent": 35,
+      "start_percent": 86,
+      "percent_change": -51,
+      "rate_per_hour": -120.83085968454425
+    },
+    {
+      "start": "2026-01-20T22:42:49.465780",
+      "end": "2026-01-20T23:12:34.619520",
+      "duration": 29.752562333333334,
+      "percent": 8,
+      "start_percent": 72,
+      "percent_change": -64,
+      "rate_per_hour": -129.06451407372901
+    },
+    {
+      "start": "2026-01-24T10:24:21.506396",
+      "end": "2026-01-24T10:45:59.266650",
+      "duration": 21.629337566666667,
+      "percent": 15,
+      "start_percent": 55,
+      "percent_change": -40,
+      "rate_per_hour": -110.96040239802258
+    },
+    {
+      "start": "2026-01-25T20:47:54.007627",
+      "end": "2026-01-25T20:54:34.356002",
+      "duration": 6.672472916666666,
+      "percent": 47,
+      "start_percent": 60,
+      "percent_change": -13,
+      "rate_per_hour": -116.89818898353217
+    },
+    {
+      "start": "2026-01-29T10:27:48.842756",
+      "end": "2026-01-29T10:47:37.782397",
+      "duration": 19.81566068333333,
+      "percent": 24,
+      "start_percent": 65,
+      "percent_change": -41,
+      "rate_per_hour": -124.1442331553987
+    },
+    {
+      "start": "2026-02-01T21:34:26.426746",
+      "end": "2026-02-01T21:43:55.056514",
+      "duration": 9.4771628,
+      "percent": 26,
+      "start_percent": 43,
+      "percent_change": -17,
+      "rate_per_hour": -107.62714765224884
+    },
+    {
+      "start": "2026-02-08T18:27:06.169678",
+      "end": "2026-02-08T18:29:06.010413",
+      "duration": 1.9973455833333333,
+      "percent": 22,
+      "start_percent": 28,
+      "percent_change": -6,
+      "rate_per_hour": -180.2392149881257
+    },
+    {
+      "start": "2026-07-05T16:58:27.036740",
+      "end": "2026-07-05T17:08:36.532758",
+      "duration": 10.158266966666668,
+      "percent": 69,
+      "start_percent": 78,
+      "percent_change": -9,
+      "rate_per_hour": -53.158673794649786
+    },
+    {
+      "start": "2026-07-21T15:53:15.038317",
+      "end": "2026-07-21T15:54:45.065194",
+      "duration": 1.50044795,
+      "percent": 76,
+      "start_percent": 79,
+      "percent_change": -3,
+      "rate_per_hour": -119.96417469862915
+    },
+    {
+      "start": "2026-07-21T16:18:27.646881",
+      "end": "2026-07-21T16:18:27.646904",
+      "duration": 3.8333333333333335e-07,
+      "percent": 36,
+      "start_percent": 36,
+      "percent_change": 0,
+      "rate_per_hour": 0.0
+    },
+    {
+      "start": "2026-07-21T16:18:47.364598",
+      "end": "2026-07-21T16:24:47.402023",
+      "duration": 6.00062375,
+      "percent": 24,
+      "start_percent": 35,
+      "percent_change": -11,
+      "rate_per_hour": -109.98856577201661
+    },
+    {
+      "start": "2026-07-28T09:22:20.455030",
+      "end": "2026-07-28T09:29:20.464165",
+      "duration": 7.00015225,
+      "percent": 12,
+      "start_percent": 27,
+      "percent_change": -15,
+      "rate_per_hour": -128.56863220367813
+    },
+    {
+      "start": "2026-07-28T10:58:22.618506",
+      "end": "2026-07-28T11:23:52.767563",
+      "duration": 25.502484283333335,
+      "percent": 23,
+      "start_percent": 70,
+      "percent_change": -47,
+      "rate_per_hour": -110.57746251971842
+    },
+    {
+      "start": "2026-07-28T13:55:01.991711",
+      "end": "2026-07-28T14:24:32.136148",
+      "duration": 29.502407283333334,
+      "percent": 30,
+      "start_percent": 80,
+      "percent_change": -50,
+      "rate_per_hour": -101.68661733901209
+    },
+    {
+      "start": "2026-07-29T19:15:27.950783",
+      "end": "2026-07-29T19:34:28.006619",
+      "duration": 19.0009306,
+      "percent": 30,
+      "start_percent": 68,
+      "percent_change": -38,
+      "rate_per_hour": -119.99412281417416
+    }
+  ],
+  "charge_thresholds": {
+    "80": {
+      "times": [
+        0.5000069333333333,
+        0.5000031166666666,
+        0.5000463166666667,
+        0.5000070166666667,
+        0.5000085166666667,
+        78.00413691666667,
+        78.00734098333334,
+        74.00152856666666
+      ],
+      "average": 29.064134795833333
+    },
+    "85": {
+      "times": [],
+      "average": 0
+    },
+    "90": {
+      "times": [],
+      "average": 0
+    },
+    "95": {
+      "times": [],
+      "average": 0
+    },
+    "100": {
+      "times": [],
+      "average": 0
+    }
+  },
+  "discharge_thresholds": {
+    "20": {
+      "times": [
+        41.99655681310862,
+        24.173956895833335,
+        18.925670370833334,
+        41.99655681310862,
+        24.173956895833335,
+        18.925670370833334,
+        41.99655681310862,
+        24.173956895833335,
+        18.925670370833334,
+        3.50007725
+      ],
+      "average": 25.878862948932586
+    },
+    "15": {
+      "times": [
+        44.83416200318352,
+        26.498375828125,
+        21.629337566666667,
+        44.83416200318352,
+        26.498375828125,
+        21.629337566666667,
+        44.83416200318352,
+        26.498375828125,
+        21.629337566666667,
+        6.000139266666666
+      ],
+      "average": 28.48857654605922
+    },
+    "10": {
+      "times": [
+        47.671767193258425,
+        28.822794760416667,
+        47.671767193258425,
+        28.822794760416667,
+        47.671767193258425,
+        28.822794760416667,
+        47.671767193258425,
+        28.822794760416667,
+        47.671767193258425,
+        28.822794760416667
+      ],
+      "average": 38.247280976837544
+    },
+    "5": {
+      "times": [
+        50.509372383333336,
+        50.509372383333336,
+        50.509372383333336,
+        50.509372383333336,
+        50.509372383333336,
+        50.509372383333336,
+        50.509372383333336,
+        50.509372383333336,
+        50.509372383333336,
+        50.509372383333336
+      ],
+      "average": 50.509372383333336
+    },
+    "0": {
+      "times": [],
+      "average": 0
+    }
+  },
+  "charge_range_stats": {
+    "0-49": {
+      "cycles": [
+        {
+          "start_percent": 48,
+          "end_percent": 50,
+          "duration": 4.500141883333333,
+          "rate_per_hour": 26.66582590305218
+        },
+        {
+          "start_percent": 11,
+          "end_percent": 72,
+          "duration": 86.50397928333334,
+          "rate_per_hour": 42.31019232088864
+        },
+        {
+          "start_percent": 37,
+          "end_percent": 80,
+          "duration": 137.51362669999997,
+          "rate_per_hour": 18.761777010132484
+        },
+        {
+          "start_percent": 30,
+          "end_percent": 80,
+          "duration": 126.03570275,
+          "rate_per_hour": 23.802779169254087
+        },
+        {
+          "start_percent": 29,
+          "end_percent": 80,
+          "duration": 75.50155768333335,
+          "rate_per_hour": 40.528965148430075
+        }
+      ],
+      "avg_rate": 30.41390791035149,
+      "avg_time": 86.01100166
+    },
+    "50-79": {
+      "cycles": [
+        {
+          "start_percent": 79,
+          "end_percent": 79,
+          "duration": 1.0000155166666667,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 72,
+          "end_percent": 72,
+          "duration": 0.50001005,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 72,
+          "end_percent": 72,
+          "duration": 6.000140366666667,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 50,
+          "end_percent": 72,
+          "duration": 39.00197085,
+          "rate_per_hour": 33.84444353021714
+        }
+      ],
+      "avg_rate": 8.461110882554285,
+      "avg_time": 11.625534195833334
+    },
+    "80-100": {
+      "cycles": [
+        {
+          "start_percent": 95,
+          "end_percent": 99,
+          "duration": 25.8030591,
+          "rate_per_hour": 9.30122273757843
+        },
+        {
+          "start_percent": 80,
+          "end_percent": 80,
+          "duration": 0.5000075166666667,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 80,
+          "end_percent": 80,
+          "duration": 21.00056615,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 80,
+          "end_percent": 80,
+          "duration": 1.0000000000000001e-07,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 80,
+          "end_percent": 80,
+          "duration": 49.502129583333335,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 80,
+          "end_percent": 80,
+          "duration": 1.3333333333333334e-07,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 80,
+          "end_percent": 80,
+          "duration": 7.500187133333333,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 80,
+          "end_percent": 80,
+          "duration": 2.000028716666667,
+          "rate_per_hour": 0.0
+        },
+        {
+          "start_percent": 100,
+          "end_percent": 100,
+          "duration": 0.0,
+          "rate_per_hour": 0.0
+        }
+      ],
+      "avg_rate": 1.0334691930642699,
+      "avg_time": 11.811775381481482
+    }
+  },
+  "metadata": {
+    "updated_at": "2026-08-11T18:00:46.985379",
+    "version": 2,
+    "full_battery_percent": 80,
+    "full_battery_percent_learned": 80,
+    "auto_apply_learned_full": true
+  }
+}

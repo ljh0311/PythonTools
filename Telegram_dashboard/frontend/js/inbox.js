@@ -1,6 +1,26 @@
 import { api } from "./api.js";
+import { buildInboxEmptyHtml } from "./connection-status.js";
+import { workflowState } from "./workflow.js";
 
 const DEFAULT_LIMIT = 10;
+const FILTER_DEBOUNCE_MS = 350;
+const TOPIC_CHIP_LIMIT = 12;
+let filterDebounceTimer = null;
+let cachedTopics = [];
+
+/** Local calendar date as YYYY-MM-DD for <input type="date">. */
+export function localTodayInputValue() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function defaultDateFilters() {
+  const today = localTodayInputValue();
+  return { dateFrom: today, dateTo: today };
+}
 
 export const inboxState = {
   users: [],
@@ -15,10 +35,12 @@ export const inboxState = {
     userIds: [],
     chatType: "",
     direction: "",
+    ingestionSource: "",
     topics: "",
-    dateFrom: "",
-    dateTo: "",
+    ...defaultDateFilters(),
   },
+  expandedContextChatIds: new Set(),
+  operatorUser: null,
 };
 
 function escapeHtml(value) {
@@ -35,14 +57,25 @@ function formatTime(iso) {
   return date.toLocaleString();
 }
 
-function displayName(item) {
-  return item.username ? `@${item.username}` : `User ${item.user_id}`;
+export function setOperatorUser(user) {
+  inboxState.operatorUser = user || null;
+}
+
+export function displayName(item) {
+  if (item.username) return `@${item.username}`;
+  const me = inboxState.operatorUser;
+  if (
+    me?.username &&
+    item.direction === "outgoing" &&
+    item.ingestion_source === "user_account" &&
+    String(item.user_id) === String(me.id)
+  ) {
+    return `@${me.username}`;
+  }
+  return `User ${item.user_id}`;
 }
 
 function threadTitle(thread) {
-  if (thread.chat_type === "channel") {
-    return thread.chat_title || `Channel ${thread.chat_id}`;
-  }
   if (thread.chat_type === "group") {
     return thread.chat_title || `Group chat ${thread.chat_id}`;
   }
@@ -55,7 +88,7 @@ function renderTopicChips(topics = []) {
   return `<div class="topic-chips">${topics
     .map(
       (topic) =>
-        `<span class="topic-chip ${topic.source || "manual"}">${escapeHtml(topic.name)}</span>`
+        `<span class="topic-chip ${topic.source || "manual"}">${escapeHtml(topic.name)}</span>`,
     )
     .join("")}</div>`;
 }
@@ -67,6 +100,22 @@ function buildFilterParams() {
     q: inboxState.filters.q || undefined,
     chat_type: inboxState.filters.chatType || undefined,
     direction: inboxState.filters.direction || undefined,
+    ingestion_source: inboxState.filters.ingestionSource || undefined,
+    topics: inboxState.filters.topics || undefined,
+    date_from: inboxState.filters.dateFrom || undefined,
+    date_to: inboxState.filters.dateTo || undefined,
+    user_ids: inboxState.filters.userIds.length
+      ? inboxState.filters.userIds.join(",")
+      : undefined,
+  };
+}
+
+export function buildAiFilterPayload() {
+  return {
+    q: inboxState.filters.q || undefined,
+    chat_type: inboxState.filters.chatType || undefined,
+    direction: inboxState.filters.direction || undefined,
+    ingestion_source: inboxState.filters.ingestionSource || undefined,
     topics: inboxState.filters.topics || undefined,
     date_from: inboxState.filters.dateFrom || undefined,
     date_to: inboxState.filters.dateTo || undefined,
@@ -81,22 +130,42 @@ export function readFiltersFromUrl() {
   inboxState.filters.q = params.get("q") || "";
   inboxState.filters.chatType = params.get("chat_type") || "";
   inboxState.filters.direction = params.get("direction") || "";
+  inboxState.filters.ingestionSource = params.get("ingestion_source") || "";
   inboxState.filters.topics = params.get("topics") || "";
-  inboxState.filters.dateFrom = params.get("from") || "";
-  inboxState.filters.dateTo = params.get("to") || "";
+  // Default: today's messages. Explicit from/to in the URL win (including empty = all dates).
+  if (!params.has("from") && !params.has("to")) {
+    const today = localTodayInputValue();
+    inboxState.filters.dateFrom = today;
+    inboxState.filters.dateTo = today;
+  } else {
+    inboxState.filters.dateFrom = params.get("from") || "";
+    inboxState.filters.dateTo = params.get("to") || "";
+  }
   inboxState.view = params.get("view") === "flat" ? "flat" : "threads";
   const userIds = params.get("user_ids");
-  inboxState.filters.userIds = userIds ? userIds.split(",").filter(Boolean) : [];
+  inboxState.filters.userIds = userIds
+    ? userIds.split(",").filter(Boolean)
+    : [];
   inboxState.offset = Number(params.get("offset") || 0);
 }
 
 export function writeFiltersToUrl() {
   const params = new URLSearchParams();
-  const { q, userIds, chatType, direction, topics, dateFrom, dateTo } = inboxState.filters;
+  const {
+    q,
+    userIds,
+    chatType,
+    direction,
+    ingestionSource,
+    topics,
+    dateFrom,
+    dateTo,
+  } = inboxState.filters;
   if (q) params.set("q", q);
   if (userIds.length) params.set("user_ids", userIds.join(","));
   if (chatType) params.set("chat_type", chatType);
   if (direction) params.set("direction", direction);
+  if (ingestionSource) params.set("ingestion_source", ingestionSource);
   if (topics) params.set("topics", topics);
   if (dateFrom) params.set("from", dateFrom);
   if (dateTo) params.set("to", dateTo);
@@ -110,9 +179,14 @@ export function writeFiltersToUrl() {
 export function syncFilterForm() {
   document.getElementById("inbox-search").value = inboxState.filters.q;
   document.getElementById("inbox-topics").value = inboxState.filters.topics;
-  document.getElementById("inbox-chat-type").value = inboxState.filters.chatType;
-  document.getElementById("inbox-direction").value = inboxState.filters.direction;
-  document.getElementById("inbox-date-from").value = inboxState.filters.dateFrom;
+  document.getElementById("inbox-chat-type").value =
+    inboxState.filters.chatType;
+  document.getElementById("inbox-direction").value =
+    inboxState.filters.direction;
+  const sourceEl = document.getElementById("inbox-source");
+  if (sourceEl) sourceEl.value = inboxState.filters.ingestionSource;
+  document.getElementById("inbox-date-from").value =
+    inboxState.filters.dateFrom;
   document.getElementById("inbox-date-to").value = inboxState.filters.dateTo;
   document.getElementById("inbox-view").value = inboxState.view;
 
@@ -121,6 +195,93 @@ export function syncFilterForm() {
     if (!option.value) return;
     option.selected = inboxState.filters.userIds.includes(option.value);
   });
+  updateTopicsFilterBadge();
+  renderTopicFilterChips(cachedTopics);
+}
+
+function updateTopicsFilterBadge() {
+  const badge = document.getElementById("filters-topic-badge");
+  const toggleBtn = document.getElementById("toggle-filters");
+  const active = Boolean(inboxState.filters.topics?.trim());
+  if (badge) badge.hidden = !active;
+  toggleBtn?.classList.toggle("has-topic-filter", active);
+}
+
+function renderTopicSuggestions(topics = []) {
+  const datalist = document.getElementById("topic-suggestions");
+  if (!datalist) return;
+  datalist.innerHTML = topics
+    .map((topic) => `<option value="${escapeHtml(topic.name)}"></option>`)
+    .join("");
+}
+
+function renderTopicFilterChips(topics = []) {
+  const strip = document.getElementById("topic-filter-chips");
+  if (!strip) return;
+  const top = topics.slice(0, TOPIC_CHIP_LIMIT);
+  strip.hidden = false;
+  if (!top.length) {
+    strip.innerHTML = `<p class="topic-filter-empty">No topic tags yet. Click <strong>Generate AI tags</strong> to create them.</p>`;
+    return;
+  }
+  strip.innerHTML = top
+    .map((topic) => {
+      const active =
+        inboxState.filters.topics?.trim().toLowerCase() ===
+        topic.name.toLowerCase();
+      return `<button type="button" class="topic-filter-chip${active ? " active" : ""}" data-topic="${escapeHtml(topic.name)}" title="${topic.message_count} message${topic.message_count === 1 ? "" : "s"}">${escapeHtml(topic.name)} <span class="topic-filter-count">${topic.message_count}</span></button>`;
+    })
+    .join("");
+}
+
+function updateBackfillTopicsButton(topics = []) {
+  const btn = document.getElementById("inbox-backfill-topics");
+  if (!btn) return;
+  btn.textContent = topics.length ? "Refresh tags" : "Generate AI tags";
+}
+
+export async function runTopicBackfill({ onError, onNotify, limit = 50 } = {}) {
+  const btn = document.getElementById("inbox-backfill-topics");
+  const originalLabel = btn?.textContent || "Generate AI tags";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Tagging…";
+  }
+  try {
+    const result = await api.backfillTopics({ limit, enable_ai_mode: true });
+    await loadTopicSuggestions();
+    // Keep Workflow UI in sync when backfill switches to ai_assign.
+    try {
+      const topic = await api.getTopicMode();
+      workflowState.topicMode = topic.mode;
+      const select = document.getElementById("topic-mode");
+      if (select) select.value = topic.mode;
+    } catch {
+      /* optional */
+    }
+    onNotify?.(`Tagged ${result.tagged} of ${result.processed} messages.`);
+    return result;
+  } catch (error) {
+    onError?.(error);
+    throw error;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+      updateBackfillTopicsButton(cachedTopics);
+    }
+  }
+}
+
+export async function loadTopicSuggestions() {
+  try {
+    cachedTopics = await api.getTopics();
+    renderTopicSuggestions(cachedTopics);
+    renderTopicFilterChips(cachedTopics);
+    updateBackfillTopicsButton(cachedTopics);
+  } catch {
+    /* keep existing suggestions */
+  }
 }
 
 export function renderUserFilter(users = []) {
@@ -129,10 +290,19 @@ export function renderUserFilter(users = []) {
   select.innerHTML = users
     .map(
       (user) =>
-        `<option value="${user.user_id}">${escapeHtml(user.display_name)} (${user.message_count})</option>`
+        `<option value="${user.user_id}">${escapeHtml(user.display_name)} (${user.message_count})</option>`,
     )
     .join("");
   syncFilterForm();
+}
+
+function sourceLabel(item) {
+  return item.ingestion_source === "user_account" ? "My account" : "Bot";
+}
+
+function renderSourceBadge(item) {
+  const cls = item.ingestion_source === "user_account" ? "user-account" : "bot";
+  return `<span class="source-badge ${cls}">${sourceLabel(item)}</span>`;
 }
 
 function renderThreadMessages(messages) {
@@ -141,20 +311,31 @@ function renderThreadMessages(messages) {
       (item) => `
       <li class="thread-message ${item.direction}">
         <div class="meta">
-          <span>${escapeHtml(displayName(item))} · ${item.direction}</span>
+          <span>${escapeHtml(displayName(item))} · ${item.direction} ${renderSourceBadge(item)}</span>
           <span>${formatTime(item.created_at)}</span>
         </div>
         ${renderTopicChips(item.topics)}
         <div class="message-text">${escapeHtml(item.text)}</div>
-      </li>`
+      </li>`,
     )
     .join("");
+}
+
+function emptyInboxHtml(view = "threads") {
+  const topicHint = inboxState.filters.topics
+    ? " AI expands your words into related tags and message text."
+    : "";
+  return buildInboxEmptyHtml({
+    filters: inboxState.filters,
+    view,
+    topicHint,
+  });
 }
 
 function renderFlatMessages(messages = []) {
   const feed = document.getElementById("messages-feed");
   if (!messages.length) {
-    feed.innerHTML = `<div class="empty-thread">No messages match your filters.</div>`;
+    feed.innerHTML = emptyInboxHtml("flat");
     return;
   }
 
@@ -163,7 +344,7 @@ function renderFlatMessages(messages = []) {
       (item) => `
       <li class="${item.direction}">
         <div class="meta">
-          <span>${escapeHtml(displayName(item))} · ${item.chat_type || "chat"} · ${item.direction}</span>
+          <span>${escapeHtml(displayName(item))} · ${item.chat_type || "chat"} · ${item.direction} ${renderSourceBadge(item)}</span>
           <span>${formatTime(item.created_at)}</span>
         </div>
         ${renderTopicChips(item.topics)}
@@ -173,26 +354,64 @@ function renderFlatMessages(messages = []) {
             ? `<div class="message-actions"><button type="button" class="btn btn-ghost btn-sm reply-btn" data-chat-id="${item.chat_id}">Reply</button></div>`
             : ""
         }
-      </li>`
+      </li>`,
     )
     .join("")}</ul>`;
 }
 
+function renderThreadContext(thread) {
+  if (!thread.chat_id) return "";
+
+  const expanded = inboxState.expandedContextChatIds.has(
+    Number(thread.chat_id),
+  );
+  const notes = thread.ai_context || "";
+  const preview = notes
+    ? escapeHtml(notes.length > 120 ? `${notes.slice(0, 120)}…` : notes)
+    : "<em>No extra context yet.</em>";
+
+  return `
+    <div class="thread-context" data-chat-id="${thread.chat_id}">
+      <div class="thread-context-toolbar">
+        <strong>Your context</strong>
+        <button type="button" class="btn btn-ghost btn-sm toggle-thread-context" data-chat-id="${thread.chat_id}">
+          ${expanded ? "Hide" : notes ? "Edit" : "Add"}
+        </button>
+      </div>
+      <p class="thread-context-preview" ${expanded ? "hidden" : ""}>${preview}</p>
+      <div class="thread-context-editor" ${expanded ? "" : "hidden"}>
+        <textarea
+          class="thread-context-input"
+          rows="3"
+          data-chat-id="${thread.chat_id}"
+          placeholder="Notes for the AI: aliases (y4ppy = yappy/yappie), people, topics, background…"
+        >${escapeHtml(notes)}</textarea>
+        <div class="thread-context-actions">
+          <button type="button" class="btn btn-primary btn-sm save-thread-context" data-chat-id="${thread.chat_id}">
+            Save context
+          </button>
+          <span class="thread-context-hint">Used by Summarize and AI suggestions</span>
+        </div>
+      </div>
+    </div>`;
+}
+
 export function renderInboxThreads(threads = [], total = 0) {
   inboxState.threads = threads;
+  inboxState.total = total;
 
   const feed = document.getElementById("messages-feed");
   if (!threads.length) {
-    feed.innerHTML = `<div class="empty-thread">No conversations match your filters.</div>`;
+    feed.innerHTML = emptyInboxHtml("threads");
   } else {
     feed.innerHTML = threads
       .map((thread, index) => {
         const chatId = thread.chat_id ?? `thread-${index}`;
         const typeBadge =
-          thread.chat_type === "channel"
-            ? "Channel"
-            : thread.chat_type === "group"
-              ? "Group"
+          thread.chat_type === "group"
+            ? "Group"
+            : thread.chat_type === "channel"
+              ? "Channel"
               : "Private";
         return `
         <article class="thread-card" data-chat-id="${chatId}" data-thread-index="${index}">
@@ -211,8 +430,17 @@ export function renderInboxThreads(threads = [], total = 0) {
                 : ""
             }
           </header>
-          <div class="thread-summary" id="summary-${chatId}">
-            <span class="summary-loading">Generating AI summary…</span>
+          ${renderThreadContext(thread)}
+          <div class="thread-summary" id="summary-${chatId}" data-chat-id="${thread.chat_id ?? ""}">
+            <div class="summary-toolbar">
+              <strong>AI Summary</strong>
+              ${
+                thread.chat_id
+                  ? `<button type="button" class="btn btn-ghost btn-sm summarize-thread-btn" data-chat-id="${thread.chat_id}" data-message-ids="${thread.messages.map((m) => m.id).join(",")}">Summarize</button>`
+                  : ""
+              }
+            </div>
+            <div class="summary-body"><em>No summary yet.</em></div>
           </div>
           <ul class="thread-messages">${renderThreadMessages(thread.messages)}</ul>
         </article>`;
@@ -223,6 +451,19 @@ export function renderInboxThreads(threads = [], total = 0) {
   updateInboxCount(total, threads.length);
 }
 
+export function refreshInboxEmptyStateIfNeeded() {
+  if (inboxState.view === "flat") {
+    if (!inboxState.messages.length) {
+      renderFlatMessages([]);
+      updateInboxCount(inboxState.total || 0, 0);
+    }
+    return;
+  }
+  if (!inboxState.threads.length) {
+    renderInboxThreads([], inboxState.total || 0);
+  }
+}
+
 function updateInboxCount(total, shownCount) {
   const countEl = document.getElementById("inbox-count");
   const showing = Math.min(inboxState.offset + shownCount, total);
@@ -231,39 +472,140 @@ function updateInboxCount(total, shownCount) {
 
   const loadMoreBtn = document.getElementById("inbox-load-more");
   loadMoreBtn.textContent =
-    inboxState.view === "flat" ? "Load more messages" : "Load more conversations";
+    inboxState.view === "flat"
+      ? "Load more messages"
+      : "Load more conversations";
   loadMoreBtn.disabled = inboxState.offset + shownCount >= total;
   loadMoreBtn.hidden = inboxState.offset + shownCount >= total;
 }
 
-async function loadThreadSummary(thread, index) {
+function renderNameCorrections(corrections = []) {
+  if (!corrections?.length) return "";
+  const items = corrections
+    .map((item) => `${escapeHtml(item.from)} → ${escapeHtml(item.to)}`)
+    .join(", ");
+  return `<p class="summary-corrections">Names corrected: ${items}</p>`;
+}
+
+function renderThreadSummaryPanel(summaryEl, result) {
+  const body = summaryEl.querySelector(".summary-body");
+  const btn = summaryEl.querySelector(".summarize-thread-btn");
+  if (!body) return;
+
+  if (!result?.summary) {
+    body.innerHTML = "<em>Click Summarize to generate an AI summary.</em>";
+    if (btn) {
+      btn.textContent = "Summarize";
+      btn.disabled = false;
+    }
+    return;
+  }
+
+  const redaction = result.redaction_applied
+    ? `<p class="redaction-notice">Sensitive data redacted (${result.redaction_count}) before AI.</p>`
+    : "";
+  const stale = result.stale
+    ? `<p class="summary-stale">New messages since this summary — click Refresh to update.</p>`
+    : "";
+  const meta = result.cached
+    ? `<span class="summary-cached">Saved summary</span>`
+    : `<span class="summary-cached">Just generated</span>`;
+
+  body.innerHTML = `
+    ${redaction}
+    ${stale}
+    ${renderNameCorrections(result.name_corrections)}
+    ${
+      result.provider === "fallback"
+        ? `<p class="fallback-notice">AI unavailable — showing basic overview.</p>`
+        : ""
+    }
+    ${
+      result.degraded || result.failure_reason
+        ? `<p class="degradation-notice">${escapeHtml(result.failure_reason || "Using fallback provider")}</p>`
+        : ""
+    }
+    <p>${escapeHtml(result.summary)}</p>
+    <span class="summary-provider">${meta} · via ${escapeHtml(result.provider || "ai")}</span>`;
+
+  if (btn) {
+    btn.textContent = result.summary ? "Refresh summary" : "Summarize";
+    btn.disabled = false;
+  }
+}
+
+async function loadCachedThreadSummary(thread, index) {
   const chatId = thread.chat_id ?? `thread-${index}`;
   const summaryEl = document.getElementById(`summary-${chatId}`);
   if (!summaryEl || !thread.chat_id || thread.messages.length < 1) {
     if (summaryEl) {
-      summaryEl.innerHTML = "<em>No summary available.</em>";
+      summaryEl.querySelector(".summary-body").innerHTML =
+        "<em>No summary available.</em>";
     }
     return;
   }
 
   try {
     const messageIds = thread.messages.map((m) => m.id);
-    const result = await api.summarizeThread(thread.chat_id, messageIds);
-    const redaction = result.redaction_applied
-      ? `<p class="redaction-notice">Sensitive data redacted (${result.redaction_count}) before AI.</p>`
-      : "";
-    summaryEl.innerHTML = `
-      <strong>AI Summary</strong>
-      ${redaction}
-      <p>${escapeHtml(result.summary)}</p>
-      <span class="summary-provider">via ${escapeHtml(result.provider)}</span>`;
+    const result = await api.getThreadSummary(thread.chat_id, messageIds);
+    if (result.summary) {
+      renderThreadSummaryPanel(summaryEl, result);
+    }
   } catch {
-    summaryEl.innerHTML = "<em>Could not generate summary.</em>";
+    /* keep default placeholder */
   }
 }
 
-async function loadSummariesForThreads(threads) {
-  await Promise.all(threads.map((thread, index) => loadThreadSummary(thread, index)));
+async function requestThreadSummary(
+  chatId,
+  messageIds,
+  { force = false, summaryEl } = {},
+) {
+  const btn = summaryEl?.querySelector(".summarize-thread-btn");
+  const body = summaryEl?.querySelector(".summary-body");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = force ? "Refreshing…" : "Summarizing…";
+  }
+  if (body) {
+    body.innerHTML = `<p class="summary-loading">${force ? "Refreshing" : "Generating"} AI summary…</p>`;
+  }
+
+  try {
+    const result = await api.summarizeThread(chatId, messageIds, { force });
+    renderThreadSummaryPanel(summaryEl, result);
+    return result;
+  } catch (error) {
+    if (body) {
+      body.innerHTML = `<p class="error-text">${escapeHtml(error.message)}</p>`;
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = force ? "Refresh summary" : "Summarize";
+    }
+    throw error;
+  }
+}
+
+async function loadCachedSummariesForThreads(threads) {
+  await Promise.all(
+    threads.map((thread, index) => loadCachedThreadSummary(thread, index)),
+  );
+}
+
+export function clearInboxFilters(onError) {
+  // Reset to the default inbox view: today only.
+  inboxState.filters = {
+    q: "",
+    topics: "",
+    userIds: [],
+    chatType: "",
+    direction: "",
+    ingestionSource: "",
+    ...defaultDateFilters(),
+  };
+  syncFilterForm();
+  return loadInbox().catch(onError);
 }
 
 export function collectFiltersFromForm() {
@@ -275,6 +617,7 @@ export function collectFiltersFromForm() {
     userIds: selected,
     chatType: document.getElementById("inbox-chat-type").value,
     direction: document.getElementById("inbox-direction").value,
+    ingestionSource: document.getElementById("inbox-source")?.value || "",
     dateFrom: document.getElementById("inbox-date-from").value,
     dateTo: document.getElementById("inbox-date-to").value,
   };
@@ -282,13 +625,18 @@ export function collectFiltersFromForm() {
 }
 
 export async function loadInbox({ append = false } = {}) {
-  if (!append) inboxState.offset = 0;
+  if (!append) {
+    collectFiltersFromForm();
+    inboxState.offset = 0;
+  }
 
   const params = buildFilterParams();
 
   if (inboxState.view === "flat") {
     const result = await api.getMessages(params);
-    const messages = append ? [...inboxState.messages, ...result.items] : result.items;
+    const messages = append
+      ? [...inboxState.messages, ...result.items]
+      : result.items;
     inboxState.messages = messages;
     renderFlatMessages(messages);
     updateInboxCount(result.total, messages.length);
@@ -297,10 +645,12 @@ export async function loadInbox({ append = false } = {}) {
   }
 
   const result = await api.getInboxThreads(params);
-  const threads = append ? [...inboxState.threads, ...result.threads] : result.threads;
+  const threads = append
+    ? [...inboxState.threads, ...result.threads]
+    : result.threads;
   renderInboxThreads(threads, result.total);
   writeFiltersToUrl();
-  await loadSummariesForThreads(append ? result.threads : threads);
+  await loadCachedSummariesForThreads(append ? result.threads : threads);
   return result;
 }
 
@@ -326,6 +676,7 @@ function applyPreset(presetId) {
     userIds: f.userIds || (f.user_ids ? String(f.user_ids).split(",") : []),
     chatType: f.chatType || f.chat_type || "",
     direction: f.direction || "",
+    ingestionSource: f.ingestionSource || f.ingestion_source || "",
     dateFrom: f.dateFrom || f.date_from || "",
     dateTo: f.dateTo || f.date_to || "",
   };
@@ -333,54 +684,111 @@ function applyPreset(presetId) {
   syncFilterForm();
 }
 
-export function bindInbox(onReply, onError) {
+function applyFiltersNow(onError) {
+  clearTimeout(filterDebounceTimer);
+  collectFiltersFromForm();
+  updateTopicsFilterBadge();
+  loadInbox().catch(onError);
+}
+
+function scheduleFilterApply(onError) {
+  clearTimeout(filterDebounceTimer);
+  filterDebounceTimer = setTimeout(
+    () => applyFiltersNow(onError),
+    FILTER_DEBOUNCE_MS,
+  );
+}
+
+function bindFilterInput(id, onError) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("search", () => applyFiltersNow(onError));
+  el.addEventListener("input", () => scheduleFilterApply(onError));
+}
+
+function handleEmptyStateAction(
+  action,
+  button,
+  { onError, onOpenTools, onRefresh } = {},
+) {
+  if (action === "clear-filters") {
+    clearInboxFilters(onError);
+    return true;
+  }
+  if (action === "refresh-inbox") {
+    if (onRefresh) onRefresh();
+    else loadInbox().catch(onError);
+    return true;
+  }
+  if (action === "open-tools") {
+    onOpenTools?.();
+    return true;
+  }
+  if (action === "toggle-connect-details") {
+    const details = button
+      .closest(".empty-thread-setup")
+      ?.querySelector(".empty-thread-details");
+    if (!details) return true;
+    const open = details.hidden;
+    details.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+    button.textContent = open ? "Hide details" : "How to connect";
+    return true;
+  }
+  return false;
+}
+
+export function bindInbox(
+  onReply,
+  onError,
+  onNotify,
+  { onOpenTools, onRefresh } = {},
+) {
   readFiltersFromUrl();
   syncFilterForm();
   loadPresets().catch(onError);
+  loadTopicSuggestions().catch(onError);
 
   const toggleBtn = document.getElementById("toggle-filters");
   const advanced = document.getElementById("advanced-filters");
   toggleBtn?.addEventListener("click", () => {
-    const open = advanced.hidden;
-    advanced.hidden = !open;
-    toggleBtn.setAttribute("aria-expanded", String(open));
-    toggleBtn.classList.toggle("active", open);
+    const willOpen = advanced.hasAttribute("hidden");
+    if (willOpen) {
+      advanced.removeAttribute("hidden");
+    } else {
+      advanced.setAttribute("hidden", "");
+    }
+    toggleBtn.setAttribute("aria-expanded", String(willOpen));
+    toggleBtn.classList.toggle("active", willOpen);
   });
 
   initAiPanel();
 
-  document.getElementById("inbox-apply").addEventListener("click", () => {
-    collectFiltersFromForm();
-    loadInbox().catch(onError);
-  });
+  document
+    .getElementById("inbox-apply")
+    .addEventListener("click", () => applyFiltersNow(onError));
 
   document.getElementById("inbox-clear").addEventListener("click", () => {
-    inboxState.filters = {
-      q: "",
-      topics: "",
-      userIds: [],
-      chatType: "",
-      direction: "",
-      dateFrom: "",
-      dateTo: "",
-    };
-    syncFilterForm();
-    loadInbox().catch(onError);
+    clearInboxFilters(onError);
   });
 
-  document.getElementById("inbox-search").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      collectFiltersFromForm();
-      loadInbox().catch(onError);
-    }
-  });
+  bindFilterInput("inbox-search", onError);
+  bindFilterInput("inbox-topics", onError);
 
-  document.getElementById("inbox-topics").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      collectFiltersFromForm();
-      loadInbox().catch(onError);
-    }
-  });
+  document
+    .getElementById("topic-filter-chips")
+    ?.addEventListener("click", (event) => {
+      const chip = event.target.closest(".topic-filter-chip");
+      if (!chip) return;
+      document.getElementById("inbox-topics").value = chip.dataset.topic || "";
+      applyFiltersNow(onError);
+    });
+
+  document
+    .getElementById("inbox-backfill-topics")
+    ?.addEventListener("click", () => {
+      runTopicBackfill({ onError, onNotify }).catch(onError);
+    });
 
   document.getElementById("inbox-view").addEventListener("change", () => {
     collectFiltersFromForm();
@@ -392,45 +800,129 @@ export function bindInbox(onReply, onError) {
     loadInbox({ append: true }).catch(onError);
   });
 
-  document.getElementById("messages-feed").addEventListener("click", (event) => {
-    const button = event.target.closest(".reply-btn");
-    if (!button) return;
-    onReply(button.dataset.chatId);
-  });
+  document
+    .getElementById("messages-feed")
+    .addEventListener("click", (event) => {
+      const emptyActionBtn = event.target.closest("[data-empty-action]");
+      if (emptyActionBtn) {
+        handleEmptyStateAction(
+          emptyActionBtn.dataset.emptyAction,
+          emptyActionBtn,
+          {
+            onError,
+            onOpenTools,
+            onRefresh,
+          },
+        );
+        return;
+      }
 
-  document.getElementById("inbox-presets")?.addEventListener("change", (event) => {
-    if (!event.target.value) return;
-    applyPreset(event.target.value);
-    loadInbox().catch(onError);
-  });
+      const toggleContextBtn = event.target.closest(".toggle-thread-context");
+      if (toggleContextBtn) {
+        const chatId = Number(toggleContextBtn.dataset.chatId);
+        if (inboxState.expandedContextChatIds.has(chatId)) {
+          inboxState.expandedContextChatIds.delete(chatId);
+        } else {
+          inboxState.expandedContextChatIds.add(chatId);
+        }
+        renderInboxThreads(inboxState.threads, inboxState.total);
+        return;
+      }
 
-  document.getElementById("inbox-save-preset")?.addEventListener("click", async () => {
-    const name = window.prompt("Preset name (e.g. VIP today)");
-    if (!name) return;
-    collectFiltersFromForm();
-    await api.savePreset(name, { ...inboxState.filters, view: inboxState.view });
-    await loadPresets();
-  });
+      const saveContextBtn = event.target.closest(".save-thread-context");
+      if (saveContextBtn) {
+        const chatId = Number(saveContextBtn.dataset.chatId);
+        const textarea = document.querySelector(
+          `.thread-context-input[data-chat-id="${chatId}"]`,
+        );
+        const aiContext = textarea?.value.trim() ?? "";
+        saveContextBtn.disabled = true;
+        api
+          .updateChatSettings(chatId, { ai_context: aiContext })
+          .then((saved) => {
+            const thread = inboxState.threads.find(
+              (item) => Number(item.chat_id) === chatId,
+            );
+            if (thread) {
+              thread.ai_context = saved.ai_context || "";
+            }
+            inboxState.expandedContextChatIds.delete(chatId);
+            renderInboxThreads(inboxState.threads, inboxState.total);
+            onNotify?.("Chat context saved.");
+          })
+          .catch(onError)
+          .finally(() => {
+            saveContextBtn.disabled = false;
+          });
+        return;
+      }
 
-  document.getElementById("inbox-delete-preset")?.addEventListener("click", async () => {
-    const select = document.getElementById("inbox-presets");
-    if (!select.value) return;
-    await api.deletePreset(Number(select.value));
-    await loadPresets();
-  });
+      const summarizeBtn = event.target.closest(".summarize-thread-btn");
+      if (summarizeBtn) {
+        const chatId = Number(summarizeBtn.dataset.chatId);
+        const messageIds = (summarizeBtn.dataset.messageIds || "")
+          .split(",")
+          .filter(Boolean)
+          .map(Number);
+        const summaryEl = document.getElementById(`summary-${chatId}`);
+        const force = summarizeBtn.textContent
+          .toLowerCase()
+          .includes("refresh");
+        requestThreadSummary(chatId, messageIds, { force, summaryEl }).catch(
+          onError,
+        );
+        return;
+      }
 
-  document.getElementById("inbox-export")?.addEventListener("click", async () => {
-    collectFiltersFromForm();
-    const params = buildFilterParams();
-    const csv = await api.exportMessages(params);
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "messages-export.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-  });
+      const button = event.target.closest(".reply-btn");
+      if (!button) return;
+      onReply(button.dataset.chatId);
+    });
+
+  document
+    .getElementById("inbox-presets")
+    ?.addEventListener("change", (event) => {
+      if (!event.target.value) return;
+      applyPreset(event.target.value);
+      loadInbox().catch(onError);
+    });
+
+  document
+    .getElementById("inbox-save-preset")
+    ?.addEventListener("click", async () => {
+      const name = window.prompt("Preset name (e.g. VIP today)");
+      if (!name) return;
+      collectFiltersFromForm();
+      await api.savePreset(name, {
+        ...inboxState.filters,
+        view: inboxState.view,
+      });
+      await loadPresets();
+    });
+
+  document
+    .getElementById("inbox-delete-preset")
+    ?.addEventListener("click", async () => {
+      const select = document.getElementById("inbox-presets");
+      if (!select.value) return;
+      await api.deletePreset(Number(select.value));
+      await loadPresets();
+    });
+
+  document
+    .getElementById("inbox-export")
+    ?.addEventListener("click", async () => {
+      collectFiltersFromForm();
+      const params = buildFilterParams();
+      const csv = await api.exportMessages(params);
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "messages-export.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    });
 }
 
 function initAiPanel() {
@@ -452,7 +944,9 @@ function initAiPanel() {
     }
   }
 
-  toggleBtn.addEventListener("click", () => setOpen(!layout.classList.contains("ai-panel-open")));
+  toggleBtn.addEventListener("click", () =>
+    setOpen(!layout.classList.contains("ai-panel-open")),
+  );
   closeBtn?.addEventListener("click", () => setOpen(false));
   backdrop?.addEventListener("click", () => setOpen(false));
   window.addEventListener("resize", () => {

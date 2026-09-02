@@ -79,8 +79,8 @@ class CameraView(ttk.Frame):
         self.status_label = ttk.Label(
             status_frame, 
             text="Offline", 
-            foreground="red",
-            font=("Arial", 9)
+            style="Inactive.TLabel",
+            font=("Segoe UI", 9)
         )
         self.status_label.pack(side=tk.LEFT, padx=2)
         
@@ -88,8 +88,7 @@ class CameraView(ttk.Frame):
         self.fps_label = ttk.Label(
             status_frame,
             text="FPS: 0.0",
-            font=("Arial", 8),
-            foreground="gray"
+            font=("Segoe UI", 8),
         )
         self.fps_label.pack(side=tk.LEFT, padx=5)
         
@@ -134,8 +133,8 @@ class CameraView(ttk.Frame):
         self.recording_indicator = ttk.Label(
             status_frame,
             text="● REC",
-            foreground="red",
-            font=("Arial", 8, "bold")
+            style="Inactive.TLabel",
+            font=("Segoe UI", 8, "bold")
         )
         # Will be shown/hidden via show_recording_indicator()
         
@@ -240,11 +239,11 @@ class CameraView(ttk.Frame):
         """
         self.status = status
         
-        status_colors = {
-            "offline": "red",
-            "online": "green",
-            "error": "orange",
-            "recording": "blue"
+        status_styles = {
+            "offline": "Inactive.TLabel",
+            "online": "Active.TLabel",
+            "error": "Warning.TLabel",
+            "recording": "Active.TLabel",
         }
         
         status_texts = {
@@ -254,10 +253,8 @@ class CameraView(ttk.Frame):
             "recording": "Recording"
         }
         
-        color = status_colors.get(status, "gray")
         text = message or status_texts.get(status, status)
-        
-        self.status_label.config(text=text, foreground=color)
+        self.status_label.config(text=text, style=status_styles.get(status, "TLabel"))
     
     def show_recording_indicator(self, show: bool = True):
         """

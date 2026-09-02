@@ -20,6 +20,7 @@ from ..core.robot_state import RobotState, RobotMode, Position
 from ..hardware.motor_controller import MotorController
 from ..hardware.sensor_manager import SensorManager
 from .pathfinder import Pathfinder, PathPoint
+from .path_refiner import PathRefiner, metrics_of, to_xy
 
 
 class NavigationState(Enum):
@@ -50,11 +51,24 @@ class AutonomousController:
     """Autonomous navigation controller"""
     
     def __init__(self, robot_state: RobotState, motor_controller: MotorController,
-                 sensor_manager: SensorManager, pathfinder: Pathfinder):
+                 sensor_manager: SensorManager, pathfinder: Pathfinder,
+                 vision_fusion=None):
         self.robot_state = robot_state
         self.motor_controller = motor_controller
         self.sensor_manager = sensor_manager
         self.pathfinder = pathfinder
+        self.vision_fusion = vision_fusion
+        self.task_boss = None
+        # RobotMind/TaskBoss proximity reactions (close obstacle → think → tool)
+        self._proximity_cooldown_s = 1.5
+        self._last_proximity_think_ts = 0.0
+        self._last_proximity_result = None
+        grid = float(self.robot_state.config.get("navigation", {}).get("grid_size", 0.5))
+        self.path_refiner = PathRefiner(cell_size=grid)
+        self._nav_start_xy: Optional[Tuple[float, float]] = None
+        self._driven_trace: List[Tuple[float, float]] = []
+        self._last_planned_metrics = None
+        self._last_refine_note = ""
         
         # Navigation state
         self.nav_state = NavigationState.IDLE
@@ -67,6 +81,11 @@ class AutonomousController:
         self.max_angular_speed = 1.0  # rad/s
         self.position_tolerance = 0.1  # meters
         self.orientation_tolerance = 0.1  # radians
+        # Completion tolerance is wider than waypoint tolerance to avoid final-approach
+        # replan loops when grid-snapped paths end slightly short of the goal.
+        self.goal_completion_tolerance = 0.15  # meters
+        self.goal_reached_flag = False
+        self._final_approach_attempts = 0
         
         # Obstacle avoidance
         self.obstacle_threshold = 0.3  # meters
@@ -163,6 +182,10 @@ class AutonomousController:
         self.stuck_locations = []  # List of dicts: [{"count": N, "x": X, "y": Y}, ...]
         self.stuck_locations_file = os.path.join(os.path.dirname(__file__), '../../stuck_locations.json')
         self.stuck_location_counter = 0  # Counter for assigning counts to new stuck locations
+        self.stuck_cell_failures = {}  # (grid_i, grid_j) -> consecutive failure count
+        self.stuck_failure_threshold = 3  # failures before persisting a stuck cell
+        self.sensor_max_range = 2.0  # treat readings at max range as clear (no obstacle)
+        self.max_valid_paths = 250  # cap learned path edges to avoid bloated memory/files
         
         self.min_distance_to_goal = float('inf')
         self.min_distance_to_waypoint = float('inf')  # Track progress to current waypoint
@@ -171,7 +194,7 @@ class AutonomousController:
         self.last_position = None  # Track last position for movement detection
         self.progress_threshold = 0.2  # meters
         self.stuck_position_threshold = 0.1  # meters - if robot moves less than this, consider stuck
-        self.stuck_time_threshold = 5.0  # seconds - time before considering stuck if not moving
+        self.stuck_time_threshold = 8.0  # seconds - allow turn-in-place before stuck recovery
         
         self.wandering = False
         self.wander_turning = False
@@ -225,13 +248,27 @@ class AutonomousController:
         self.last_goal_time = time.time()
         self.nav_state = NavigationState.PLANNING
         self.emergency_stop = False
+        self.goal_reached_flag = False
+        self._final_approach_attempts = 0
         
         # Reset replanning state for new navigation
         self.replan_attempts = 0
         self.last_replan_time = 0
+        self.last_speed_scale = 1.0
+        self.stuck_cell_failures = {}
+        if hasattr(self, 'last_replan_position'):
+            del self.last_replan_position
         
         self.min_distance_to_goal = float('inf')
+        self.min_distance_to_waypoint = float('inf')
         self.last_progress_time = time.time()
+        self.last_position = None
+        self._prune_learning_data()
+        pos = self.robot_state.get_position()
+        self._nav_start_xy = (pos.x, pos.y)
+        self._driven_trace = [(pos.x, pos.y)]
+        self._last_planned_metrics = None
+        self._last_refine_note = ""
         
         logger.info(f"Starting navigation to ({x:.2f}, {y:.2f})")
         return True
@@ -275,9 +312,70 @@ class AutonomousController:
         self.nav_state = NavigationState.IDLE
         self.current_goal = None
         self.current_path = []
+        self.path_index = 0
         self.recovery_attempts = 0
+        self.replan_attempts = 0
+        self.stuck_cell_failures = {}
+        self.goal_reached_flag = False
+        self._final_approach_attempts = 0
         self.motor_controller.stop()
         logger.warning("Emergency stop activated")
+
+    def reset_session_learning(self, clear_paths: bool = False, persist: bool = True):
+        """Reset transient learned state for a fresh demo/navigation session."""
+        for loc in list(self.stuck_locations):
+            if isinstance(loc, dict) and 'x' in loc and 'y' in loc:
+                self.pathfinder.remove_obstacle(loc['x'], loc['y'], 0.3)
+
+        self.stuck_locations = []
+        self.stuck_location_counter = 0
+        self.stuck_cell_failures = {}
+        self.areas_of_caution = set()
+
+        if clear_paths:
+            self.valid_paths = {}
+
+        self.learning_data_changed = True
+        if persist:
+            self._save_learning_data(force=True)
+        logger.info("Session learning data reset (stuck locations and caution areas cleared)")
+
+    def _is_clear_reading(self, distance: float) -> bool:
+        """True when sensor reports max range (no obstacle detected)."""
+        return distance >= self.sensor_max_range - 0.05
+
+    def _effective_sensor_distance(self, distance: float) -> float:
+        """Map max-range readings to a large clearance value for proximity logic."""
+        if self._is_clear_reading(distance):
+            return self.sensor_max_range
+        return distance
+
+    def _ultrasonic_value(self, sensor_data: dict, name: str, default: float = 0.0) -> float:
+        reading = sensor_data.get('ultrasonic', {}).get(name)
+        if reading is None:
+            return default
+        return reading.value if getattr(reading, 'valid', False) else default
+
+    def _prune_learning_data(self):
+        """Trim bloated learning data and drop stale stuck markers."""
+        if len(self.valid_paths) > self.max_valid_paths:
+            excess = len(self.valid_paths) - self.max_valid_paths
+            for key in list(self.valid_paths.keys())[:excess]:
+                del self.valid_paths[key]
+            self.learning_data_changed = True
+            logger.info(f"Pruned {excess} old valid paths (cap={self.max_valid_paths})")
+
+        stale = []
+        for loc in self.stuck_locations:
+            if isinstance(loc, dict) and 'x' in loc and 'y' in loc:
+                if not self._validate_stuck_location((loc['x'], loc['y'])):
+                    stale.append(loc)
+        for loc in stale:
+            self.stuck_locations.remove(loc)
+            self.pathfinder.remove_obstacle(loc['x'], loc['y'], 0.3)
+        if stale:
+            self.learning_data_changed = True
+            logger.info(f"Removed {len(stale)} stale stuck locations during prune")
     
     def _control_loop(self):
         """Main control loop for autonomous navigation"""
@@ -296,7 +394,11 @@ class AutonomousController:
         """Update navigation state and control"""
         try:
             if self.exploration_mode and self.wandering:
+                if self._gate_motion_if_unsafe():
+                    return
                 self._wander()
+                return
+            if self._gate_motion_if_unsafe() and self.nav_state == NavigationState.FOLLOWING_PATH:
                 return
             current_time = time.time()
             
@@ -312,6 +414,10 @@ class AutonomousController:
             if self.current_goal:
                 current_pos = self.robot_state.get_position()
                 dist_to_goal = math.hypot(self.current_goal.x - current_pos.x, self.current_goal.y - current_pos.y)
+
+                if not self.exploration_mode and dist_to_goal <= self.goal_completion_tolerance:
+                    if self._try_complete_goal():
+                        pass  # state machine handles REACHED_GOAL below
                 
                 # Check progress toward final goal
                 if dist_to_goal < self.min_distance_to_goal - self.progress_threshold:
@@ -334,29 +440,53 @@ class AutonomousController:
                         self.last_progress_time = current_time
                     elif current_time - self.last_progress_time > self.stuck_time_threshold:
                         # Robot hasn't moved enough and timeout exceeded
-                        # Check motor speeds before declaring stuck
                         left_speed, right_speed = self.motor_controller.get_speeds()
                         motor_speed_magnitude = (abs(left_speed) + abs(right_speed)) / 2.0
                         
-                        # Only declare stuck if motors are actually trying to move
-                        if motor_speed_magnitude > 1.0:  # Motors are commanded to move
-                            logger.warning(f"Robot appears stuck - movement: {movement:.3f}m in {current_time - self.last_progress_time:.1f}s, motor speeds: L={left_speed:.2f}, R={right_speed:.2f}")
+                        is_turning_in_place = (
+                            abs(left_speed - right_speed) > 8.0 and motor_speed_magnitude > 1.0
+                        )
+                        if is_turning_in_place:
+                            self.last_progress_time = current_time
+                        elif motor_speed_magnitude > 1.0:
+                            if not self.exploration_mode and dist_to_goal <= self.goal_completion_tolerance * 1.5:
+                                if self._try_complete_goal():
+                                    return
+                            logger.warning(
+                                f"Robot appears stuck - movement: {movement:.3f}m in "
+                                f"{current_time - self.last_progress_time:.1f}s, "
+                                f"motor speeds: L={left_speed:.2f}, R={right_speed:.2f}"
+                            )
+                            if self.nav_state == NavigationState.FOLLOWING_PATH:
+                                self.recovery_attempts += 1
+                                if self.recovery_attempts <= self.max_recovery_attempts:
+                                    self.nav_state = NavigationState.REACTIVATING
+                                    self.reactivation_start_time = current_time
+                                    self.reactivation_attempts = 0
+                                    self.current_reactivation_strategy = 0
+                                    current_pos = self.robot_state.get_position()
+                                    self.stuck_position = (current_pos.x, current_pos.y)
+                                    return
                         else:
-                            logger.debug(f"Robot not moving - motor speeds are low: L={left_speed:.2f}, R={right_speed:.2f}, movement: {movement:.3f}m")
+                            logger.debug(
+                                f"Robot paused - low motor speeds: L={left_speed:.2f}, "
+                                f"R={right_speed:.2f}, movement: {movement:.3f}m"
+                            )
                         
-                        # Force progress update to prevent immediate timeout
-                        self.last_progress_time = current_time
-                        # Try to recover by checking if we can skip waypoint or replan
+                        # Try to recover by advancing waypoint if close enough
                         if self.nav_state == NavigationState.FOLLOWING_PATH and self.current_path:
-                            # If very close to waypoint, advance to next one
                             if self.path_index < len(self.current_path):
                                 waypoint = self.current_path[self.path_index]
                                 dist_to_waypoint = math.hypot(waypoint.x - current_pos.x, waypoint.y - current_pos.y)
-                                if dist_to_waypoint < self.position_tolerance * 2:  # More lenient threshold
+                                if dist_to_waypoint < self.position_tolerance * 2:
                                     logger.info(f"Advancing stuck robot past waypoint {self.path_index} (distance: {dist_to_waypoint:.3f}m)")
                                     self.path_index += 1
                                     self.min_distance_to_waypoint = float('inf')
                                     self.last_progress_time = current_time
+                                    self.recovery_attempts = 0
+                                    return
+                        
+                        self.last_progress_time = current_time
                 
                 # Update last position
                 self.last_position = (current_pos.x, current_pos.y)
@@ -475,47 +605,68 @@ class AutonomousController:
                     return
                 
                 elif self.nav_state == NavigationState.BACKTRACKING:
-                    # Reverse for a short time (e.g., 1 second)
                     if not hasattr(self, 'backtrack_start_time'):
                         self.backtrack_start_time = time.time()
                     elapsed = time.time() - self.backtrack_start_time
                     if elapsed < 1.0:
-                        self.motor_controller.set_speeds(-0.4, -0.4)  # Increased backtracking speed
+                        self._set_wheel_speeds_pct(-40.0, -40.0)
                     else:
                         self.motor_controller.stop()
-                        # Check if obstacle is still too close
                         sensor_data = self.sensor_manager.get_sensor_data()
                         front_distance = sensor_data['ultrasonic']['front'].value
-                        if front_distance < self.emergency_stop_threshold:
+                        left_distance = sensor_data['ultrasonic']['left'].value
+                        right_distance = sensor_data['ultrasonic']['right'].value
+                        front_blocked = (
+                            not self._is_clear_reading(front_distance)
+                            and front_distance < self.emergency_stop_threshold
+                        )
+                        if front_blocked:
                             self.backtrack_attempts += 1
                             if self.backtrack_attempts < self.max_backtrack_attempts:
-                                self.backtrack_start_time = time.time()  # Backtrack again
+                                self.backtrack_start_time = time.time()
                             else:
-                                logger.warning("Max backtrack attempts reached, robot is stuck.")
-                                self.nav_state = NavigationState.STUCK
-                                del self.backtrack_start_time
-                        else:
-                            # Use LIDAR (ultrasonic) to decide turn direction
-                            left_distance = sensor_data['ultrasonic']['left'].value
-                            right_distance = sensor_data['ultrasonic']['right'].value
-                            # If both sides are blocked, just backtrack again
-                            if left_distance < self.emergency_stop_threshold and right_distance < self.emergency_stop_threshold:
-                                self.backtrack_start_time = time.time()  # Backtrack again
-                            else:
-                                # Prefer the more open side
-                                if left_distance > right_distance:
-                                    turn_direction = 1  # left
-                                elif right_distance > left_distance:
-                                    turn_direction = -1  # right
+                                logger.warning("Max backtrack attempts reached — replanning route")
+                                self.backtrack_attempts = 0
+                                if hasattr(self, 'backtrack_start_time'):
+                                    del self.backtrack_start_time
+                                if self._attempt_global_replan():
+                                    self.nav_state = NavigationState.FOLLOWING_PATH
                                 else:
-                                    turn_direction = self.last_turn_direction * -1  # alternate
+                                    self.nav_state = NavigationState.PLANNING
+                        else:
+                            left_blocked = (
+                                not self._is_clear_reading(left_distance)
+                                and left_distance < self.emergency_stop_threshold
+                            )
+                            right_blocked = (
+                                not self._is_clear_reading(right_distance)
+                                and right_distance < self.emergency_stop_threshold
+                            )
+                            if left_blocked and right_blocked:
+                                self.backtrack_attempts += 1
+                                if self.backtrack_attempts >= self.max_backtrack_attempts:
+                                    logger.warning("Sides blocked after backtrack — replanning")
+                                    self.backtrack_attempts = 0
+                                    if hasattr(self, 'backtrack_start_time'):
+                                        del self.backtrack_start_time
+                                    self.nav_state = NavigationState.PLANNING
+                                else:
+                                    self.backtrack_start_time = time.time()
+                            else:
+                                if left_distance > right_distance:
+                                    turn_direction = 1
+                                elif right_distance > left_distance:
+                                    turn_direction = -1
+                                else:
+                                    turn_direction = self.last_turn_direction * -1
                                 self.last_turn_direction = turn_direction
-                                # Turn in place for a short time (e.g., 0.7s)
                                 self.turn_start_time = time.time()
                                 self.turn_duration = 0.7
                                 self.turning = True
                                 self.turn_direction = turn_direction
-                                self.nav_state = NavigationState.BACKTRACKING
+                                self.backtrack_attempts = 0
+                                if hasattr(self, 'backtrack_start_time'):
+                                    del self.backtrack_start_time
                                 return
                 
                 else:
@@ -539,9 +690,8 @@ class AutonomousController:
             if hasattr(self, 'turning') and self.turning:
                 elapsed = time.time() - self.turn_start_time
                 if elapsed < self.turn_duration:
-                    # Turn in place: left positive, right negative
-                    speed = 0.2
-                    self.motor_controller.set_speeds(speed * self.turn_direction, -speed * self.turn_direction)
+                    speed = 40.0
+                    self._set_wheel_speeds_pct(speed * self.turn_direction, -speed * self.turn_direction)
                     return
                 else:
                     self.motor_controller.stop()
@@ -802,10 +952,70 @@ class AutonomousController:
             self.wandering = True
             self.current_goal = None
     
+    def _distance_to_goal(self) -> float:
+        """Euclidean distance to current navigation goal (meters)."""
+        if not self.current_goal:
+            return float('inf')
+        pos = self.robot_state.get_position()
+        return math.hypot(self.current_goal.x - pos.x, self.current_goal.y - pos.y)
+
+    def _effective_goal_tolerance(self) -> float:
+        """Wider tolerance for declaring goal complete vs per-waypoint tolerance."""
+        if not self.current_goal:
+            return self.goal_completion_tolerance
+        return max(self.current_goal.tolerance, self.goal_completion_tolerance)
+
+    def _check_goal_completion(self) -> bool:
+        """True when within completion tolerance; skips final-approach replan loops."""
+        if not self.current_goal or self.exploration_mode:
+            return False
+        return self._distance_to_goal() <= self._effective_goal_tolerance()
+
+    def _try_complete_goal(self) -> bool:
+        if self._check_goal_completion():
+            dist = self._distance_to_goal()
+            logger.info(
+                f"Goal reached (dist={dist:.3f}m, tol={self._effective_goal_tolerance():.3f}m)"
+            )
+            self.motor_controller.stop()
+            self.nav_state = NavigationState.REACHED_GOAL
+            return True
+        return False
+
+    def _drive_final_approach(self) -> None:
+        """Creep toward goal when path waypoints are exhausted.
+
+        Rear-wheel differential drive with passive front caster — turn-in-place
+        uses opposing rear wheel speeds (center-pivot model is correct for this layout).
+        """
+        if not self.current_goal:
+            return
+        pos = self.robot_state.get_position()
+        dx = self.current_goal.x - pos.x
+        dy = self.current_goal.y - pos.y
+        dist = math.hypot(dx, dy)
+        if dist < 0.01:
+            self.nav_state = NavigationState.REACHED_GOAL
+            return
+        desired = math.atan2(dy, dx)
+        heading_error = desired - pos.theta
+        while heading_error > math.pi:
+            heading_error -= 2 * math.pi
+        while heading_error < -math.pi:
+            heading_error += 2 * math.pi
+        linear_cmd = min(0.12, dist * 0.4)
+        angular_cmd = max(-self.max_angular_speed, min(self.max_angular_speed, 2.0 * heading_error))
+        left, right = self._apply_motor_commands(linear_cmd, angular_cmd)
+        self._set_wheel_speeds_pct(left, right)
+
     def _plan_path(self):
         """Plan path to current goal"""
         if not self.current_goal:
             self.nav_state = NavigationState.IDLE
+            return
+
+        # Already close enough — do not replan (avoids PLANNING↔FOLLOWING final-approach loop).
+        if self._try_complete_goal():
             return
         
         current_pos = self.robot_state.get_position()
@@ -818,9 +1028,19 @@ class AutonomousController:
         
         if path:
             if len(path) > 0:
+                start_xy = (current_pos.x, current_pos.y)
+                goal_xy = (self.current_goal.x, self.current_goal.y)
+                if self.path_refiner:
+                    path = self.path_refiner.refine_path(
+                        path, start_xy, goal_xy, self.pathfinder
+                    )
+                    self._last_refine_note = self.path_refiner.last_refine_note
+                self._last_planned_metrics = metrics_of(to_xy(path))
                 self.current_path = path
                 self.path_index = 0
                 self.nav_state = NavigationState.FOLLOWING_PATH
+                self._final_approach_attempts = 0
+                self._plan_failures = 0
                 
                 # Reset progress tracking for new path
                 self.min_distance_to_goal = float('inf')
@@ -836,28 +1056,57 @@ class AutonomousController:
                         first_waypoint.y - current_pos.y
                     )
                 
-                logger.info(f"Path planned with {len(path)} waypoints")
+                m = self._last_planned_metrics
+                logger.info(
+                    f"Path planned with {len(path)} waypoints "
+                    f"(len={m.length_m:.2f}m, turns={m.turn_count})"
+                    + (f" [{self._last_refine_note}]" if self._last_refine_note else "")
+                )
             else:
-                logger.warning("No path found to goal")
+                logger.warning("Empty path returned for goal")
+                self._plan_failures = getattr(self, '_plan_failures', 0) + 1
+                if self._attempt_global_replan():
+                    return
                 self.nav_state = NavigationState.STUCK
         else:
             logger.warning("No path found to goal")
+            self._plan_failures = getattr(self, '_plan_failures', 0) + 1
+            if self._plan_failures >= 2 and self._attempt_global_replan():
+                self._plan_failures = 0
+                return
             self.nav_state = NavigationState.STUCK
     
     def _follow_path(self):
         """Follow the planned path"""
+        if self._gate_motion_if_unsafe():
+            return
+        if self._try_complete_goal():
+            return
+
         if not self.current_path or self.path_index >= len(self.current_path):
+            if self._try_complete_goal():
+                return
             self.nav_state = NavigationState.REACHED_GOAL
             return
         
-        # Check for obstacles
-        if self._check_obstacles():
+        # Check for obstacles (ultrasonic + vision fusion)
+        near_goal = self._distance_to_goal() <= self.goal_completion_tolerance * 2
+        if not near_goal and (self._check_obstacles() or self._check_vision_obstacles()):
+            if self.vision_fusion and self.vision_fusion.should_reroute():
+                if self._attempt_route_replanning():
+                    logger.info("Vision-triggered reroute — new path planned")
+                    return
             self.nav_state = NavigationState.AVOIDING_OBSTACLE
             return
         
         # Get current waypoint
         waypoint = self.current_path[self.path_index]
         current_pos = self.robot_state.get_position()
+        if not self._driven_trace or math.hypot(
+            current_pos.x - self._driven_trace[-1][0],
+            current_pos.y - self._driven_trace[-1][1],
+        ) > 0.08:
+            self._driven_trace.append((current_pos.x, current_pos.y))
         
         # Calculate distance to waypoint
         distance = math.sqrt(
@@ -877,12 +1126,24 @@ class AutonomousController:
             # If this was the last waypoint, check if we're close enough to goal
             if self.path_index >= len(self.current_path) and self.current_goal:
                 dist_to_goal = math.hypot(self.current_goal.x - current_pos.x, self.current_goal.y - current_pos.y)
-                if dist_to_goal <= self.current_goal.tolerance:
+                if self._try_complete_goal():
+                    return
+                # Path grid ended short of goal — creep forward instead of replan loop.
+                if dist_to_goal <= 0.5:
+                    self._drive_final_approach()
+                    return
+                self._final_approach_attempts += 1
+                if self._final_approach_attempts >= self.max_replan_attempts:
+                    if self._try_complete_goal():
+                        return
+                    logger.warning(
+                        f"Final approach gave up after {self._final_approach_attempts} attempts "
+                        f"({dist_to_goal:.3f}m from goal)"
+                    )
                     self.nav_state = NavigationState.REACHED_GOAL
-                else:
-                    # Path completed but not at goal - need to plan final approach
-                    logger.debug(f"Path completed but {dist_to_goal:.3f}m from goal, planning final approach")
-                    self.nav_state = NavigationState.PLANNING
+                    return
+                logger.debug(f"Path completed but {dist_to_goal:.3f}m from goal, planning final approach")
+                self.nav_state = NavigationState.PLANNING
             return
         
         # Calculate distance to goal for minimum speed check
@@ -899,18 +1160,21 @@ class AutonomousController:
                 # Scale up to minimum speed while preserving direction
                 linear_cmd = math.copysign(min_linear_speed, linear_cmd)
         
-        # Get sensor data
+        # Get sensor data (max-range readings mean clear, not proximity)
         sensor_data = self.sensor_manager.get_sensor_data()
-        front_distance = sensor_data['ultrasonic']['front'].value
-        left_distance = sensor_data['ultrasonic']['left'].value
-        right_distance = sensor_data['ultrasonic']['right'].value
+        front_distance = self._effective_sensor_distance(sensor_data['ultrasonic']['front'].value)
+        left_distance = self._effective_sensor_distance(sensor_data['ultrasonic']['left'].value)
+        right_distance = self._effective_sensor_distance(sensor_data['ultrasonic']['right'].value)
+        raw_front = sensor_data['ultrasonic']['front'].value
+        raw_left = sensor_data['ultrasonic']['left'].value
+        raw_right = sensor_data['ultrasonic']['right'].value
         min_distance = min([front_distance, left_distance, right_distance])
         
         # Enhanced LIDAR-based environment learning and proactive planning
-        self._process_lidar_data(front_distance, left_distance, right_distance)
+        self._process_lidar_data(raw_front, raw_left, raw_right)
         
         # Reset recovery attempts if robot has clear space and is making progress
-        if (front_distance > self.robot_state.config['robot']['safety_distances']['comfortable'] and
+        if (front_distance > self._safety_threshold_m('comfortable') and
             min(left_distance, right_distance) > 0.3 and
             self.recovery_attempts > 0):
             logger.info("Robot has clear space and is making progress - resetting recovery attempts")
@@ -918,6 +1182,12 @@ class AutonomousController:
         
         # Calculate adaptive speed scaling based on proximity to objects
         speed_scale = self._calculate_adaptive_speed_scale(front_distance, left_distance, right_distance)
+
+        # Approach B: TaskBoss/RobotMind proximity_reaction (cooldown + busy-skip)
+        prox_scale = self._maybe_handle_proximity(raw_front, raw_left, raw_right, speed_scale)
+        if prox_scale is None:
+            return
+        speed_scale = prox_scale
         
         # Update exploration distance metrics
         if self.exploration_mode and self.exploration_last_position:
@@ -931,12 +1201,15 @@ class AutonomousController:
         
         # Log speed adjustment for debugging and areas of caution
         if speed_scale < 1.0:
-            logger.debug(f"Speed reduced to {speed_scale:.2f} due to proximity - L:{left_distance:.2f}m, R:{right_distance:.2f}m, F:{front_distance:.2f}m")
-            i = int(current_pos.y // grid_size)
-            j = int(current_pos.x // grid_size)
-            self.areas_of_caution.add((i, j))
+            logger.debug(f"Speed reduced to {speed_scale:.2f} due to proximity - L:{raw_left:.2f}m, R:{raw_right:.2f}m, F:{raw_front:.2f}m")
+            # Only mark caution when both sides are constrained (true narrow corridor)
+            if (not self._is_clear_reading(raw_left) and not self._is_clear_reading(raw_right)
+                    and raw_left < self.safe_distance and raw_right < self.safe_distance):
+                i = int(current_pos.y // grid_size)
+                j = int(current_pos.x // grid_size)
+                self.areas_of_caution.add((i, j))
         
-        # Log valid path (navmesh) as valid_paths
+        # Log valid path (navmesh) as valid_paths — defer save to cooldown
         if self.last_navmesh_cell is not None and self.last_navmesh_cell != (int(current_pos.x // grid_size), int(current_pos.y // grid_size)):
             from_cell = self.last_navmesh_cell
             to_cell = (int(current_pos.x // grid_size), int(current_pos.y // grid_size))
@@ -944,33 +1217,49 @@ class AutonomousController:
             if edge not in self.valid_paths:
                 self.valid_paths[edge] = list(self.current_navmesh_path)
                 self.learning_data_changed = True
-                self._save_learning_data()
+                if len(self.valid_paths) > self.max_valid_paths:
+                    self._prune_learning_data()
             self.current_navmesh_path = []
         self.current_navmesh_path.append((current_pos.x, current_pos.y))
         self.last_navmesh_cell = (int(current_pos.x // grid_size), int(current_pos.y // grid_size))
         
-        # Immediate obstacle avoidance if obstacle is very close
-        if front_distance < self.route_replan_trigger:
-            logger.warning(f"Obstacle too close ({front_distance:.2f}m) - switching to obstacle avoidance")
+        # Vision-directed slowdown / stop (camera path-crossing prediction)
+        if self.vision_fusion:
+            decision = self.vision_fusion.get_navigation_decision()
+            if decision.action == "stop":
+                logger.warning(f"Vision stop: {decision.reason}")
+                self.motor_controller.stop()
+                self.nav_state = NavigationState.AVOIDING_OBSTACLE
+                return
+            if decision.action == "slow":
+                speed_scale *= 0.4
+
+        # Immediate obstacle avoidance if obstacle is very close (ignore max-range)
+        if not self._is_clear_reading(raw_front) and raw_front < self.route_replan_trigger:
+            logger.warning(f"Obstacle too close ({raw_front:.2f}m) - switching to obstacle avoidance")
             self.nav_state = NavigationState.AVOIDING_OBSTACLE
             return
         
         # Proactive route replanning when obstacle detected at a moderate distance
+        # Skip near goal — replanning there causes idle oscillation without reaching_goal.
         allow_replan = True
+        if near_goal:
+            allow_replan = False
         if hasattr(self, 'last_replan_position'):
             last_x, last_y = self.last_replan_position
             moved = math.hypot(current_pos.x - last_x, current_pos.y - last_y)
-            if moved < 0.05:
+            if moved < 0.2:
                 allow_replan = False
                 logger.debug(f"Replanning skipped: robot has not moved enough since last replan ({moved:.2f}m)")
         
-        if (self.route_replan_trigger <= front_distance < self.route_replan_threshold and
+        if (not self._is_clear_reading(raw_front) and
+            self.route_replan_trigger <= raw_front < self.route_replan_threshold and
             self.nav_state not in [NavigationState.BACKTRACKING, NavigationState.AVOIDING_OBSTACLE, NavigationState.REPLANNING_ROUTE] and
             allow_replan):
             current_time = time.time()
             if (current_time - self.last_replan_time > self.replan_cooldown and 
                 self.replan_attempts < self.max_replan_attempts):
-                logger.info(f"LIDAR detected obstacle at {front_distance:.2f}m - proactively planning alternate route")
+                logger.info(f"LIDAR detected obstacle at {raw_front:.2f}m - proactively planning alternate route")
                 self.replan_attempts += 1
                 self.last_replan_time = current_time
                 self.last_replan_position = (current_pos.x, current_pos.y)
@@ -984,7 +1273,7 @@ class AutonomousController:
         
         # Apply motor commands
         left_speed, right_speed = self._apply_motor_commands(linear_cmd, angular_cmd)
-        self.motor_controller.set_speeds(left_speed * speed_scale, right_speed * speed_scale)
+        self._set_wheel_speeds_pct(left_speed * speed_scale, right_speed * speed_scale)
         
         # Learning data is now saved automatically when it changes (with cooldown)
     
@@ -994,17 +1283,17 @@ class AutonomousController:
         front_distance = sensor_data['ultrasonic']['front'].value
         left_distance = sensor_data['ultrasonic']['left'].value
         right_distance = sensor_data['ultrasonic']['right'].value
-        comfortable = self.robot_state.config['robot']['safety_distances']['comfortable']
+        comfortable = self._safety_threshold_m('comfortable')
         clearance_to_resume = max(comfortable, 1.2)  # Require at least 1.2m clear to resume
 
         # Emergency stop if obstacle too close (accounting for clearance)
         effective_emergency_threshold = self.emergency_stop_threshold + self.obstacle_clearance
-        if front_distance < effective_emergency_threshold:
+        if not self._is_clear_reading(front_distance) and front_distance < effective_emergency_threshold:
             self.motor_controller.stop()
             logger.warning(f"Emergency stop - obstacle too close ({front_distance:.3f}m < {effective_emergency_threshold:.3f}m)")
-            self.nav_state = NavigationState.BACKTRACKING
-            self.backtrack_start_time = time.time()
-            self.backtrack_attempts = 0
+            if self.nav_state != NavigationState.BACKTRACKING:
+                self.nav_state = NavigationState.BACKTRACKING
+                self.backtrack_start_time = time.time()
             return
 
         # If obstacle is still within comfortable distance, keep turning (faster)
@@ -1035,7 +1324,7 @@ class AutonomousController:
                     turn_direction = -1  # right
             
             turn_speed = 1.0  # Faster turn speed for avoidance
-            self.motor_controller.set_speeds(-turn_speed * turn_direction, turn_speed * turn_direction)
+            self._set_turn_in_place_mps(turn_speed, turn_direction)
             logger.info(f"Turning in place to clear obstacle (dir: {'left' if turn_direction==1 else 'right'}, speed: {turn_speed}, maintaining {self.obstacle_clearance*100:.1f}cm clearance)")
             return
 
@@ -1043,25 +1332,20 @@ class AutonomousController:
         if (front_distance >= clearance_to_resume and 
             left_distance >= self.obstacle_clearance and 
             right_distance >= self.obstacle_clearance):
-            # Path ahead is clear with sufficient clearance, resume path following
             self.motor_controller.stop()
             logger.info(f"Obstacle cleared with sufficient clearance (front: {front_distance:.2f}m, left: {left_distance:.2f}m, right: {right_distance:.2f}m), resuming path following.")
+            if self.recovery_attempts > 0:
+                logger.info("Obstacle successfully cleared - resetting recovery attempts")
+                self._reset_recovery_attempts()
+            self.nav_state = NavigationState.FOLLOWING_PATH
         else:
-            # Still need to maintain clearance, keep turning
             if left_distance > right_distance:
-                turn_direction = 1  # left
+                turn_direction = 1
             else:
-                turn_direction = -1  # right
-            turn_speed = 0.5  # Slower turn to fine-tune clearance
-            self.motor_controller.set_speeds(-turn_speed * turn_direction, turn_speed * turn_direction)
+                turn_direction = -1
+            turn_speed = 0.5
+            self._set_turn_in_place_mps(turn_speed, turn_direction)
             logger.debug(f"Fine-tuning clearance - turning {'left' if turn_direction==1 else 'right'}")
-        
-        # Reset recovery attempts since obstacle was successfully cleared
-        if self.recovery_attempts > 0:
-            logger.info("Obstacle successfully cleared - resetting recovery attempts")
-            self._reset_recovery_attempts()
-        
-        self.nav_state = NavigationState.FOLLOWING_PATH
     
     def _handle_goal_reached(self):
         """Handle reaching the navigation goal"""
@@ -1088,7 +1372,15 @@ class AutonomousController:
             self.nav_state = NavigationState.PLANNING
             self._start_exploration_planning()
         else:
-            # Regular navigation complete
+            # Regular navigation complete — learn smoother corridor from this run
+            if self.path_refiner and self.current_goal and self._driven_trace:
+                goal_xy = (self.current_goal.x, self.current_goal.y)
+                start_xy = self._nav_start_xy or self._driven_trace[0]
+                trace = list(self._driven_trace)
+                if math.hypot(trace[-1][0] - goal_xy[0], trace[-1][1] - goal_xy[1]) > 0.05:
+                    trace.append(goal_xy)
+                self.path_refiner.record_run(start_xy, goal_xy, trace, self.pathfinder)
+            self.goal_reached_flag = True
             self.motor_controller.stop()
             self.nav_state = NavigationState.IDLE
             self.current_goal = None
@@ -1125,7 +1417,7 @@ class AutonomousController:
             
             if distance > 0.1:  # Only rewind if there's a meaningful distance
                 # Move backward toward previous waypoint
-                self.motor_controller.set_speeds(-20, -20)  # Slow backward movement
+                self._set_wheel_speeds_pct(-20, -20)  # Slow backward movement
                 time.sleep(2.0)
                 self.motor_controller.stop()
                 
@@ -1134,16 +1426,16 @@ class AutonomousController:
                 logger.info(f"Rewound to waypoint {prev_index}")
             else:
                 # If too close to previous waypoint, try simple backup and turn
-                self.motor_controller.set_speeds(-30, -30)  # Back up
+                self._set_wheel_speeds_pct(-30, -30)  # Back up
                 time.sleep(1.0)
-                self.motor_controller.set_speeds(-50, 50)   # Turn
+                self._set_wheel_speeds_pct(-50, 50)   # Turn
                 time.sleep(2.0)
                 self.motor_controller.stop()
         else:
             # No path history, use simple backup and turn
-            self.motor_controller.set_speeds(-30, -30)  # Back up
+            self._set_wheel_speeds_pct(-30, -30)  # Back up
             time.sleep(1.0)
-            self.motor_controller.set_speeds(-50, 50)   # Turn
+            self._set_wheel_speeds_pct(-50, 50)   # Turn
             time.sleep(2.0)
             self.motor_controller.stop()
         
@@ -1153,9 +1445,97 @@ class AutonomousController:
     def _check_obstacles(self) -> bool:
         """Check for obstacles in the path, accounting for clearance distance"""
         sensor_data = self.sensor_manager.get_sensor_data()
-        # Effective threshold includes clearance distance to trigger avoidance earlier
+        front = sensor_data['ultrasonic']['front'].value
+        if self._is_clear_reading(front):
+            return False
         effective_obstacle_threshold = self.obstacle_threshold + self.obstacle_clearance
-        return sensor_data['ultrasonic']['front'].value < effective_obstacle_threshold
+        return front < effective_obstacle_threshold
+
+    def _maybe_handle_proximity(
+        self, front_m: float, left_m: float, right_m: float, speed_scale: float
+    ) -> Optional[float]:
+        """
+        When front distance is within comfortable/warning thresholds, ask TaskBoss
+        (RobotMind) for a proximity_reaction tool. Cooldown + busy-skip keep the
+        nav loop responsive. Returns updated speed_scale, or None to halt this tick.
+        """
+        if not self.task_boss:
+            return speed_scale
+
+        if self._is_clear_reading(front_m):
+            return speed_scale
+
+        front_eff = self._effective_sensor_distance(front_m)
+        comfortable_m = self._safety_threshold_m("comfortable")
+        warning_m = self._safety_threshold_m("warning")
+        if front_eff >= comfortable_m:
+            return speed_scale
+
+        now = time.time()
+        if now - self._last_proximity_think_ts < self._proximity_cooldown_s:
+            if front_eff < warning_m:
+                return speed_scale * 0.4
+            return speed_scale
+
+        self._last_proximity_think_ts = now
+
+        from ..core.robot_state import SensorData
+        left_eff = self._effective_sensor_distance(left_m)
+        right_eff = self._effective_sensor_distance(right_m)
+        # AC fusion uses meters; SensorData is cm
+        sensor_data = SensorData(
+            ultrasonic_front=front_eff * 100.0,
+            ultrasonic_left=left_eff * 100.0,
+            ultrasonic_right=right_eff * 100.0,
+        )
+
+        vision_ctx = None
+        if self.vision_fusion and hasattr(self.vision_fusion, "get_last_result"):
+            last = self.vision_fusion.get_last_result() or {}
+            vision_ctx = {
+                "vision_labels": last.get("vision_labels"),
+                "scene": last.get("scene"),
+                "obstacles": getattr(
+                    self.vision_fusion.get_navigation_decision(), "obstacles", None
+                ),
+            }
+
+        try:
+            result = self.task_boss.handle_proximity(sensor_data, vision_ctx=vision_ctx)
+        except Exception as e:
+            logger.warning(f"handle_proximity failed: {e}")
+            return speed_scale
+
+        self._last_proximity_result = result
+        if result.get("skipped"):
+            return speed_scale * 0.4 if front_eff < warning_m else speed_scale
+
+        tool = (result.get("tool") or (result.get("reasoning") or {}).get("tool") or "")
+        reason = result.get("reason") or (result.get("reasoning") or {}).get("reason", "")
+        logger.info(f"Proximity reaction tool={tool} — {reason}")
+
+        if tool == "stop":
+            self.motor_controller.stop()
+            self.nav_state = NavigationState.AVOIDING_OBSTACLE
+            return None
+        if tool == "try_alternate_route":
+            if self.nav_state != NavigationState.REPLANNING_ROUTE:
+                self.nav_state = NavigationState.REPLANNING_ROUTE
+            return None
+        if tool == "navigate_to":
+            return None
+        if tool == "scan_surroundings":
+            return speed_scale * 0.4
+        if front_eff < warning_m:
+            return speed_scale * 0.4
+        return speed_scale
+
+    def _check_vision_obstacles(self) -> bool:
+        """Check camera-based dynamic obstacle predictions (vision fusion layer)."""
+        if not self.vision_fusion:
+            return False
+        decision = self.vision_fusion.get_navigation_decision()
+        return decision.action in ("stop", "reroute", "slow")
     
     def _calculate_path_control(self, waypoint: PathPoint) -> Tuple[float, float]:
         """Calculate linear and angular control commands for path following"""
@@ -1188,12 +1568,19 @@ class AutonomousController:
         linear_cmd = self.linear_kp * distance * (1.0 - abs(heading_error) / math.pi)
         linear_cmd = max(0.0, min(self.max_linear_speed, linear_cmd))
         
+        # Keep creeping forward when aligned enough to avoid indefinite stop-and-spin
+        if linear_cmd < 0.05 and abs(heading_error) < math.pi / 3 and distance > self.position_tolerance:
+            linear_cmd = 0.1
+        
         return linear_cmd, angular_cmd
     
     def _apply_motor_commands(self, linear_cmd: float, angular_cmd: float):
-        """Apply motor commands based on linear and angular velocities"""
-        # Convert to wheel speeds (differential drive)
-        wheel_base = 0.25  # Distance between wheels
+        """Apply motor commands based on linear and angular velocities.
+
+        Rear powered wheels (L/R) with passive front caster — differential drive
+        kinematics; turn-in-place is center-pivot via opposing rear wheel speeds.
+        """
+        wheel_base = 0.25  # meters between rear drive wheels
         
         left_speed = (linear_cmd - angular_cmd * wheel_base / 2) * 100  # Convert to percentage
         right_speed = (linear_cmd + angular_cmd * wheel_base / 2) * 100
@@ -1213,6 +1600,48 @@ class AutonomousController:
         
         # Apply to motors
         return left_speed, right_speed
+
+    def _safety_threshold_m(self, name: str) -> float:
+        """Config safety distances are in cm; sensor fusion in AC uses meters."""
+        cm = self.robot_state.config['robot']['safety_distances'][name]
+        return cm / 100.0
+
+    def _set_wheel_speeds_pct(self, left_pct: float, right_pct: float):
+        """All motion commands use percent PWM [-100, 100] on rear wheels."""
+        self.motor_controller.set_wheel_speeds_pct(left_pct, right_pct)
+
+    def _pct_from_linear_mps(self, linear_mps: float) -> float:
+        return max(-100.0, min(100.0, (linear_mps / self.max_linear_speed) * 100.0))
+
+    def _set_linear_mps(self, linear_mps: float):
+        pct = self._pct_from_linear_mps(linear_mps)
+        self._set_wheel_speeds_pct(pct, pct)
+
+    def _set_wheel_linear_mps(self, left_mps: float, right_mps: float):
+        """Convert per-wheel m/s targets to differential-drive PWM percent."""
+        wheel_base = 0.25
+        linear = (left_mps + right_mps) / 2.0
+        angular = (right_mps - left_mps) / wheel_base
+        left_pct, right_pct = self._apply_motor_commands(linear, angular)
+        self._set_wheel_speeds_pct(left_pct, right_pct)
+
+    def _set_turn_in_place_mps(self, wheel_mps: float, direction: int = 1):
+        """Turn in place: direction 1=left, -1=right."""
+        self._set_wheel_linear_mps(-wheel_mps * direction, wheel_mps * direction)
+
+    def _gate_motion_if_unsafe(self) -> bool:
+        """Stop and avoid if robot_state says unsafe. Returns True if gated."""
+        if self.robot_state.safe_to_move:
+            return False
+        self.motor_controller.stop_motors()
+        if self.nav_state not in (
+            NavigationState.AVOIDING_OBSTACLE,
+            NavigationState.BACKTRACKING,
+            NavigationState.STUCK,
+            NavigationState.REPLANNING_ROUTE,
+        ):
+            self.nav_state = NavigationState.AVOIDING_OBSTACLE
+        return True
     
     def _calculate_exploration_progress(self) -> Dict[str, Any]:
         """Calculate exploration progress metrics.
@@ -1265,9 +1694,9 @@ class AutonomousController:
         """Get current navigation status"""
         # Get current sensor data for speed information
         sensor_data = self.sensor_manager.get_sensor_data()
-        front_distance = sensor_data['ultrasonic']['front'].value
-        left_distance = sensor_data['ultrasonic']['left'].value
-        right_distance = sensor_data['ultrasonic']['right'].value
+        front_distance = self._ultrasonic_value(sensor_data, 'front')
+        left_distance = self._ultrasonic_value(sensor_data, 'left')
+        right_distance = self._ultrasonic_value(sensor_data, 'right')
         
         # Calculate current speed scale
         current_speed_scale = self._calculate_adaptive_speed_scale(front_distance, left_distance, right_distance)
@@ -1278,7 +1707,11 @@ class AutonomousController:
             exploration_progress = self._calculate_exploration_progress()
         
         return {
-            'state': self.nav_state.value,
+            'state': (
+                'reached_goal' if self.goal_reached_flag and not self.exploration_mode
+                else self.nav_state.value
+            ),
+            'goal_reached': self.goal_reached_flag,
             'goal': {
                 'x': self.current_goal.x if self.current_goal else None,
                 'y': self.current_goal.y if self.current_goal else None,
@@ -1342,7 +1775,7 @@ class AutonomousController:
     def _initiate_turn(self, direction=1):
         # direction: 1 for left, -1 for right
         turn_speed = 0.6  # Increased turn speed for in-place turns
-        self.motor_controller.set_speeds(-turn_speed * direction, turn_speed * direction)
+        self._set_turn_in_place_mps(turn_speed, direction)
         self.turn_start_time = time.time()
 
     def _handle_backtracking(self):
@@ -1354,7 +1787,7 @@ class AutonomousController:
         
         # Backtrack for 1 second
         if elapsed < 1.0:
-            self.motor_controller.set_speeds(-0.2, -0.2)
+            self._set_linear_mps(-0.2)
             return
         
         # Stop backtracking
@@ -1413,7 +1846,7 @@ class AutonomousController:
         if self.stuck_recovery_attempts == 0:
             # First attempt: aggressive reverse
             if elapsed < 2.0:
-                self.motor_controller.set_speeds(-0.3, -0.3)
+                self._set_linear_mps(-0.3)
                 return
             else:
                 self.motor_controller.stop()
@@ -1424,7 +1857,7 @@ class AutonomousController:
         elif self.stuck_recovery_attempts == 1:
             # Second attempt: spin in place
             if elapsed < 1.5:
-                self.motor_controller.set_speeds(0.2, -0.2)
+                self._set_wheel_linear_mps(0.2, -0.2)
                 return
             else:
                 self.motor_controller.stop()
@@ -1714,24 +2147,36 @@ class AutonomousController:
         
         return False
 
+    def _fail_reactivation_try_next(self):
+        """Advance past a failed reactivation try; ERROR when attempts are exhausted."""
+        self.reactivation_attempts += 1
+        if self.reactivation_attempts >= self.max_reactivation_attempts:
+            logger.error("All reactivation attempts failed - switching to error state")
+            self.nav_state = NavigationState.ERROR
+            self.motor_controller.stop()
+            return
+
+        self.current_reactivation_strategy = (
+            (self.current_reactivation_strategy + 1) % len(self.reactivation_strategies)
+        )
+        self.reactivation_start_time = time.time()
+        strategy = self.reactivation_strategies[self.current_reactivation_strategy]
+        logger.info(
+            f"Reactivation not successful - switching to strategy "
+            f"{self.current_reactivation_strategy + 1}/{len(self.reactivation_strategies)}: {strategy}"
+        )
+
     def _handle_reactivation(self):
         """Handle robot reactivation after navigation timeout"""
         current_time = time.time()
         elapsed = current_time - self.reactivation_start_time
         
-        # Check if current reactivation attempt has timed out
+        # Safety net: strategy windows are shorter; advance if a try exceeds timeout
         if elapsed > self.reactivation_timeout:
-            self.reactivation_attempts += 1
-            if self.reactivation_attempts >= self.max_reactivation_attempts:
-                logger.error("All reactivation attempts failed - switching to error state")
-                self.nav_state = NavigationState.ERROR
-                self.motor_controller.stop()
+            self._fail_reactivation_try_next()
+            if self.nav_state == NavigationState.ERROR:
                 return
-            else:
-                # Try next strategy
-                self.current_reactivation_strategy = (self.current_reactivation_strategy + 1) % len(self.reactivation_strategies)
-                self.reactivation_start_time = current_time
-                logger.info(f"Switching to reactivation strategy {self.current_reactivation_strategy + 1}/{len(self.reactivation_strategies)}: {self.reactivation_strategies[self.current_reactivation_strategy]}")
+            elapsed = 0.0
         
         # Execute current reactivation strategy
         strategy = self.reactivation_strategies[self.current_reactivation_strategy]
@@ -1752,42 +2197,38 @@ class AutonomousController:
             logger.error(f"Unknown reactivation strategy: {strategy}")
             self.nav_state = NavigationState.ERROR
             self.motor_controller.stop()
+
+    def _finish_reactivation_attempt(self, success_message: str):
+        """Stop, evaluate sensors-only success, or advance to the next strategy."""
+        self.motor_controller.stop()
+        if self._check_if_reactivation_successful():
+            logger.info(success_message)
+            self._reset_recovery_attempts()
+            self.nav_state = NavigationState.PLANNING
+        else:
+            self._fail_reactivation_try_next()
     
     def _execute_backup_and_turn(self, elapsed):
         """Execute backup and turn strategy"""
         if elapsed < 2.0:
             # Back up for 2 seconds
-            self.motor_controller.set_speeds(-0.3, -0.3)
+            self._set_linear_mps(-0.3)
             logger.info("Reactivation: Backing up...")
         elif elapsed < 4.0:
             # Turn in place for 2 seconds
-            self.motor_controller.set_speeds(0.4, -0.4)
+            self._set_wheel_linear_mps(0.4, -0.4)
             logger.info("Reactivation: Turning in place...")
         else:
-            # Stop and check if we can proceed
-            self.motor_controller.stop()
-            if self._check_if_reactivation_successful():
-                logger.info("Reactivation successful - resuming navigation")
-                self._reset_recovery_attempts()
-                self.nav_state = NavigationState.PLANNING
-            else:
-                logger.info("Reactivation not successful - will try next strategy")
+            self._finish_reactivation_attempt("Reactivation successful - resuming navigation")
     
     def _execute_spin_in_place(self, elapsed):
         """Execute spin in place strategy"""
         if elapsed < 3.0:
             # Spin in place for 3 seconds
-            self.motor_controller.set_speeds(0.5, -0.5)
+            self._set_wheel_linear_mps(0.5, -0.5)
             logger.info("Reactivation: Spinning in place...")
         else:
-            # Stop and check if we can proceed
-            self.motor_controller.stop()
-            if self._check_if_reactivation_successful():
-                logger.info("Reactivation successful - resuming navigation")
-                self._reset_recovery_attempts()
-                self.nav_state = NavigationState.PLANNING
-            else:
-                logger.info("Reactivation not successful - will try next strategy")
+            self._finish_reactivation_attempt("Reactivation successful - resuming navigation")
     
     def _execute_wiggle_movement(self, elapsed):
         """Execute wiggle movement strategy"""
@@ -1798,41 +2239,27 @@ class AutonomousController:
         if cycle < 3:  # Do 3 wiggle cycles
             if cycle_elapsed < 0.5:
                 # Wiggle left
-                self.motor_controller.set_speeds(0.2, -0.2)
+                self._set_wheel_linear_mps(0.2, -0.2)
                 logger.info(f"Reactivation: Wiggle cycle {cycle + 1}, left...")
             else:
                 # Wiggle right
-                self.motor_controller.set_speeds(-0.2, 0.2)
+                self._set_wheel_linear_mps(-0.2, 0.2)
                 logger.info(f"Reactivation: Wiggle cycle {cycle + 1}, right...")
         else:
-            # Stop and check if we can proceed
-            self.motor_controller.stop()
-            if self._check_if_reactivation_successful():
-                logger.info("Reactivation successful - resuming navigation")
-                self._reset_recovery_attempts()
-                self.nav_state = NavigationState.PLANNING
-            else:
-                logger.info("Reactivation not successful - will try next strategy")
+            self._finish_reactivation_attempt("Reactivation successful - resuming navigation")
     
     def _execute_aggressive_backup(self, elapsed):
         """Execute aggressive backup strategy"""
         if elapsed < 2.0:
             # Aggressive backup for 2 seconds
-            self.motor_controller.set_speeds(-0.6, -0.6)
+            self._set_linear_mps(-0.6)
             logger.info("Reactivation: Aggressive backup...")
         elif elapsed < 4.0:
             # Quick forward burst
-            self.motor_controller.set_speeds(0.4, 0.4)
+            self._set_linear_mps(0.4)
             logger.info("Reactivation: Forward burst...")
         else:
-            # Stop and check if we can proceed
-            self.motor_controller.stop()
-            if self._check_if_reactivation_successful():
-                logger.info("Reactivation successful - resuming navigation")
-                self._reset_recovery_attempts()
-                self.nav_state = NavigationState.PLANNING
-            else:
-                logger.info("Reactivation not successful - will try next strategy")
+            self._finish_reactivation_attempt("Reactivation successful - resuming navigation")
     
     def _execute_random_movement(self, elapsed):
         """Execute random movement strategy"""
@@ -1842,29 +2269,22 @@ class AutonomousController:
             
             if movement_phase == 0:
                 # Forward
-                self.motor_controller.set_speeds(0.3, 0.3)
+                self._set_linear_mps(0.3)
                 logger.info("Reactivation: Random movement - forward...")
             elif movement_phase == 1:
                 # Turn left
-                self.motor_controller.set_speeds(0.2, -0.2)
+                self._set_wheel_linear_mps(0.2, -0.2)
                 logger.info("Reactivation: Random movement - turn left...")
             elif movement_phase == 2:
                 # Backward
-                self.motor_controller.set_speeds(-0.3, -0.3)
+                self._set_linear_mps(-0.3)
                 logger.info("Reactivation: Random movement - backward...")
             else:
                 # Turn right
-                self.motor_controller.set_speeds(-0.2, 0.2)
+                self._set_wheel_linear_mps(-0.2, 0.2)
                 logger.info("Reactivation: Random movement - turn right...")
         else:
-            # Stop and check if we can proceed
-            self.motor_controller.stop()
-            if self._check_if_reactivation_successful():
-                logger.info("Reactivation successful - resuming navigation")
-                self._reset_recovery_attempts()
-                self.nav_state = NavigationState.PLANNING
-            else:
-                logger.info("Reactivation not successful - will try next strategy")
+            self._finish_reactivation_attempt("Reactivation successful - resuming navigation")
     
     def _execute_aggressive_random_walk(self, elapsed):
         """Aggressive random walk: erratic, longer, higher speed movements to escape traps."""
@@ -1872,34 +2292,35 @@ class AutonomousController:
         if elapsed < duration:
             phase = int(elapsed * 2) % 6  # 6 phases, ~0.33s each
             if phase == 0:
-                self.motor_controller.set_speeds(0.6, 0.6)  # Fast forward
+                self._set_linear_mps(0.6)  # Fast forward
                 logger.info("Aggressive random walk: forward")
             elif phase == 1:
-                self.motor_controller.set_speeds(-0.6, -0.6)  # Fast backward
+                self._set_linear_mps(-0.6)  # Fast backward
                 logger.info("Aggressive random walk: backward")
             elif phase == 2:
-                self.motor_controller.set_speeds(0.6, -0.6)  # Fast left spin
+                self._set_wheel_linear_mps(0.6, -0.6)  # Fast left spin
                 logger.info("Aggressive random walk: spin left")
             elif phase == 3:
-                self.motor_controller.set_speeds(-0.6, 0.6)  # Fast right spin
+                self._set_wheel_linear_mps(-0.6, 0.6)  # Fast right spin
                 logger.info("Aggressive random walk: spin right")
             elif phase == 4:
-                self.motor_controller.set_speeds(0.4, -0.2)  # Curve left
+                self._set_wheel_linear_mps(0.4, -0.2)  # Curve left
                 logger.info("Aggressive random walk: curve left")
             else:
-                self.motor_controller.set_speeds(-0.2, 0.4)  # Curve right
+                self._set_wheel_linear_mps(-0.2, 0.4)  # Curve right
                 logger.info("Aggressive random walk: curve right")
         else:
-            self.motor_controller.stop()
-            if self._check_if_reactivation_successful():
-                logger.info("Aggressive random walk successful - resuming navigation")
-                self._reset_recovery_attempts()
-                self.nav_state = NavigationState.PLANNING
-            else:
-                logger.info("Aggressive random walk not successful - will try next strategy")
+            self._finish_reactivation_attempt(
+                "Aggressive random walk successful - resuming navigation"
+            )
     
     def _check_if_reactivation_successful(self) -> bool:
-        """Check if reactivation was successful by examining sensor data and position"""
+        """Sensors-only success check for REACTIVATING / STUCK recovery.
+
+        Uses ultrasonic clearances and odometry displacement only. Vision fusion
+        is intentionally ignored here so recovery works when the camera/fusion
+        layer is missing or disabled.
+        """
         try:
             # Get current sensor data
             sensor_data = self.sensor_manager.get_sensor_data()
@@ -2037,6 +2458,13 @@ class AutonomousController:
     
     def _process_lidar_data(self, front_distance, left_distance, right_distance):
         """Process LIDAR data to learn environment and make proactive decisions"""
+        if self._is_clear_reading(front_distance):
+            front_distance = self.sensor_max_range
+        if self._is_clear_reading(left_distance):
+            left_distance = self.sensor_max_range
+        if self._is_clear_reading(right_distance):
+            right_distance = self.sensor_max_range
+
         # Define detection zones for different levels of awareness
         far_zone = 3.0      # 3m+ - long-range planning zone
         mid_zone = 2.0      # 2-3m - proactive planning zone  
@@ -2119,6 +2547,8 @@ class AutonomousController:
     
     def _update_environment_map(self, front_distance, left_distance, right_distance):
         """Update internal environment map with LIDAR data"""
+        if not self.exploration_mode:
+            return
         current_pos = self.robot_state.get_position()
         min_obstacle_distance = 0.5  # Don't add obstacles too close to robot
 
@@ -2157,6 +2587,8 @@ class AutonomousController:
     
     def _update_pathfinder_with_lidar_data(self, front_distance, left_distance, right_distance):
         """Update pathfinder grid with LIDAR-detected obstacles"""
+        if not self.exploration_mode:
+            return
         current_pos = self.robot_state.get_position()
         min_obstacle_distance = 0.5  # Don't add obstacles too close to robot
 
@@ -2263,10 +2695,19 @@ class AutonomousController:
         grid_size = self.robot_state.config['navigation']['grid_size']
         i = int(pos.y // grid_size)
         j = int(pos.x // grid_size)
+        cell = (i, j)
+        self.stuck_cell_failures[cell] = self.stuck_cell_failures.get(cell, 0) + 1
+
+        if self.stuck_cell_failures[cell] < self.stuck_failure_threshold:
+            logger.info(
+                f"Stuck cell ({i},{j}) failure {self.stuck_cell_failures[cell]}/"
+                f"{self.stuck_failure_threshold} — not persisting yet"
+            )
+            return
+
         x = j * grid_size + grid_size / 2
         y = i * grid_size + grid_size / 2
         
-        # Check if this location is already recorded
         location_exists = any(
             abs(loc['x'] - x) < 0.01 and abs(loc['y'] - y) < 0.01 
             for loc in self.stuck_locations
@@ -2276,14 +2717,16 @@ class AutonomousController:
             new_location = {
                 "count": self.stuck_location_counter,
                 "x": x,
-                "y": y
+                "y": y,
+                "failures": self.stuck_cell_failures[cell],
+                "timestamp": time.time()
             }
             self.stuck_locations.append(new_location)
             self.stuck_location_counter += 1
             self.learning_data_changed = True
-            self._save_learning_data(force=True)  # Force save for stuck locations
-            self.pathfinder.add_obstacle(x, y, 0.3)
-            logger.info(f"Recorded stuck location at ({x:.2f}, {y:.2f}) with count {new_location['count']}")
+            self._save_learning_data(force=True)
+            self.pathfinder.add_obstacle(x, y, 0.25)
+            logger.info(f"Recorded stuck location at ({x:.2f}, {y:.2f}) after {self.stuck_cell_failures[cell]} failures")
 
     def get_stuck_locations(self):
         return list(self.stuck_locations)
@@ -2298,6 +2741,8 @@ class AutonomousController:
         if path and len(path) > 1:
             self.current_path = path
             self.path_index = 0
+            self.nav_state = NavigationState.FOLLOWING_PATH
+            self.replan_attempts = 0
             return True
         return False
 
@@ -2349,7 +2794,7 @@ class AutonomousController:
                 logger.warning("Backtracking timed out, resuming wandering.")
                 return
             # Keep reversing
-            self.motor_controller.set_speeds(-0.4, -0.4)  # Increased backtracking speed
+            self._set_linear_mps(-0.4)  # Increased backtracking speed
             logger.debug("Backtracking: reversing...")
             return
 
@@ -2359,7 +2804,7 @@ class AutonomousController:
                 # Continue turning
                 turn_speed = 0.5  # Increased turn speed for higher base speed
                 direction = self.wander_turn_direction
-                self.motor_controller.set_speeds(turn_speed * direction, -turn_speed * direction)
+                self._set_turn_in_place_mps(turn_speed, direction)
                 logger.debug(f"Wandering: turning {'left' if direction == 1 else 'right'}.")
                 return
             else:
@@ -2403,7 +2848,7 @@ class AutonomousController:
             self.learning_data_changed = True
             self._save_learning_data()
         
-        self.motor_controller.set_speeds(adaptive_forward_speed, adaptive_forward_speed)
+        self._set_linear_mps(adaptive_forward_speed)
         logger.debug(f"Wandering: moving forward at {adaptive_forward_speed:.2f} m/s (scale: {speed_scale:.2f}).")
 
     def _backtrack_to_safe(self):
@@ -2411,7 +2856,7 @@ class AutonomousController:
         if not self.backtracking:
             self.backtracking = True
             self.backtrack_start_time = time.time()
-            self.motor_controller.set_speeds(-0.4, -0.4)  # Increased backtracking speed
+            self._set_linear_mps(-0.4)  # Increased backtracking speed
             logger.info("Backtracking: started reversing to escape obstacle.")
 
     def save_navmesh(self):
@@ -2770,9 +3215,6 @@ class AutonomousController:
         
         Removes invalid paths, locations that are no longer stuck, and updates areas of caution.
         """
-        if not self.exploration_mode:
-            return  # Only validate during exploration
-        
         logger.info("Starting learning data validation...")
         
         validation_stats = {

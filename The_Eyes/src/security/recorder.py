@@ -22,7 +22,7 @@ class VideoRecorder:
     
     def __init__(self, 
                  output_dir: str = "recordings",
-                 codec: str = "mp4v",
+                 codec: str = "avc1",
                  fps: float = 30.0,
                  quality: int = 1,
                  max_file_size_mb: int = 500,
@@ -87,18 +87,19 @@ class VideoRecorder:
                 filename = f"{prefix}_{camera_id}_{timestamp}.mp4"
                 filepath = self.output_dir / filename
                 
-                # Get codec
-                fourcc = cv2.VideoWriter_fourcc(*self.codec)
+                # Get codec — prefer H.264 (avc1) for browser playback; fall back to mp4v
+                writer = None
+                for codec_name in dict.fromkeys([self.codec, "avc1", "mp4v"]):
+                    fourcc = cv2.VideoWriter_fourcc(*codec_name[:4].ljust(4))
+                    candidate = cv2.VideoWriter(str(filepath), fourcc, self.fps, (width, height))
+                    if candidate.isOpened():
+                        writer = candidate
+                        if codec_name != self.codec:
+                            self.logger.info(f"Using fallback codec {codec_name} for {filepath}")
+                        break
+                    candidate.release()
                 
-                # Create video writer
-                writer = cv2.VideoWriter(
-                    str(filepath),
-                    fourcc,
-                    self.fps,
-                    (width, height)
-                )
-                
-                if not writer.isOpened():
+                if writer is None:
                     self.logger.error(f"Failed to open video writer for {filepath}")
                     return False
                 
@@ -243,12 +244,23 @@ class VideoRecorder:
         """Check if a camera is currently recording."""
         with self.recording_lock:
             return camera_id in self.active_recordings
+
+    def is_motion_triggered(self, camera_id: str) -> bool:
+        """True if the active recording for this camera was started by motion."""
+        with self.recording_lock:
+            info = self.active_recordings.get(camera_id)
+            return bool(info and info.get("motion_triggered"))
     
     def stop_all_recordings(self):
         """Stop all active recordings."""
         camera_ids = list(self.active_recordings.keys())
         for camera_id in camera_ids:
             self.stop_recording(camera_id)
+
+    def active_camera_ids(self) -> List[str]:
+        """Camera IDs with an active recording session."""
+        with self.recording_lock:
+            return list(self.active_recordings.keys())
     
     def get_statistics(self, camera_id: Optional[str] = None) -> Dict:
         """

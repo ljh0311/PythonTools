@@ -10573,3 +10573,218 @@
 2026-04-27 01:54:10,135 - the_eyes.gui - INFO - Saved scenes to C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\scenes.json
 2026-04-27 01:54:10,135 - the_eyes.gui - INFO - Saved scene configurations
 2026-04-27 01:54:10,136 - the_eyes.gui - INFO - Application closing
+2026-07-01 00:12:27,256 - the_eyes.launcher - INFO - Starting The Eyes GUI application
+2026-07-01 00:12:28,065 - the_eyes.gui - INFO - Loaded configuration from C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\config.json
+2026-07-01 00:12:28,347 - the_eyes.gui - INFO - Position visualization set up successfully
+2026-07-01 00:12:28,396 - the_eyes.camera_manager - WARNING - Unsupported camera type 'browser' for camera webcam_0
+2026-07-01 00:12:28,396 - the_eyes.camera_manager - INFO - Initialized 0 cameras
+2026-07-01 00:12:28,396 - the_eyes.camera_manager - INFO - No cameras initialized from configuration, scanning for available cameras...
+2026-07-01 00:12:28,396 - the_eyes.camera_manager - INFO - Scanning for available webcams...
+2026-07-01 00:12:28,619 - the_eyes.camera_manager - INFO - Found webcam at index 0
+2026-07-01 00:12:29,133 - the_eyes.camera.webcam_0 - INFO - Opened camera webcam_0
+2026-07-01 00:12:29,512 - the_eyes.camera_manager - INFO - Scanning for RealSense cameras...
+2026-07-01 00:12:29,523 - the_eyes.camera_manager - INFO - Found 1 cameras during scanning
+2026-07-01 00:12:29,583 - the_eyes.gui - INFO - Camera manager initialized
+2026-07-01 00:12:29,583 - the_eyes.gui - INFO - Alert manager initialized
+2026-07-01 00:12:29,585 - the_eyes.gui - INFO - Video recorder initialized
+2026-07-01 00:12:29,585 - the_eyes.gui - INFO - Motion detector initialized for camera webcam_0
+2026-07-01 00:12:29,585 - the_eyes.gui - INFO - Starting camera views
+2026-07-01 00:12:29,585 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_0: Failed to capture frame from camera webcam_0 (further errors suppressed for 30s)
+2026-07-01 00:12:59,591 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_0: Failed to capture frame from camera webcam_0 (further errors suppressed for 30s)
+2026-07-01 00:13:15,363 - the_eyes.camera.webcam_0 - INFO - Closed camera webcam_0
+2026-07-01 00:13:15,363 - the_eyes.camera_manager - INFO - Scanning for available webcams...
+2026-07-01 00:13:15,580 - the_eyes.camera_manager - INFO - Found webcam at index 0
+2026-07-01 00:13:16,107 - the_eyes.camera.webcam_0 - INFO - Opened camera webcam_0
+2026-07-01 00:13:16,486 - the_eyes.camera_manager - INFO - Scanning for RealSense cameras...
+2026-07-01 00:13:16,495 - the_eyes.camera_manager - INFO - Found 1 cameras during scanning
+2026-07-01 00:13:16,551 - the_eyes.gui - INFO - Changing camera layout to: auto
+2026-07-01 00:13:17,176 - the_eyes.gui - INFO - Starting camera views
+2026-07-01 00:13:29,597 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_0: Failed to capture frame from camera webcam_0 (further errors suppressed for 30s)
+2026-07-01 00:13:59,599 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_0: Failed to capture frame from camera webcam_0 (further errors suppressed for 30s)
+2026-07-01 00:14:13,428 - the_eyes.gui - INFO - Saved scenes to C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\scenes.json
+2026-07-01 00:14:13,460 - the_eyes.gui - INFO - Applied position settings for camera webcam_0: pos=(-10.0, 10.0, 2.0), rot=(0.0, 0.0, 0.0)
+2026-07-01 00:14:29,611 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_0: Failed to capture frame from camera webcam_0 (further errors suppressed for 30s)
+2026-07-01 00:14:55,051 - the_eyes.camera.webcam_0 - INFO - Closed camera webcam_0
+2026-07-01 00:14:55,051 - the_eyes.gui - INFO - Released all camera resources
+2026-07-01 00:14:55,052 - the_eyes.gui - INFO - Saved scenes to C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\scenes.json
+2026-07-01 00:14:55,053 - the_eyes.gui - INFO - Saved scene configurations
+2026-07-01 00:14:55,053 - the_eyes.gui - INFO - Application closing
+2026-07-03 23:22:14,324 - the_eyes.launcher - INFO - Starting The Eyes GUI application
+2026-07-03 23:22:15,091 - the_eyes.gui - WARNING - System resources running high: CPU=20.2%, Memory=91.0%
+2026-07-03 23:22:15,092 - the_eyes.gui - INFO - Loaded configuration from C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\config.json
+2026-07-03 23:22:15,302 - the_eyes.gui - INFO - Position visualization set up successfully
+2026-07-03 23:22:15,357 - the_eyes.camera_manager - WARNING - Unsupported camera type 'browser' for camera webcam_0
+2026-07-03 23:22:15,357 - the_eyes.camera_manager - INFO - Initialized 0 cameras
+2026-07-03 23:22:15,357 - the_eyes.camera_manager - INFO - No cameras initialized from configuration, scanning for available cameras...
+2026-07-03 23:22:15,357 - the_eyes.camera_manager - INFO - Scanning for available webcams...
+2026-07-03 23:22:15,744 - the_eyes.camera_manager - INFO - Found webcam at index 0
+2026-07-03 23:22:16,242 - the_eyes.camera.webcam_0 - INFO - Opened camera webcam_0
+2026-07-03 23:22:16,800 - the_eyes.camera_manager - INFO - Scanning for RealSense cameras...
+2026-07-03 23:22:16,850 - the_eyes.camera_manager - INFO - Found 1 cameras during scanning
+2026-07-03 23:22:16,905 - the_eyes.gui - INFO - Camera manager initialized
+2026-07-03 23:22:16,907 - the_eyes.gui - INFO - Alert manager initialized
+2026-07-03 23:22:16,908 - the_eyes.gui - INFO - Video recorder initialized
+2026-07-03 23:22:16,910 - the_eyes.gui - INFO - Motion detector initialized for camera webcam_0
+2026-07-03 23:22:16,910 - the_eyes.gui - INFO - Starting camera views
+2026-07-03 23:22:16,911 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_0: Failed to capture frame from camera webcam_0 (further errors suppressed for 30s)
+2026-07-03 23:22:20,093 - the_eyes.gui - WARNING - System resources running high: CPU=31.5%, Memory=91.9%
+2026-07-03 23:22:25,097 - the_eyes.gui - WARNING - System resources running high: CPU=22.8%, Memory=91.8%
+2026-07-03 23:22:30,107 - the_eyes.gui - WARNING - System resources running high: CPU=34.5%, Memory=92.7%
+2026-07-03 23:22:35,113 - the_eyes.gui - WARNING - System resources running high: CPU=21.3%, Memory=92.9%
+2026-07-03 23:22:37,585 - the_eyes.gui - INFO - Changed to light mode
+2026-07-03 23:22:40,120 - the_eyes.gui - WARNING - System resources running high: CPU=31.4%, Memory=94.0%
+2026-07-03 23:22:45,130 - the_eyes.gui - WARNING - System resources running high: CPU=20.3%, Memory=94.2%
+2026-07-03 23:22:46,919 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_0: Failed to capture frame from camera webcam_0 (further errors suppressed for 30s)
+2026-07-03 23:22:50,138 - the_eyes.gui - WARNING - System resources running high: CPU=23.0%, Memory=94.5%
+2026-07-03 23:22:55,141 - the_eyes.gui - WARNING - System resources running high: CPU=17.6%, Memory=93.9%
+2026-07-03 23:23:00,147 - the_eyes.gui - WARNING - System resources running high: CPU=18.6%, Memory=91.8%
+2026-07-03 23:23:05,148 - the_eyes.gui - WARNING - System resources running high: CPU=19.1%, Memory=91.7%
+2026-07-03 23:23:10,148 - the_eyes.gui - WARNING - System resources running high: CPU=23.4%, Memory=92.4%
+2026-07-03 23:23:15,154 - the_eyes.gui - WARNING - System resources running high: CPU=23.6%, Memory=93.3%
+2026-07-03 23:23:16,925 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_0: Failed to capture frame from camera webcam_0 (further errors suppressed for 30s)
+2026-07-03 23:23:19,295 - the_eyes.camera.webcam_0 - INFO - Closed camera webcam_0
+2026-07-03 23:23:19,295 - the_eyes.gui - INFO - Released all camera resources
+2026-07-03 23:23:19,297 - the_eyes.gui - INFO - Saved scenes to C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\scenes.json
+2026-07-03 23:23:19,297 - the_eyes.gui - INFO - Saved scene configurations
+2026-07-03 23:23:19,297 - the_eyes.gui - INFO - Application closing
+2026-07-03 23:28:18,921 - the_eyes.launcher - INFO - Starting The Eyes GUI application
+2026-07-03 23:28:18,990 - the_eyes.gui - INFO - Loaded configuration from C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\config.json
+2026-07-03 23:28:18,998 - the_eyes.gui - WARNING - System resources running high: CPU=19.3%, Memory=96.6%
+2026-07-03 23:28:18,998 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-03 23:28:19,208 - the_eyes.gui - INFO - Position visualization set up successfully
+2026-07-03 23:28:19,264 - the_eyes.camera_manager - WARNING - Unsupported camera type 'browser' for camera webcam_0
+2026-07-03 23:28:19,264 - the_eyes.camera_manager - INFO - Initialized 0 cameras
+2026-07-03 23:28:19,264 - the_eyes.camera_manager - INFO - No cameras initialized from configuration, scanning for available cameras...
+2026-07-03 23:28:19,264 - the_eyes.camera_manager - INFO - Scanning for available webcams...
+2026-07-03 23:28:19,541 - the_eyes.camera_manager - INFO - Found webcam at index 0
+2026-07-03 23:28:19,967 - the_eyes.camera.webcam_0 - INFO - Opened camera webcam_0
+2026-07-03 23:28:20,375 - the_eyes.camera_manager - INFO - Scanning for RealSense cameras...
+2026-07-03 23:28:20,404 - the_eyes.camera_manager - INFO - Found 1 cameras during scanning
+2026-07-03 23:28:20,464 - the_eyes.gui - INFO - Camera manager initialized
+2026-07-03 23:28:20,464 - the_eyes.gui - INFO - Alert manager initialized
+2026-07-03 23:28:20,465 - the_eyes.gui - INFO - Video recorder initialized
+2026-07-03 23:28:20,468 - the_eyes.gui - INFO - Motion detector initialized for camera webcam_0
+2026-07-03 23:28:20,468 - the_eyes.gui - INFO - Starting camera views
+2026-07-03 23:28:20,469 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_0: Failed to capture frame from camera webcam_0 (further errors suppressed for 30s)
+2026-07-03 23:28:24,030 - the_eyes.gui - WARNING - System resources running high: CPU=18.7%, Memory=96.8%
+2026-07-03 23:28:24,031 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-03 23:28:29,046 - the_eyes.gui - WARNING - System resources running high: CPU=14.1%, Memory=96.9%
+2026-07-03 23:28:29,046 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-03 23:28:34,067 - the_eyes.gui - WARNING - System resources running high: CPU=18.5%, Memory=96.6%
+2026-07-03 23:28:34,067 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-03 23:28:39,081 - the_eyes.gui - WARNING - System resources running high: CPU=16.0%, Memory=96.3%
+2026-07-03 23:28:39,081 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-03 23:28:44,095 - the_eyes.gui - WARNING - System resources running high: CPU=13.2%, Memory=96.1%
+2026-07-03 23:28:44,095 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-03 23:28:49,109 - the_eyes.gui - WARNING - System resources running high: CPU=17.0%, Memory=95.8%
+2026-07-03 23:28:49,110 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-03 23:28:50,233 - the_eyes.camera.webcam_0 - INFO - Closed camera webcam_0
+2026-07-03 23:28:50,234 - the_eyes.gui - INFO - Released all camera resources
+2026-07-03 23:28:50,235 - the_eyes.gui - INFO - Saved scenes to C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\scenes.json
+2026-07-03 23:28:50,235 - the_eyes.gui - INFO - Saved scene configurations
+2026-07-03 23:28:50,235 - the_eyes.gui - INFO - Application closing
+2026-07-20 12:03:42,501 - the_eyes.launcher - INFO - Starting The Eyes GUI application
+2026-07-20 12:03:43,107 - the_eyes.gui - INFO - Loaded configuration from C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\config.json
+2026-07-20 12:03:43,141 - the_eyes.gui - WARNING - System resources running high: CPU=40.8%, Memory=92.3%
+2026-07-20 12:03:43,424 - the_eyes.gui - INFO - Position visualization set up successfully
+2026-07-20 12:03:43,501 - the_eyes.camera_manager - WARNING - Unsupported camera type 'browser' for camera webcam_0
+2026-07-20 12:03:43,502 - the_eyes.camera_manager - INFO - Initialized 0 cameras
+2026-07-20 12:03:43,502 - the_eyes.camera_manager - INFO - No cameras initialized from configuration, scanning for available cameras...
+2026-07-20 12:03:43,502 - the_eyes.camera_manager - INFO - Scanning for available webcams...
+2026-07-20 12:03:44,793 - the_eyes.camera_manager - INFO - Found webcam at index 0
+2026-07-20 12:03:48,539 - the_eyes.camera.webcam_0 - INFO - Opened camera webcam_0
+2026-07-20 12:03:50,876 - the_eyes.camera_manager - INFO - Found webcam at index 1
+2026-07-20 12:03:59,515 - the_eyes.camera.webcam_1 - INFO - Opened camera webcam_1
+2026-07-20 12:04:02,726 - the_eyes.camera_manager - INFO - Scanning for RealSense cameras...
+2026-07-20 12:04:02,874 - the_eyes.camera_manager - INFO - Found 2 cameras during scanning
+2026-07-20 12:04:02,893 - the_eyes.gui - INFO - Camera manager initialized
+2026-07-20 12:04:02,894 - the_eyes.gui - INFO - Alert manager initialized
+2026-07-20 12:04:02,897 - the_eyes.gui - INFO - Video recorder initialized
+2026-07-20 12:04:02,904 - the_eyes.gui - INFO - Motion detector initialized for camera webcam_0
+2026-07-20 12:04:02,904 - the_eyes.gui - INFO - Motion detector initialized for camera webcam_1
+2026-07-20 12:04:02,905 - the_eyes.gui - INFO - Starting camera views
+2026-07-20 12:04:02,912 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_1: Failed to capture frame from camera webcam_1 (further errors suppressed for 30s)
+2026-07-20 12:04:03,563 - the_eyes.gui - WARNING - System resources running high: CPU=51.9%, Memory=94.9%
+2026-07-20 12:04:08,575 - the_eyes.gui - WARNING - System resources running high: CPU=59.3%, Memory=96.1%
+2026-07-20 12:04:08,576 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:04:13,659 - the_eyes.gui - WARNING - System resources running high: CPU=69.8%, Memory=97.1%
+2026-07-20 12:04:13,660 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:04:15,647 - the_eyes.camera.webcam_0 - INFO - Closed camera webcam_0
+2026-07-20 12:04:15,648 - the_eyes.camera.webcam_1 - INFO - Closed camera webcam_1
+2026-07-20 12:04:15,648 - the_eyes.camera_manager - INFO - Scanning for available webcams...
+2026-07-20 12:04:16,724 - the_eyes.camera_manager - INFO - Found webcam at index 0
+2026-07-20 12:04:18,701 - the_eyes.gui - WARNING - System resources running high: CPU=56.2%, Memory=97.0%
+2026-07-20 12:04:18,701 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:04:19,647 - the_eyes.camera.webcam_0 - INFO - Opened camera webcam_0
+2026-07-20 12:04:21,828 - the_eyes.camera_manager - INFO - Found webcam at index 1
+2026-07-20 12:04:23,729 - the_eyes.gui - WARNING - System resources running high: CPU=41.1%, Memory=95.3%
+2026-07-20 12:04:23,730 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:04:28,748 - the_eyes.gui - WARNING - System resources running high: CPU=36.1%, Memory=95.3%
+2026-07-20 12:04:28,752 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:04:31,820 - the_eyes.camera.webcam_1 - INFO - Opened camera webcam_1
+2026-07-20 12:04:33,871 - the_eyes.gui - WARNING - System resources running high: CPU=34.1%, Memory=94.4%
+2026-07-20 12:04:34,571 - the_eyes.camera_manager - INFO - Scanning for RealSense cameras...
+2026-07-20 12:04:34,645 - the_eyes.camera_manager - INFO - Found 2 cameras during scanning
+2026-07-20 12:04:34,679 - the_eyes.gui - INFO - Changing camera layout to: auto
+2026-07-20 12:04:36,979 - the_eyes.gui - INFO - Starting camera views
+2026-07-20 12:04:37,542 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_1: Failed to capture frame from camera webcam_1 (further errors suppressed for 30s)
+2026-07-20 12:04:39,002 - the_eyes.recorder - INFO - Started motion-triggered recording for camera webcam_0: recordings\motion_webcam_0_20260720_120437.mp4
+2026-07-20 12:04:39,014 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:04:39,095 - the_eyes.gui - WARNING - System resources running high: CPU=27.5%, Memory=94.7%
+2026-07-20 12:04:44,015 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:04:44,220 - the_eyes.gui - WARNING - System resources running high: CPU=35.1%, Memory=94.3%
+2026-07-20 12:04:49,081 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:04:49,285 - the_eyes.gui - WARNING - System resources running high: CPU=32.4%, Memory=94.4%
+2026-07-20 12:04:54,249 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:04:54,388 - the_eyes.gui - WARNING - System resources running high: CPU=29.3%, Memory=94.3%
+2026-07-20 12:04:59,308 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:04:59,498 - the_eyes.gui - WARNING - System resources running high: CPU=31.1%, Memory=94.1%
+2026-07-20 12:05:04,352 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:04,540 - the_eyes.gui - WARNING - System resources running high: CPU=29.3%, Memory=94.0%
+2026-07-20 12:05:07,548 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_1: Failed to capture frame from camera webcam_1 (further errors suppressed for 30s)
+2026-07-20 12:05:09,402 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:09,556 - the_eyes.gui - WARNING - System resources running high: CPU=35.9%, Memory=93.9%
+2026-07-20 12:05:14,486 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:14,598 - the_eyes.gui - WARNING - System resources running high: CPU=32.8%, Memory=94.1%
+2026-07-20 12:05:19,487 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:19,637 - the_eyes.gui - WARNING - System resources running high: CPU=32.3%, Memory=94.5%
+2026-07-20 12:05:24,502 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:24,679 - the_eyes.gui - WARNING - System resources running high: CPU=29.1%, Memory=94.9%
+2026-07-20 12:05:29,518 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:29,756 - the_eyes.gui - WARNING - System resources running high: CPU=48.2%, Memory=96.5%
+2026-07-20 12:05:29,770 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:05:34,555 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:34,929 - the_eyes.gui - WARNING - System resources running high: CPU=48.2%, Memory=96.3%
+2026-07-20 12:05:34,930 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:05:37,557 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_1: Failed to capture frame from camera webcam_1 (further errors suppressed for 30s)
+2026-07-20 12:05:39,642 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:39,993 - the_eyes.gui - WARNING - System resources running high: CPU=31.6%, Memory=96.0%
+2026-07-20 12:05:39,993 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:05:44,658 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:45,044 - the_eyes.gui - WARNING - System resources running high: CPU=27.4%, Memory=96.1%
+2026-07-20 12:05:45,044 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:05:50,072 - the_eyes.gui - WARNING - System resources running high: CPU=27.1%, Memory=95.3%
+2026-07-20 12:05:50,074 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:05:50,337 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:05:55,093 - the_eyes.gui - WARNING - System resources running high: CPU=26.3%, Memory=95.4%
+2026-07-20 12:05:55,094 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:05:55,371 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:06:00,106 - the_eyes.gui - WARNING - System resources running high: CPU=31.8%, Memory=95.5%
+2026-07-20 12:06:00,107 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:06:00,410 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:06:05,140 - the_eyes.gui - WARNING - System resources running high: CPU=22.0%, Memory=95.1%
+2026-07-20 12:06:05,141 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:06:07,564 - the_eyes.camera_manager - WARNING - Capture failed for camera webcam_1: Failed to capture frame from camera webcam_1 (further errors suppressed for 30s)
+2026-07-20 12:06:10,196 - the_eyes.gui - WARNING - System resources running high: CPU=27.5%, Memory=94.9%
+2026-07-20 12:06:14,400 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:06:15,215 - the_eyes.gui - WARNING - System resources running high: CPU=20.2%, Memory=95.0%
+2026-07-20 12:06:19,552 - the_eyes.alert_manager - WARNING - Alert [motion_detected]: Motion detected on camera webcam_0 (Camera: webcam_0)
+2026-07-20 12:06:20,222 - the_eyes.gui - WARNING - System resources running high: CPU=23.4%, Memory=95.2%
+2026-07-20 12:06:20,222 - the_eyes.gui - ERROR - System resources critically low! Reducing workload.
+2026-07-20 12:06:25,237 - the_eyes.gui - WARNING - System resources running high: CPU=23.4%, Memory=95.0%
+2026-07-20 12:06:29,230 - the_eyes.camera.webcam_0 - INFO - Closed camera webcam_0
+2026-07-20 12:06:29,230 - the_eyes.camera.webcam_1 - INFO - Closed camera webcam_1
+2026-07-20 12:06:29,230 - the_eyes.gui - INFO - Released all camera resources
+2026-07-20 12:06:29,232 - the_eyes.gui - INFO - Saved scenes to C:\Users\user\Documents\brightnessControl\PythonTools\The_Eyes\config\scenes.json
+2026-07-20 12:06:29,233 - the_eyes.gui - INFO - Saved scene configurations
+2026-07-20 12:06:29,233 - the_eyes.gui - INFO - Application closing

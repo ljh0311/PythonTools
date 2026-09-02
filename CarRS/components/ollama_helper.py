@@ -1,5 +1,11 @@
 """Helper to interact with Ollama LLM for car rental recommendations."""
-from car_rental_recommender_core import get_ollama_enhanced_recommendations
+
+
+def get_ollama_enhanced_recommendations(*args, **kwargs):
+    """Import core recommendations lazily to avoid a package import cycle."""
+    from car_rental_recommender_core import get_ollama_enhanced_recommendations as get_recommendations
+
+    return get_recommendations(*args, **kwargs)
 
 
 class OllamaHelper:

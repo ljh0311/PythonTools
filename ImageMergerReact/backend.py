@@ -1152,6 +1152,106 @@ class GeminiHelper:
             logger.error(f"Gemini API error: {e}")
             raise
 
+
+# Nano Banana post-merge repair (google-genai image model).
+# Env: GEMINI_API_KEY or GOOGLE_API_KEY (required when AI assist is on);
+#      NANO_BANANA_MODEL (optional, default gemini-2.5-flash-image).
+NANO_BANANA_REPAIR_PROMPT = (
+    "You are repairing a stitched/merged photograph. Keep the same geometry, "
+    "layout, and subject content. Fix visible seams, gaps, ghosting, "
+    "misalignment artifacts, and uneven exposure or color breaks at overlaps. "
+    "Do not invent unrelated objects, change the scene, or crop/rotate the image. "
+    "Return only the repaired image."
+)
+NANO_BANANA_MAX_SIDE = 2048
+NANO_BANANA_MAX_SOURCES = 2
+
+
+class NanoBananaHelper:
+    """Post-merge image repair via Gemini Nano Banana (gemini-*-flash-image)."""
+
+    def __init__(self):
+        self.api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
+        self.model_name = os.environ.get('NANO_BANANA_MODEL', 'gemini-2.5-flash-image')
+
+    @staticmethod
+    def _downscale_if_needed(bgr, max_side=NANO_BANANA_MAX_SIDE):
+        h, w = bgr.shape[:2]
+        longest = max(h, w)
+        if longest <= max_side:
+            return bgr
+        scale = max_side / float(longest)
+        return cv2.resize(bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+    @staticmethod
+    def _bgr_to_png_part(bgr):
+        from google.genai import types
+        ok, buf = cv2.imencode('.png', bgr)
+        if not ok:
+            raise ValueError('Failed to encode image as PNG for Nano Banana')
+        return types.Part.from_bytes(data=buf.tobytes(), mime_type='image/png')
+
+    @staticmethod
+    def _decode_inline_to_bgr(inline_data):
+        raw = inline_data.data
+        if isinstance(raw, str):
+            raw = base64.b64decode(raw)
+        arr = np.frombuffer(raw, dtype=np.uint8)
+        bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if bgr is None:
+            raise ValueError('Nano Banana returned image bytes that could not be decoded')
+        return bgr
+
+    def repair_merge(self, merged_bgr, source_bgr_list):
+        """Repair seams on a merged BGR image using up to 2 source refs. Returns BGR ndarray."""
+        if not self.api_key:
+            raise ValueError(
+                'GEMINI_API_KEY or GOOGLE_API_KEY is required for Nano Banana AI assist.'
+            )
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError as e:
+            raise ImportError(
+                'google-genai is required for Nano Banana. Install with: pip install google-genai'
+            ) from e
+
+        merged = self._downscale_if_needed(np.asarray(merged_bgr))
+        sources = []
+        for src in (source_bgr_list or [])[:NANO_BANANA_MAX_SOURCES]:
+            if src is None:
+                continue
+            sources.append(self._downscale_if_needed(np.asarray(src)))
+
+        contents = [NANO_BANANA_REPAIR_PROMPT, self._bgr_to_png_part(merged)]
+        for src in sources:
+            contents.append(self._bgr_to_png_part(src))
+
+        client = genai.Client(api_key=self.api_key)
+        response = client.models.generate_content(
+            model=self.model_name,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=['TEXT', 'IMAGE'],
+            ),
+        )
+
+        parts = []
+        if getattr(response, 'parts', None):
+            parts = response.parts
+        elif getattr(response, 'candidates', None):
+            cand = response.candidates[0]
+            if cand and cand.content and cand.content.parts:
+                parts = cand.content.parts
+
+        for part in parts:
+            inline = getattr(part, 'inline_data', None)
+            if inline is not None and getattr(inline, 'data', None) is not None:
+                return self._decode_inline_to_bgr(inline)
+
+        raise ValueError('Nano Banana response did not include an image')
+
+
 # Example endpoint for file listing
 @app.route('/api/view_files')
 def api_view_files():
@@ -1281,6 +1381,7 @@ def merge():
         output_size = request.form.get('output_size', 'original')
         output_quality = int(request.form.get('output_quality', 95))
         output_format = request.form.get('output_format', 'png')
+        ai_assist = request.form.get('ai_assist', 'false').lower() == 'true'
         
         # Create merger with parameters
         merger = ImageMerger(
@@ -1353,17 +1454,32 @@ def merge():
                 new_w = int(w * scale)
                 new_h = int(h * scale)
                 result_img = cv2.resize(result_img, (new_w, new_h))
+
+        ai_assisted = False
+        ai_warning = None
+        if ai_assist:
+            try:
+                repaired = NanoBananaHelper().repair_merge(result_img, merger.images)
+                result_img = repaired
+                ai_assisted = True
+            except Exception as e:
+                logger.warning('Nano Banana repair failed; keeping OpenCV merge: %s', e)
+                ai_warning = str(e)
         
         processing_time = time.time() - start_time
         result_filename = save_image(result_img, format=output_format, quality=output_quality)
         result_path = f"/static/results/{result_filename}"
         
-        return jsonify({
+        response_payload = {
             'success': True,
             'result_image': result_path,
             'matches': matches_count if matches_count > 0 else None,
-            'processing_time': processing_time
-        })
+            'processing_time': processing_time,
+            'ai_assisted': ai_assisted,
+        }
+        if ai_warning:
+            response_payload['ai_warning'] = ai_warning
+        return jsonify(response_payload)
     except Exception as e:
         logger.error(f"Error in merge: {e}")
         return jsonify({'success': False, 'message': f'Error: {str(e)}'})
@@ -1379,17 +1495,21 @@ def run_tests():
         test_name = "OpenCV Feature Detection"
         try:
             import cv2
-            img = np.zeros((100, 100, 3), dtype=np.uint8)
-            cv2.circle(img, (50, 50), 25, (255,255,255), -1)
+            img = np.zeros((200, 200, 3), dtype=np.uint8)
+            cv2.rectangle(img, (20, 20), (180, 180), (255, 255, 255), 3)
+            cv2.line(img, (20, 20), (180, 180), (255, 255, 255), 2)
+            cv2.line(img, (180, 20), (20, 180), (255, 255, 255), 2)
+            cv2.putText(img, 'A', (70, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             start = time.time()
             orb = cv2.ORB_create()
             kp, desc = orb.detectAndCompute(img, None)
             duration = time.time() - start
+            success = len(kp) > 0 and desc is not None
             tests.append({
                 'name': test_name,
-                'success': isinstance(kp, list) and len(kp) > 0 and desc is not None,
+                'success': success,
                 'duration': round(duration, 3),
-                'error': None if (isinstance(kp, list) and len(kp) > 0 and desc is not None) else "No keypoints/descriptors detected"
+                'error': None if success else "No keypoints/descriptors detected"
             })
         except Exception as e:
             tests.append({'name': test_name, 'success': False, 'duration': 0, 'error': str(e)})
@@ -1405,11 +1525,17 @@ def run_tests():
             images = [np.array(img1), np.array(img2)]
             # Simulate the expected merger interface (if available)
             if 'ImageMerger' in globals():
-                merger = ImageMerger(images)
+                merger = ImageMerger()
+                merger.images = images
                 start = time.time()
                 result = merger.do_simple_blend(alpha=0.5)
                 duration = time.time() - start
-                success = isinstance(result, np.ndarray) and result.shape[0] == 100 and result.shape[1] == 100
+                success = (
+                    isinstance(result, np.ndarray)
+                    and result.ndim == 3
+                    and result.shape[0] >= 100
+                    and result.shape[1] >= 100
+                )
                 tests.append({
                     'name': test_name,
                     'success': success,

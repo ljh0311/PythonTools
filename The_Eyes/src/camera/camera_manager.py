@@ -14,7 +14,7 @@ import os
 import threading
 import time
 import logging
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -27,6 +27,7 @@ except ImportError:
     rs = None  # Set to None to avoid undefined variable errors
 
 from ..utils.exceptions import CameraError
+from .network_camera import NetworkCamera
 
 
 class Camera:
@@ -173,7 +174,13 @@ class RealSenseCamera(Camera):
 class CameraManager:
     """Manager class for handling multiple cameras."""
     
-    def __init__(self, config: Dict, enable_threading: bool = True, frame_buffer_size: int = 2):
+    def __init__(
+        self,
+        config: Dict,
+        enable_threading: bool = True,
+        frame_buffer_size: int = 2,
+        auto_scan: bool = True,
+    ):
         """
         Initialize the camera manager.
         
@@ -181,6 +188,7 @@ class CameraManager:
             config: Camera configuration dictionary
             enable_threading: Whether to use threading for parallel frame capture
             frame_buffer_size: Size of frame buffer per camera (for synchronization)
+            auto_scan: When config is empty, scan for local webcams (disable for browser-only web UI)
         """
         self.config = config
         self.cameras = {}
@@ -188,6 +196,9 @@ class CameraManager:
         self.exit_flag = False
         self.enable_threading = enable_threading
         self.frame_buffer_size = frame_buffer_size
+        self.auto_scan = auto_scan
+        self._capture_error_log_at: Dict[str, float] = {}
+        self._capture_error_log_interval = 30.0
         
         # Frame buffers for each camera (thread-safe)
         self.frame_buffers = {}
@@ -203,21 +214,19 @@ class CameraManager:
     def _initialize_cameras(self) -> None:
         """Initialize all cameras based on configuration."""
         if not self.config:
-            # If no cameras configured, try to auto-detect them
-            self.logger.info("No camera configuration provided, scanning for available cameras...")
-            self.scan_for_cameras()
+            if self.auto_scan:
+                self.logger.info("No camera configuration provided, scanning for available cameras...")
+                self.scan_for_cameras()
+            else:
+                self.logger.info("No cameras configured (local auto-scan disabled)")
             return
             
         for camera_id, camera_config in self.config.items():
             camera_type = camera_config.get('type', 'webcam').lower()
             
             try:
-                if camera_type == 'webcam':
-                    camera = WebCamera(camera_id, camera_config)
-                elif camera_type == 'realsense':
-                    camera = RealSenseCamera(camera_id, camera_config)
-                else:
-                    self.logger.warning(f"Unsupported camera type '{camera_type}' for camera {camera_id}")
+                camera = self._create_camera(camera_id, camera_config)
+                if camera is None:
                     continue
                     
                 if camera.open():
@@ -232,7 +241,7 @@ class CameraManager:
         self.logger.info(f"Initialized {len(self.cameras)} cameras")
         
         # If no cameras were initialized from the configuration, try auto-detection
-        if not self.cameras:
+        if not self.cameras and self.auto_scan:
             self.logger.info("No cameras initialized from configuration, scanning for available cameras...")
             self.scan_for_cameras()
             
@@ -241,6 +250,52 @@ class CameraManager:
             if camera_id not in self.frame_buffers:
                 self.frame_buffers[camera_id] = deque(maxlen=self.frame_buffer_size)
                 self.frame_locks[camera_id] = threading.Lock()
+
+    def _create_camera(self, camera_id: str, camera_config: Dict) -> Optional[Any]:
+        """Instantiate a camera from config without opening it."""
+        camera_type = camera_config.get('type', 'webcam').lower()
+        if camera_type == 'webcam':
+            return WebCamera(camera_id, camera_config)
+        if camera_type == 'realsense':
+            return RealSenseCamera(camera_id, camera_config)
+        if camera_type == 'network':
+            return NetworkCamera(camera_id, camera_config)
+        self.logger.warning(f"Unsupported camera type '{camera_type}' for camera {camera_id}")
+        return None
+
+    def add_camera(self, camera_id: str, camera_config: Dict) -> bool:
+        """Add and open a camera at runtime."""
+        if camera_id in self.cameras:
+            self.logger.warning(f"Camera {camera_id} already exists")
+            return False
+
+        try:
+            camera = self._create_camera(camera_id, camera_config)
+            if camera is None:
+                return False
+            if camera.open():
+                self.cameras[camera_id] = camera
+                self.frame_buffers[camera_id] = deque(maxlen=self.frame_buffer_size)
+                self.frame_locks[camera_id] = threading.Lock()
+                self.logger.info(f"Added camera {camera_id}")
+                return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Error adding camera {camera_id}: {e}")
+            return False
+
+    def remove_camera(self, camera_id: str) -> bool:
+        """Close and remove a camera at runtime."""
+        camera = self.cameras.pop(camera_id, None)
+        if camera is None:
+            return False
+        try:
+            camera.close()
+        except Exception as e:
+            self.logger.error(f"Error closing camera {camera_id}: {e}")
+        self.frame_buffers.pop(camera_id, None)
+        self.frame_locks.pop(camera_id, None)
+        return True
         
     def scan_for_cameras(self) -> Dict[str, Union[int, str]]:
         """
@@ -360,6 +415,17 @@ class CameraManager:
         self.frame_buffers.clear()
         self.frame_locks.clear()
                 
+    def _log_capture_error(self, camera_id: str, error: Exception) -> None:
+        """Rate-limit repeated capture failure logs (avoids terminal spam)."""
+        now = time.time()
+        last = self._capture_error_log_at.get(camera_id, 0.0)
+        if now - last >= self._capture_error_log_interval:
+            self._capture_error_log_at[camera_id] = now
+            self.logger.warning(
+                f"Capture failed for camera {camera_id}: {error} "
+                f"(further errors suppressed for {int(self._capture_error_log_interval)}s)"
+            )
+
     def _capture_single(self, camera_id: str, camera) -> Tuple[str, Optional[np.ndarray]]:
         """
         Capture a frame from a single camera (for threading).
@@ -375,7 +441,7 @@ class CameraManager:
                     self.frame_buffers[camera_id].append((time.time(), frame))
             return (camera_id, frame)
         except Exception as e:
-            self.logger.error(f"Error capturing from camera {camera_id}: {e}")
+            self._log_capture_error(camera_id, e)
             return (camera_id, None)
     
     def capture_all(self, use_buffer: bool = False) -> Dict[str, np.ndarray]:
@@ -427,7 +493,7 @@ class CameraManager:
                         if camera_id in self.frame_buffers:
                             self.frame_buffers[camera_id].append((time.time(), frame))
                 except Exception as e:
-                    self.logger.error(f"Error capturing from camera {camera_id}: {e}")
+                    self._log_capture_error(camera_id, e)
             return frames
         
     def calibrate(self) -> Dict:

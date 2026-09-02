@@ -53,6 +53,9 @@ const MainApp: React.FC = () => {
   const [minMatches, setMinMatches] = useState(4);
   // Manual features
   const [manualFeatures, setManualFeatures] = useState(false);
+  // Post-merge Nano Banana seam repair
+  const [aiAssist, setAiAssist] = useState(false);
+  const [aiAssistStatus, setAiAssistStatus] = useState<{ assisted?: boolean; warning?: string } | null>(null);
   // Output options
   const [autoCrop, setAutoCrop] = useState(false);
   const [outputSize, setOutputSize] = useState<string>('original');
@@ -246,6 +249,7 @@ const MainApp: React.FC = () => {
     formData.append('output_size', outputSize);
     formData.append('output_quality', outputQuality.toString());
     formData.append('output_format', outputFormat);
+    formData.append('ai_assist', aiAssist.toString());
 
     try {
       const response = await fetch('/merge', {
@@ -271,9 +275,15 @@ const MainApp: React.FC = () => {
         });
         setLastMergedAs('all');
         setLastMergedIndices(null);
+        setAiAssistStatus(
+          data.ai_assisted || data.ai_warning
+            ? { assisted: !!data.ai_assisted, warning: data.ai_warning || undefined }
+            : null
+        );
       } else {
         setError(data.message || 'Merge failed.');
         setMergeStats(null);
+        setAiAssistStatus(null);
       }
     } catch (err: any) {
       setError('Error during merge: ' + err.message);
@@ -336,6 +346,7 @@ const MainApp: React.FC = () => {
     formData.append('output_size', outputSize);
     formData.append('output_quality', outputQuality.toString());
     formData.append('output_format', outputFormat);
+    formData.append('ai_assist', aiAssist.toString());
     try {
       const response = await fetch('/merge', { method: 'POST', body: formData });
       if (!response.ok) {
@@ -351,6 +362,11 @@ const MainApp: React.FC = () => {
         });
         setLastMergedAs('indices');
         setLastMergedIndices(indices);
+        setAiAssistStatus(
+          data.ai_assisted || data.ai_warning
+            ? { assisted: !!data.ai_assisted, warning: data.ai_warning || undefined }
+            : null
+        );
         if (download) {
           const a = document.createElement('a');
           a.href = data.result_image;
@@ -361,6 +377,7 @@ const MainApp: React.FC = () => {
         }
       } else {
         setError(data.message || 'Merge failed.');
+        setAiAssistStatus(null);
       }
     } catch (err: any) {
       setError(download ? 'Merge & download failed: ' + err.message : 'Merge failed: ' + err.message);
@@ -391,6 +408,7 @@ const MainApp: React.FC = () => {
     formData.append('output_size', outputSize);
     formData.append('output_quality', outputQuality.toString());
     formData.append('output_format', outputFormat);
+    formData.append('ai_assist', aiAssist.toString());
     const response = await fetch('/merge', { method: 'POST', body: formData });
     if (!response.ok) return null;
     const data = await response.json();
@@ -453,6 +471,7 @@ const MainApp: React.FC = () => {
     formData.append('output_size', outputSize);
     formData.append('output_quality', outputQuality.toString());
     formData.append('output_format', outputFormat);
+    formData.append('ai_assist', aiAssist.toString());
     if (lastMergedAs === 'all' && files) {
       Array.from(files).forEach(file => {
         formData.append('images', file as Blob);
@@ -476,8 +495,14 @@ const MainApp: React.FC = () => {
           matches: data.matches,
           processingTime: data.processing_time
         });
+        setAiAssistStatus(
+          data.ai_assisted || data.ai_warning
+            ? { assisted: !!data.ai_assisted, warning: data.ai_warning || undefined }
+            : null
+        );
       } else {
         setError(data.message || 'Re-merge failed.');
+        setAiAssistStatus(null);
       }
     } catch (err: any) {
       setError('Re-merge failed: ' + (err as Error).message);
@@ -947,6 +972,21 @@ const MainApp: React.FC = () => {
                         </div>
                         <small className="text-muted d-block mt-1">Select matching points manually for better control</small>
                       </div>
+                      <div className="mb-3">
+                        <div className="form-check form-switch">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            id="aiAssist"
+                            checked={aiAssist}
+                            onChange={(e) => setAiAssist(e.target.checked)}
+                          />
+                          <label className="form-check-label" htmlFor="aiAssist">
+                            AI Assist (Nano Banana)
+                          </label>
+                        </div>
+                        <small className="text-muted d-block mt-1">Repairs seams after merge</small>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1378,10 +1418,11 @@ const MainApp: React.FC = () => {
             Uses first two images if you haven&apos;t chosen a pair from the list above.
           </p>
           {loading && (
-            <div className="loading-overlay d-flex justify-content-center align-items-center">
+            <div className="loading-overlay d-flex flex-column justify-content-center align-items-center gap-2">
               <div className="spinner-border text-primary" role="status" style={{ width: 60, height: 60 }}>
                 <span className="visually-hidden">Loading...</span>
               </div>
+              <small className="text-muted">{aiAssist ? 'Merging + AI repair…' : 'Merging…'}</small>
             </div>
           )}
           {error && <p className="error mt-2">{error}</p>}
@@ -1392,6 +1433,16 @@ const MainApp: React.FC = () => {
               <div className="card-header">Result</div>
               <div className="card-body text-center">
                 <img src={result} alt="Merged Result" className="img-fluid" />
+                {aiAssistStatus?.assisted && (
+                  <div className="mt-2">
+                    <span className="badge bg-success">AI repaired</span>
+                  </div>
+                )}
+                {aiAssistStatus?.warning && (
+                  <div className="alert alert-warning py-1 px-2 mt-2 mb-0 small text-start" role="alert">
+                    {aiAssistStatus.warning}
+                  </div>
+                )}
                 {mergeStats && (
                   <div className="mt-3 p-2 bg-light rounded">
                     <small className="text-muted d-block">

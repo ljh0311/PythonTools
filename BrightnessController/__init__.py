@@ -4,6 +4,8 @@ Unified power-management package.
 Combines battery monitoring and brightness control with modular OOP components.
 """
 
+from battery_analytics import BatteryAnalytics
+from battery_cycle_tracker import BatteryCycleTracker
 from battery_monitor import BatteryMonitor
 from brightness_controller import BrightnessController, HumanDetector
 from charge_cycle_repository import ChargeCycleRepository
@@ -13,6 +15,8 @@ from power_management_system import PowerManagementSystem
 
 __all__ = [
     "BatteryMonitor",
+    "BatteryAnalytics",
+    "BatteryCycleTracker",
     "BrightnessController",
     "HumanDetector",
     "ChargeCycleRepository",

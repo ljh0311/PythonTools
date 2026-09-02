@@ -9,31 +9,84 @@
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar" aria-label="Primary navigation">
+    <div id="sidebar-backdrop" class="sidebar-backdrop" hidden aria-hidden="true"></div>
+    <aside id="sidebar" class="sidebar" aria-label="Primary navigation">
       <div class="sidebar-brand">
-        <span class="brand-icon" aria-hidden="true">✈</span>
+        <img
+          class="brand-icon"
+          src="/static/assets/icons/icon-operator.svg"
+          width="32"
+          height="32"
+          alt=""
+          aria-hidden="true"
+        />
         <span class="sidebar-title">Operator</span>
       </div>
       <nav class="sidebar-nav">
-        <button type="button" class="nav-item active" data-view-target="inbox" aria-current="page">
-          <span class="nav-label">Inbox</span>
-          <span class="nav-desc">Messages &amp; AI</span>
+        <button
+          type="button"
+          class="nav-item active"
+          data-view-target="inbox"
+          aria-current="page"
+          aria-label="Inbox — Messages and AI"
+          title="Inbox"
+        >
+          <img class="nav-icon" src="/static/assets/icons/icon-inbox.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Inbox</span>
+            <span class="nav-desc">Messages &amp; AI</span>
+          </span>
         </button>
-        <button type="button" class="nav-item" data-view-target="workflow">
-          <span class="nav-label">Workflow</span>
-          <span class="nav-desc">Reply &amp; topics</span>
+        <button
+          type="button"
+          class="nav-item"
+          data-view-target="workflow"
+          aria-label="Workflow — Reply and topics"
+          title="Workflow"
+        >
+          <img class="nav-icon" src="/static/assets/icons/icon-workflow.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Workflow</span>
+            <span class="nav-desc">Reply &amp; topics</span>
+          </span>
         </button>
-        <button type="button" class="nav-item" data-view-target="analytics">
-          <span class="nav-label">Analytics</span>
-          <span class="nav-desc">Stats &amp; events</span>
+        <button
+          type="button"
+          class="nav-item"
+          data-view-target="analytics"
+          aria-label="Analytics — Stats and events"
+          title="Analytics"
+        >
+          <img class="nav-icon" src="/static/assets/icons/icon-analytics.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Analytics</span>
+            <span class="nav-desc">Stats &amp; events</span>
+          </span>
         </button>
-        <button type="button" class="nav-item" data-view-target="tools">
-          <span class="nav-label">Tools</span>
-          <span class="nav-desc">Send &amp; commands</span>
+        <button
+          type="button"
+          class="nav-item"
+          data-view-target="tools"
+          aria-label="Tools — Send and commands"
+          title="Tools"
+        >
+          <img class="nav-icon" src="/static/assets/icons/icon-tools.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Tools</span>
+            <span class="nav-desc">Send &amp; commands</span>
+          </span>
         </button>
-        <a href="/feedback" class="nav-item nav-link-item">
-          <span class="nav-label">Feedback</span>
-          <span class="nav-desc">User ratings</span>
+        <a
+          href="/feedback"
+          class="nav-item nav-link-item"
+          aria-label="Feedback — User ratings"
+          title="Feedback"
+        >
+          <img class="nav-icon" src="/static/assets/icons/icon-feedback.svg" width="24" height="24" alt="" aria-hidden="true" />
+          <span class="nav-text">
+            <span class="nav-label">Feedback</span>
+            <span class="nav-desc">User ratings</span>
+          </span>
         </a>
       </nav>
     </aside>
@@ -41,14 +94,44 @@
     <div class="main-column">
       <header class="topbar">
         <div class="topbar-left">
-          <h1>Telegram Dashboard</h1>
-          <p id="bot-status" class="subtitle">Checking bot connection…</p>
+          <button
+            id="sidebar-toggle"
+            class="sidebar-toggle btn btn-ghost btn-sm"
+            type="button"
+            aria-controls="sidebar"
+            aria-expanded="false"
+            aria-label="Open navigation"
+          >
+            <img class="sidebar-toggle-icon sidebar-toggle-icon--menu" src="/static/assets/icons/icon-menu.svg" width="24" height="24" alt="" aria-hidden="true" />
+            <img class="sidebar-toggle-icon sidebar-toggle-icon--close" src="/static/assets/icons/icon-close.svg" width="24" height="24" alt="" aria-hidden="true" />
+          </button>
+          <div class="topbar-heading">
+            <h1>Telegram Dashboard</h1>
+            <div
+              id="connection-status"
+              class="connection-status"
+              role="status"
+              aria-live="polite"
+              aria-label="Connection status"
+            >
+              <span class="status-pill status-pill--loading">
+                <span class="status-pill-label">Bot</span>
+                <span class="status-pill-state">Checking…</span>
+              </span>
+              <span class="status-pill status-pill--loading">
+                <span class="status-pill-label">My account</span>
+                <span class="status-pill-state">Checking…</span>
+              </span>
+            </div>
+          </div>
         </div>
         <div class="topbar-actions">
           <button id="theme-toggle" class="btn btn-ghost btn-sm" type="button">Toggle theme</button>
           <button id="refresh-btn" class="btn btn-primary btn-sm" type="button">Refresh</button>
         </div>
       </header>
+
+      <div id="setup-warnings" class="setup-warnings" hidden aria-live="polite"></div>
 
       <main class="view-container">
         <!-- INBOX — primary operator workspace -->
@@ -74,9 +157,11 @@
             <div class="inbox-main card">
               <div class="inbox-toolbar">
                 <input id="inbox-search" type="search" placeholder="Search messages…" aria-label="Search messages" />
-                <input id="inbox-topics" type="search" placeholder="Topic filter…" aria-label="Filter by topics" />
+                <input id="inbox-topics" type="search" list="topic-suggestions" placeholder="Related topics… (e.g. car, billing)" aria-label="Filter by topics" />
+                <datalist id="topic-suggestions"></datalist>
+                <button id="inbox-backfill-topics" class="btn btn-ghost btn-sm" type="button" title="Tag recent messages with AI">Generate AI tags</button>
                 <button id="toggle-filters" class="btn btn-ghost btn-sm" type="button" aria-expanded="false" aria-controls="advanced-filters">
-                  Filters
+                  Filters<span id="filters-topic-badge" class="filter-badge" hidden aria-label="Topic filter active"></span>
                 </button>
                 <button id="toggle-ai-panel" class="btn btn-ghost btn-sm ai-toggle-btn" type="button" aria-expanded="true" aria-controls="ai-drawer">
                   AI panel
@@ -84,67 +169,47 @@
                 <button id="inbox-apply" class="btn btn-primary btn-sm" type="button">Apply</button>
               </div>
 
+              <div id="topic-filter-chips" class="topic-filter-chips" hidden aria-label="Popular topic filters"></div>
+
               <div id="advanced-filters" class="advanced-filters" hidden>
-                <div class="filter-section">
-                  <label for="inbox-users" class="filter-label">Users</label>
-                  <select id="inbox-users" multiple size="4" aria-label="Filter by users"></select>
-                  <p class="filter-hint">Hold Ctrl/Cmd for multiple users</p>
+                <select id="inbox-users" multiple size="3" aria-label="Filter by users"></select>
+                <p class="filter-hint">Hold Ctrl/Cmd for multiple users</p>
+                <div class="filter-row">
+                  <select id="inbox-view" aria-label="Inbox view">
+                    <option value="threads">Thread view</option>
+                    <option value="flat">Flat list</option>
+                  </select>
+                  <select id="inbox-chat-type" aria-label="Chat type">
+                    <option value="">All types</option>
+                    <option value="private">Private</option>
+                    <option value="group">Group</option>
+                    <option value="channel">Channel</option>
+                  </select>
+                  <select id="inbox-direction" aria-label="Direction">
+                    <option value="">All directions</option>
+                    <option value="incoming">Incoming</option>
+                    <option value="outgoing">Outgoing</option>
+                  </select>
+                  <select id="inbox-source" aria-label="Message source">
+                    <option value="">All sources</option>
+                    <option value="bot">Bot (v0.1)</option>
+                    <option value="user_account">My account (v0.2)</option>
+                  </select>
                 </div>
-                <div class="filter-section">
-                  <div class="filter-row filter-row-spaced">
-                    <div class="filter-group">
-                      <label for="inbox-view" class="filter-label">View</label>
-                      <select id="inbox-view" aria-label="Inbox view">
-                        <option value="threads">Thread view</option>
-                        <option value="flat">Flat list</option>
-                      </select>
-                    </div>
-                    <div class="filter-group">
-                      <label for="inbox-chat-type" class="filter-label">Chat type</label>
-                      <select id="inbox-chat-type" aria-label="Chat type">
-                        <option value="">All types</option>
-                        <option value="private">Private</option>
-                        <option value="group">Group</option>
-                        <option value="channel">Channel</option>
-                      </select>
-                    </div>
-                    <div class="filter-group">
-                      <label for="inbox-direction" class="filter-label">Direction</label>
-                      <select id="inbox-direction" aria-label="Direction">
-                        <option value="">All directions</option>
-                        <option value="incoming">Incoming</option>
-                        <option value="outgoing">Outgoing</option>
-                      </select>
-                    </div>
-                  </div>
+                <div class="filter-row">
+                  <input id="inbox-date-from" type="date" aria-label="From date" />
+                  <input id="inbox-date-to" type="date" aria-label="To date" />
                 </div>
-                <div class="filter-section">
-                  <div class="filter-row filter-row-spaced">
-                    <div class="filter-group">
-                      <label for="inbox-date-from" class="filter-label">From</label>
-                      <input id="inbox-date-from" type="date" aria-label="From date" />
-                    </div>
-                    <div class="filter-group">
-                      <label for="inbox-date-to" class="filter-label">To</label>
-                      <input id="inbox-date-to" type="date" aria-label="To date" />
-                    </div>
-                  </div>
+                <div class="filter-row preset-row">
+                  <select id="inbox-presets" aria-label="Saved presets">
+                    <option value="">Load preset…</option>
+                  </select>
+                  <button id="inbox-save-preset" class="btn btn-ghost btn-sm" type="button">Save</button>
+                  <button id="inbox-delete-preset" class="btn btn-ghost btn-sm" type="button">Delete</button>
                 </div>
-                <div class="filter-section">
-                  <div class="filter-row preset-row filter-row-spaced">
-                    <div class="filter-group filter-group-wide">
-                      <label for="inbox-presets" class="filter-label">Preset</label>
-                      <select id="inbox-presets" aria-label="Saved presets">
-                        <option value="">Load preset…</option>
-                      </select>
-                    </div>
-                    <div class="filter-group filter-action-buttons">
-                      <button id="inbox-save-preset" class="btn btn-ghost btn-sm" type="button" title="Save current filter as preset">Save</button>
-                      <button id="inbox-delete-preset" class="btn btn-ghost btn-sm" type="button" title="Delete selected preset">Delete</button>
-                      <button id="inbox-clear" class="btn btn-ghost btn-sm" type="button">Clear all</button>
-                      <button id="inbox-export" class="btn btn-ghost btn-sm" type="button">Export CSV</button>
-                    </div>
-                  </div>
+                <div class="filter-actions">
+                  <button id="inbox-clear" class="btn btn-ghost btn-sm" type="button">Clear all</button>
+                  <button id="inbox-export" class="btn btn-ghost btn-sm" type="button">Export CSV</button>
                 </div>
               </div>
 
@@ -165,20 +230,35 @@
                   <option value="bullets">Bullets</option>
                   <option value="unanswered">Unanswered</option>
                 </select>
+                <button id="btn-intel" class="btn btn-ghost btn-sm" type="button">Conversation intel</button>
                 <button id="btn-summarize" class="btn btn-primary btn-sm" type="button">Summarize</button>
                 <button id="btn-suggest" class="btn btn-ghost btn-sm" type="button">Suggest</button>
               </div>
               <div id="summary-panel" class="insight-panel" hidden></div>
+              <div id="intel-panel" class="insight-panel" hidden></div>
               <div id="suggestions-panel" class="insight-panel" hidden></div>
             </aside>
           </div>
 
           <div class="compose-bar card" aria-labelledby="compose-title">
             <h2 id="compose-title" class="sr-only">Quick reply</h2>
+            <p id="compose-send-hint" class="compose-hint filter-hint">Sends as your bot — not your personal Telegram name.</p>
             <form id="send-form" class="compose-form">
-              <input id="chat-id" type="text" placeholder="Chat ID" required aria-label="Chat ID" />
+              <input
+                id="chat-id"
+                type="text"
+                list="chat-recipient-list"
+                placeholder="@username or chat"
+                required
+                aria-label="Recipient (@username or chat name)"
+                autocomplete="off"
+              />
+              <datalist id="chat-recipient-list"></datalist>
               <textarea id="message-text" rows="2" placeholder="Type your reply…" required aria-label="Message"></textarea>
-              <button class="btn btn-primary" type="submit">Send</button>
+              <div class="compose-send-row">
+                <span id="compose-identity-chip" class="identity-chip" aria-live="polite">Sending as: Bot</span>
+                <button class="btn btn-primary" type="submit" aria-describedby="compose-send-hint">Send</button>
+              </div>
             </form>
           </div>
         </section>
@@ -212,6 +292,7 @@
               </label>
             </div>
             <p id="topic-mode-hint" class="filter-hint">Type topic keywords to search tags and message text.</p>
+            <button id="workflow-generate-tags" class="btn btn-ghost btn-sm" type="button">Generate AI tags</button>
             <div id="per-chat-panel" class="per-chat-panel" hidden>
               <div class="per-chat-header">
                 <div>
@@ -266,19 +347,51 @@
 
         <!-- TOOLS -->
         <section class="app-view" data-view="tools" hidden>
-          <div class="view-intro">
-            <h2>Tools</h2>
-            <p>Send messages and manage bot command shortcuts.</p>
+          <div class="view-intro view-intro-tools">
+            <img class="tools-brand-icon" src="/static/assets/icons/icon-operator.svg" width="28" height="28" alt="" aria-hidden="true" />
+            <div>
+              <h2>Tools</h2>
+              <p>Send messages and manage bot command shortcuts.</p>
+            </div>
           </div>
           <div class="tools-grid">
+            <section class="card" aria-labelledby="user-account-title">
+              <div class="card-header">
+                <h2 id="user-account-title">Send as me (personal account)</h2>
+              </div>
+              <p id="user-account-status" class="filter-hint">Checking…</p>
+              <p id="send-user-hint" class="filter-hint">Personal send — recipients see your account, not the bot.</p>
+              <p class="filter-hint">Log in once with the CLI script <code>scripts/mtproto_login.py</code>. See <code>docs/user-inbox.md</code>.</p>
+              <form id="send-form-user" class="send-form">
+                <input
+                  id="chat-id-user"
+                  type="text"
+                  list="chat-recipient-list"
+                  placeholder="@username or chat"
+                  aria-label="Recipient (@username or chat name)"
+                  autocomplete="off"
+                />
+                <textarea id="message-text-user" rows="3" placeholder="Reply as your personal account"></textarea>
+                <button class="btn btn-primary" type="submit" aria-describedby="send-user-hint">Send as me</button>
+              </form>
+            </section>
             <section class="card" aria-labelledby="send-title">
               <div class="card-header">
-                <h2 id="send-title">Send message</h2>
+                <h2 id="send-title">Send as bot <span class="card-version">v0.1</span></h2>
               </div>
+              <p id="send-tools-hint" class="filter-hint">Bot send — message appears from @your_bot, not from you personally.</p>
               <form id="send-form-tools" class="send-form">
-                <input id="chat-id-tools" type="text" placeholder="Chat ID" required />
+                <input
+                  id="chat-id-tools"
+                  type="text"
+                  list="chat-recipient-list"
+                  placeholder="@username or chat"
+                  required
+                  aria-label="Recipient (@username or chat name)"
+                  autocomplete="off"
+                />
                 <textarea id="message-text-tools" rows="4" placeholder="Message text" required></textarea>
-                <button class="btn btn-primary" type="submit">Send via Telegram</button>
+                <button class="btn btn-primary" type="submit" aria-describedby="send-tools-hint">Send as bot</button>
               </form>
             </section>
             <section class="card" aria-labelledby="quick-actions-title">
@@ -291,6 +404,53 @@
                 <input id="action-label" type="text" placeholder="Label" required />
                 <input id="action-command" type="text" placeholder="/command" required />
                 <button class="btn btn-primary btn-sm" type="submit">Add</button>
+              </form>
+            </section>
+            <section class="card span-full dev-notify-card" aria-labelledby="dev-notify-title">
+              <div class="card-header dev-notify-header">
+                <div class="dev-notify-title-wrap">
+                  <img
+                    src="/static/assets/icon-dev-notify.svg"
+                    width="24"
+                    height="24"
+                    alt=""
+                    class="dev-notify-icon"
+                  />
+                  <h2 id="dev-notify-title">Dev notify / EOD</h2>
+                </div>
+                <span id="dev-notify-char-count" class="dev-notify-char-count" aria-live="polite">0 / 4096</span>
+              </div>
+              <p class="filter-hint dev-notify-hint">
+                Paste or load markdown, pick a recipient, and send via the bot. Use for EOD summaries, audit notes, or team alerts.
+              </p>
+              <form id="dev-notify-form" class="send-form dev-notify-form">
+                <input
+                  id="dev-notify-chat-id"
+                  type="text"
+                  list="chat-recipient-list"
+                  placeholder="@username or chat"
+                  required
+                  aria-label="Dev notify recipient"
+                  autocomplete="off"
+                />
+                <div class="dev-notify-toolbar">
+                  <label class="dev-notify-check">
+                    <input id="dev-notify-eod-header" type="checkbox" />
+                    Prefix with EOD header
+                  </label>
+                  <button id="dev-notify-load-file" class="btn btn-ghost btn-sm" type="button">
+                    <img src="/static/assets/icon-eod-doc.svg" width="16" height="16" alt="" aria-hidden="true" />
+                    Load markdown file
+                  </button>
+                  <input id="dev-notify-file" type="file" accept=".md,.txt,.markdown,text/plain,text/markdown" hidden />
+                </div>
+                <textarea
+                  id="dev-notify-text"
+                  rows="8"
+                  placeholder="Paste markdown or plain text…"
+                  aria-label="Notification message body"
+                ></textarea>
+                <button class="btn btn-primary" type="submit">Send via bot</button>
               </form>
             </section>
           </div>

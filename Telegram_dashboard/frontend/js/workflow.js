@@ -24,14 +24,16 @@ function chatLabel(chat) {
   if (chat.participants?.length) {
     return chat.participants.map((p) => `@${p}`).join(", ");
   }
-  if (chat.chat_type === "channel") return chat.chat_title || `Channel ${chat.chat_id}`;
   if (chat.chat_type === "group") return `Group ${chat.chat_id}`;
   return `Chat ${chat.chat_id}`;
 }
 
 function chatInitials(chat) {
   const label = chatLabel(chat);
-  const parts = label.replace(/@/g, "").split(/[\s,]+/).filter(Boolean);
+  const parts = label
+    .replace(/@/g, "")
+    .split(/[\s,]+/)
+    .filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return (parts[0]?.slice(0, 2) || "CH").toUpperCase();
 }
@@ -54,14 +56,45 @@ export const workflowState = {
   topicMode: "user_type",
   chats: [],
   expandedChatId: null,
+  memoriesByChatId: {},
 };
+
+function memoryTypeLabel(type) {
+  const labels = {
+    fact: "Fact",
+    preference: "Preference",
+    relationship: "Relationship",
+    habit: "Habit",
+    voice: "Voice",
+  };
+  return labels[type] || type;
+}
+
+function renderMemories(chatId) {
+  const memories = workflowState.memoriesByChatId[chatId] || [];
+  if (!memories.length) return "";
+  const items = memories
+    .slice(0, 3)
+    .map(
+      (m) =>
+        `<li><span class="memory-type">${escapeHtml(memoryTypeLabel(m.type))}</span> ${escapeHtml(m.content)}</li>`,
+    )
+    .join("");
+  return `
+        <div class="chat-memories">
+          <strong>Learned memories</strong>
+          <ul class="memory-list">${items}</ul>
+        </div>`;
+}
 
 function renderReplyMode() {
   const select = document.getElementById("reply-mode");
   if (select) select.value = workflowState.replyMode;
 
   const label = document.getElementById("reply-mode-label");
-  if (label) label.textContent = MODE_LABELS[workflowState.replyMode] || workflowState.replyMode;
+  if (label)
+    label.textContent =
+      MODE_LABELS[workflowState.replyMode] || workflowState.replyMode;
 
   const perChatPanel = document.getElementById("per-chat-panel");
   if (perChatPanel) {
@@ -88,9 +121,11 @@ function renderReplyMode() {
   list.innerHTML = workflowState.chats
     .map((chat) => {
       const expanded = workflowState.expandedChatId === chat.chat_id;
-      const relSource = chat.relationship_source === "manual" ? "Edited by you" : "AI generated";
-      const typeLabel =
-        chat.chat_type === "channel" ? "Channel" : chat.chat_type === "group" ? "Group" : "Private";
+      const relSource =
+        chat.relationship_source === "manual"
+          ? "Edited by you"
+          : "AI generated";
+      const typeLabel = chat.chat_type === "group" ? "Group" : "Private";
       return `
       <article class="chat-card ${chat.auto_reply_enabled ? "auto-on" : ""} ${expanded ? "expanded" : ""}" data-chat-id="${chat.chat_id}">
         <header class="chat-card-header">
@@ -117,6 +152,9 @@ function renderReplyMode() {
               <span class="relationship-source ${chat.relationship_source || "ai"}">${relSource}</span>
             </div>
             <div class="relationship-actions">
+              <button type="button" class="btn btn-ghost btn-sm learn-from-chat" data-chat-id="${chat.chat_id}" title="Learn relationship and drafting context from messages">
+                Learn from chat
+              </button>
               <button type="button" class="btn btn-ghost btn-sm regenerate-relationship" data-chat-id="${chat.chat_id}" title="Regenerate from messages">
                 Regenerate
               </button>
@@ -133,6 +171,7 @@ function renderReplyMode() {
             </div>
           </div>
         </div>
+        ${renderMemories(chat.chat_id)}
       </article>`;
     })
     .join("");
@@ -146,22 +185,33 @@ function renderTopicMode() {
   if (hint) {
     hint.textContent =
       workflowState.topicMode === "ai_assign"
-        ? "New messages get AI topic tags automatically."
-        : "Type topic keywords to search tags and message text.";
+        ? "New messages get AI topic tags. The topic box also expands your words (e.g. car → cars, driving)."
+        : "Type words in the topic box — AI expands them to related tags and message text.";
   }
 
   const topicFilter = document.getElementById("inbox-topics");
   if (topicFilter) {
-    topicFilter.placeholder =
-      workflowState.topicMode === "ai_assign"
-        ? "Filter by AI tags (e.g. billing, scheduling)…"
-        : "Filter by topic or text (e.g. billing)…";
+    topicFilter.placeholder = "Related topics… (e.g. car, billing)";
   }
 }
 
 function updateChatInState(chatId, patch) {
   const chat = workflowState.chats.find((c) => c.chat_id === chatId);
   if (chat) Object.assign(chat, patch);
+}
+
+async function loadMemoriesForChats(chats) {
+  const targets = (chats || []).slice(0, 20);
+  await Promise.all(
+    targets.map(async (chat) => {
+      try {
+        const result = await api.getChatMemories(chat.chat_id, 5);
+        workflowState.memoriesByChatId[chat.chat_id] = result.memories || [];
+      } catch {
+        workflowState.memoriesByChatId[chat.chat_id] = [];
+      }
+    }),
+  );
 }
 
 export async function loadWorkflowSettings() {
@@ -172,102 +222,156 @@ export async function loadWorkflowSettings() {
   workflowState.replyMode = reply.mode;
   workflowState.chats = reply.chats || [];
   workflowState.topicMode = topic.mode;
+  await loadMemoriesForChats(workflowState.chats);
   renderReplyMode();
   renderTopicMode();
 }
 
 export function bindWorkflow(onChange, onError) {
-  document.getElementById("reply-mode")?.addEventListener("change", async (event) => {
-    try {
-      const result = await api.setReplyMode(event.target.value);
-      workflowState.replyMode = result.mode;
-      workflowState.chats = result.chats || [];
-      renderReplyMode();
-      onChange?.("Reply mode updated.");
-    } catch (error) {
-      onError?.(error.message);
-    }
-  });
+  document
+    .getElementById("reply-mode")
+    ?.addEventListener("change", async (event) => {
+      try {
+        const result = await api.setReplyMode(event.target.value);
+        workflowState.replyMode = result.mode;
+        workflowState.chats = result.chats || [];
+        renderReplyMode();
+        onChange?.("Reply mode updated.");
+      } catch (error) {
+        onError?.(error.message);
+      }
+    });
 
-  document.getElementById("topic-mode")?.addEventListener("change", async (event) => {
-    try {
-      const result = await api.setTopicMode(event.target.value);
-      workflowState.topicMode = result.mode;
-      renderTopicMode();
-      onChange?.("Topic mode updated.");
-    } catch (error) {
-      onError?.(error.message);
-    }
-  });
+  document
+    .getElementById("topic-mode")
+    ?.addEventListener("change", async (event) => {
+      try {
+        const result = await api.setTopicMode(event.target.value);
+        workflowState.topicMode = result.mode;
+        renderTopicMode();
+        onChange?.("Topic mode updated.");
+      } catch (error) {
+        onError?.(error.message);
+      }
+    });
 
-  document.getElementById("per-chat-list")?.addEventListener("change", async (event) => {
-    const input = event.target.closest(".chat-auto-reply");
-    if (!input) return;
-    const chatId = Number(input.dataset.chatId);
-    try {
-      const saved = await api.updateChatSettings(chatId, { enabled: input.checked });
-      updateChatInState(chatId, saved);
-      input.closest(".chat-card")?.classList.toggle("auto-on", input.checked);
-      onChange?.("Auto-reply updated.");
-    } catch (error) {
-      input.checked = !input.checked;
-      onError?.(error.message);
-    }
-  });
+  document
+    .getElementById("per-chat-list")
+    ?.addEventListener("change", async (event) => {
+      const input = event.target.closest(".chat-auto-reply");
+      if (!input) return;
+      const chatId = Number(input.dataset.chatId);
+      try {
+        const saved = await api.updateChatSettings(chatId, {
+          enabled: input.checked,
+        });
+        updateChatInState(chatId, saved);
+        input.closest(".chat-card")?.classList.toggle("auto-on", input.checked);
+        onChange?.("Auto-reply updated.");
+      } catch (error) {
+        input.checked = !input.checked;
+        onError?.(error.message);
+      }
+    });
 
-  document.getElementById("per-chat-list")?.addEventListener("click", async (event) => {
-    const toggleBtn = event.target.closest(".toggle-relationship");
-    if (toggleBtn) {
-      const chatId = Number(toggleBtn.dataset.chatId);
-      workflowState.expandedChatId = workflowState.expandedChatId === chatId ? null : chatId;
-      renderReplyMode();
-      return;
-    }
-
-    const saveBtn = event.target.closest(".save-relationship");
-    if (saveBtn) {
-      const chatId = Number(saveBtn.dataset.chatId);
-      const textarea = document.querySelector(`.relationship-input[data-chat-id="${chatId}"]`);
-      const relationship = textarea?.value.trim();
-      if (!relationship) {
-        onError?.("Relationship context cannot be empty.");
+  document
+    .getElementById("per-chat-list")
+    ?.addEventListener("click", async (event) => {
+      const toggleBtn = event.target.closest(".toggle-relationship");
+      if (toggleBtn) {
+        const chatId = Number(toggleBtn.dataset.chatId);
+        workflowState.expandedChatId =
+          workflowState.expandedChatId === chatId ? null : chatId;
+        renderReplyMode();
         return;
       }
-      saveBtn.disabled = true;
-      try {
-        const saved = await api.updateChatSettings(chatId, { relationship });
-        updateChatInState(chatId, saved);
-        workflowState.expandedChatId = null;
-        renderReplyMode();
-        onChange?.("Relationship context saved.");
-      } catch (error) {
-        onError?.(error.message);
-      } finally {
-        saveBtn.disabled = false;
-      }
-      return;
-    }
 
-    const regenBtn = event.target.closest(".regenerate-relationship");
-    if (regenBtn) {
-      const chatId = Number(regenBtn.dataset.chatId);
-      const card = regenBtn.closest(".chat-card");
-      regenBtn.disabled = true;
-      card?.classList.add("is-loading");
-      try {
-        const saved = await api.regenerateChatRelationship(chatId);
-        updateChatInState(chatId, saved);
-        workflowState.expandedChatId = chatId;
-        renderReplyMode();
-        onChange?.("Relationship regenerated from messages.");
-      } catch (error) {
-        onError?.(error.message);
-      } finally {
-        regenBtn.disabled = false;
-        card?.classList.remove("is-loading");
+      const saveBtn = event.target.closest(".save-relationship");
+      if (saveBtn) {
+        const chatId = Number(saveBtn.dataset.chatId);
+        const textarea = document.querySelector(
+          `.relationship-input[data-chat-id="${chatId}"]`,
+        );
+        const relationship = textarea?.value.trim();
+        if (!relationship) {
+          onError?.("Relationship context cannot be empty.");
+          return;
+        }
+        saveBtn.disabled = true;
+        try {
+          const saved = await api.updateChatSettings(chatId, { relationship });
+          updateChatInState(chatId, saved);
+          workflowState.expandedChatId = null;
+          renderReplyMode();
+          onChange?.("Relationship context saved.");
+        } catch (error) {
+          onError?.(error.message);
+        } finally {
+          saveBtn.disabled = false;
+        }
+        return;
       }
-    }
-  });
+
+      const regenBtn = event.target.closest(".regenerate-relationship");
+      if (regenBtn) {
+        const chatId = Number(regenBtn.dataset.chatId);
+        const card = regenBtn.closest(".chat-card");
+        regenBtn.disabled = true;
+        card?.classList.add("is-loading");
+        try {
+          const saved = await api.regenerateChatRelationship(chatId);
+          updateChatInState(chatId, saved);
+          workflowState.expandedChatId = chatId;
+          renderReplyMode();
+          onChange?.("Relationship regenerated from messages.");
+        } catch (error) {
+          onError?.(error.message);
+        } finally {
+          regenBtn.disabled = false;
+          card?.classList.remove("is-loading");
+        }
+        return;
+      }
+
+      const learnBtn = event.target.closest(".learn-from-chat");
+      if (learnBtn) {
+        const chatId = Number(learnBtn.dataset.chatId);
+        const card = learnBtn.closest(".chat-card");
+        learnBtn.disabled = true;
+        card?.classList.add("is-loading");
+        try {
+          const result = await api.learnFromChat(chatId);
+          const saved = result.settings || result;
+          updateChatInState(chatId, saved);
+          if (result.memories) {
+            workflowState.memoriesByChatId[chatId] = result.memories;
+          } else {
+            try {
+              const memResult = await api.getChatMemories(chatId, 5);
+              workflowState.memoriesByChatId[chatId] = memResult.memories || [];
+            } catch {
+              workflowState.memoriesByChatId[chatId] = [];
+            }
+          }
+          workflowState.expandedChatId = chatId;
+          renderReplyMode();
+          const facts = result.learn?.facts?.length || 0;
+          const msgs = result.learn?.message_count || 0;
+          const note = result.learn?.degraded ? " (heuristic fallback)" : "";
+          const memCount = result.memories?.length;
+          const memPart =
+            memCount != null ? `, ${memCount} memories` : "";
+          onChange?.(
+            `Learned from ${msgs} messages${facts ? `, ${facts} facts` : ""}${memPart}${note}.`,
+          );
+        } catch (error) {
+          onError?.(error.message);
+        } finally {
+          learnBtn.disabled = false;
+          card?.classList.remove("is-loading");
+        }
+      }
+    });
 }
 
 export function topicModeLabel() {

@@ -1,0 +1,34 @@
+{
+  "_draft": true,
+  "_note": "Not wired to isomer/HAT. Copy into Cursor Automations editor when ready. Install dev-skills to ~/.cursor/skills/ first.",
+  "name": "Weekday EOD → Telegram",
+  "description": "Scheduled agent: generate a general end-of-day summary from today's work and deliver it via Telegram Dashboard.",
+  "workflow": {
+    "triggers": [
+      {
+        "cron": {
+          "cron": "0 18 * * 1-5"
+        }
+      }
+    ],
+    "actions": [],
+    "prompts": [
+      "You are running a weekday end-of-day (EOD) workflow for whatever project or workspace this automation is attached to. This is a general dev workflow — not tied to a specific product name.\n\nSteps:\n1. Review today's git activity (commits, changed files, open PRs) and any relevant session context in the repo.\n2. Write a concise markdown EOD summary with three sections: what was done, what went well, what to improve tomorrow.\n3. Save the file to docs/eod/eod-YYYY-MM-DD.md (create docs/eod/ if needed).\n4. Send the summary to Telegram using the telegram-dev-notify skill:\n   python ~/.cursor/skills/telegram-dev-notify/scripts/send_notify.py --file docs/eod/eod-YYYY-MM-DD.md\n   Ensure TELEGRAM_DASHBOARD_URL, DASHBOARD_API_KEY, and NOTIFY_TELEGRAM_CHAT_ID are set in that skill's .env.\n5. If the dashboard is running locally, the operator may instead paste into Tools → Dev notify / EOD — prefer the script for automation.\n\nDo not modify unrelated repositories. Do not send if the dashboard is unreachable — report the error instead."
+    ],
+    "model": "",
+    "agentOptions": {
+      "skipInstall": false
+    },
+    "memoryEnabled": true,
+    "gitConfig": {
+      "repo": "",
+      "branch": ""
+    }
+  },
+  "toFinishInEditor": [
+    "Set gitConfig.repo and gitConfig.branch for the target project",
+    "Confirm cron schedule matches your timezone in the Automations UI",
+    "Install telegram-dev-notify and end-of-day-summary skills from Telegram_dashboard/dev-skills/",
+    "Ensure Telegram Dashboard is running with a valid bot token"
+  ]
+}

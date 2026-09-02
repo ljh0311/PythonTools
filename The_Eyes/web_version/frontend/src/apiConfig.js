@@ -1,3 +1,6 @@
+// TODO: Attach Authorization header (Bearer token or session cookie) once login is implemented.
+// TODO: Redirect to /login on 401 responses from protected API routes.
+
 /**
  * Backend base URL.
  * - Development: defaults to http://127.0.0.1:8000 (browser talks to FastAPI directly;
@@ -56,4 +59,77 @@ export async function readJson(response) {
   } catch (e) {
     throw new Error(`Invalid JSON: ${e.message}`);
   }
+}
+
+/** POST recording start/stop. Stop is idempotent; start may 404 if no frames yet. */
+export async function postRecording(path) {
+  const response = await fetch(apiUrl(path), { method: 'POST' });
+  const data = await readJson(response);
+  if (response.ok || data.status === 'success' || data.already_stopped) {
+    return data;
+  }
+  if (response.status === 404 && path.includes('/api/recording/stop?')) {
+    return { status: 'success', recording: false, already_stopped: true };
+  }
+  throw new Error(data.detail || `HTTP ${response.status}`);
+}
+
+/** GET JSON; returns null on 404 when optional is true. */
+export async function fetchJson(path, { optional = false } = {}) {
+  const response = await fetch(apiUrl(path));
+  if (optional && response.status === 404) {
+    return null;
+  }
+  const data = await readJson(response);
+  if (!response.ok) {
+    throw new Error(data.detail || `HTTP ${response.status}`);
+  }
+  return data;
+}
+
+async function parseJsonResponse(response) {
+  const data = await readJson(response);
+  if (!response.ok) {
+    throw new Error(data.detail || `HTTP ${response.status}`);
+  }
+  return data;
+}
+
+/** DELETE a media file by project-relative path. */
+export async function deleteMediaFile(relativePath) {
+  const response = await fetch(
+    apiUrl(`/api/media/file?path=${encodeURIComponent(relativePath)}`),
+    { method: 'DELETE' }
+  );
+  return parseJsonResponse(response);
+}
+
+/** DELETE a motion session (paired snapshots). */
+export async function deleteMotionSession(sessionId, cameraId) {
+  const response = await fetch(
+    apiUrl(
+      `/api/media/motion-sessions/${encodeURIComponent(sessionId)}?camera_id=${encodeURIComponent(cameraId)}`
+    ),
+    { method: 'DELETE' }
+  );
+  return parseJsonResponse(response);
+}
+
+/** Bulk delete media paths or by age. */
+export async function deleteMediaBulk({ paths, olderThanDays, includeRecordings, includeSnapshots }) {
+  const url = olderThanDays != null ? '/api/media/delete-older' : '/api/media/delete';
+  const body =
+    olderThanDays != null
+      ? {
+          older_than_days: olderThanDays,
+          include_recordings: includeRecordings ?? true,
+          include_snapshots: includeSnapshots ?? true,
+        }
+      : { paths };
+  const response = await fetch(apiUrl(url), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return parseJsonResponse(response);
 }
