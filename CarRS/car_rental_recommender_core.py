@@ -4672,6 +4672,8 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
     """
     if df.empty:
         return {"error": "No data available for prediction"}
+
+    from components.provider_pricing import coerce_predicted_rental_total
     
     # Convert dates to datetime
     if isinstance(start_date, str):
@@ -4712,9 +4714,11 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
         total_predicted_spending = sum(p["predicted_cost"] * p["rental_probability"] for p in ml_preds)
         total_predicted_distance = sum(p["predicted_distance"] * p["rental_probability"] for p in ml_preds)
         
-        # Round total rentals to whole number
-        total_predicted_rentals = round(total_predicted_rentals_raw)
-        
+        total_predicted_rentals = coerce_predicted_rental_total(
+            total_predicted_rentals_raw,
+            [p["rental_probability"] for p in ml_preds],
+        )
+
         # Distribute rounded rentals across periods proportionally using largest remainder method
         if total_predicted_rentals > 0 and len(ml_preds) > 0:
             # Calculate proportional allocation
@@ -4779,19 +4783,26 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
         else:  # monthly
             total_predicted_rentals_raw = ts_model["avg_monthly_rentals"] * date_range_months
         
-        # Round total rentals to whole number
-        total_predicted_rentals = round(total_predicted_rentals_raw)
-        
-        # Estimate spending and distance from historical averages
+        total_predicted_rentals = coerce_predicted_rental_total(
+            total_predicted_rentals_raw,
+            [1.0] if total_predicted_rentals_raw > 0 else [],
+        )
+
+        # Estimate spending and distance from historical averages (use expected count, not rounded)
         if "Total" in df.columns and "Distance (KM)" in df.columns:
             avg_cost = df[df["Car model"] != "Calculator Generated"]["Total"].mean() if "Car model" in df.columns else df["Total"].mean()
             avg_dist = df[df["Car model"] != "Calculator Generated"]["Distance (KM)"].mean() if "Car model" in df.columns else df["Distance (KM)"].mean()
+            if not pd.notna(avg_cost) or avg_cost <= 0:
+                avg_cost = 50.0
+            if not pd.notna(avg_dist) or avg_dist < 0:
+                avg_dist = 50.0
         else:
             avg_cost = 50.0  # Fallback
             avg_dist = 50.0   # Fallback
-        
-        total_predicted_spending = total_predicted_rentals * avg_cost
-        total_predicted_distance = total_predicted_rentals * avg_dist
+
+        spend_basis = total_predicted_rentals_raw if total_predicted_rentals_raw > 0 else total_predicted_rentals
+        total_predicted_spending = spend_basis * avg_cost
+        total_predicted_distance = spend_basis * avg_dist
         avg_distance = avg_dist
         
         peak_periods = []
@@ -4881,11 +4892,18 @@ def predict_rental_patterns(df, start_date, end_date, granularity="weekly", use_
     # Prepare result dictionary
     result = {
         "rental_frequency": {
-            "total": int(total_predicted_rentals),  # Return as integer
+            "total": int(total_predicted_rentals),  # Display integer (never faked to 0 when expected > 0)
+            "expected": float(total_predicted_rentals_raw),
             "per_period": float(frequency_per_period),
+            "expected_per_period": float(
+                total_predicted_rentals_raw
+                / max(1, date_range_days / {"daily": 1, "weekly": 7, "monthly": 30}.get(granularity, 7))
+            ),
             "granularity": granularity
         },
         "total_spending": float(total_predicted_spending),
+        "expected_spending": float(total_predicted_spending),
+        "spending": {"expected": float(total_predicted_spending)},
         "avg_distance": float(avg_distance),
         "provider_preferences": provider_preferences,
         "peak_periods": peak_periods,
