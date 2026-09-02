@@ -15,10 +15,10 @@ public class ConversationManager {
         session.addMessage(new Message(userMessage, aiResponse));
         
         // Enforce session limits
-        if (session.getMessages().size() > OllamaConfig.maxContextTokens && 
-            OllamaConfig.maxContextTokens > 0) {
+        if (session.getMessages().size() > OllamaConfig.maxContextMessages &&
+            OllamaConfig.maxContextMessages > 0) {
             List<Message> messages = session.getMessages();
-            int toRemove = messages.size() - OllamaConfig.maxContextTokens;
+            int toRemove = messages.size() - OllamaConfig.maxContextMessages;
             messages.subList(0, toRemove).clear();
         }
     }

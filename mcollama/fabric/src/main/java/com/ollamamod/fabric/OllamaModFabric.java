@@ -2,22 +2,26 @@ package com.ollamamod.fabric;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.ollamamod.OllamaMod;
+import com.ollamamod.client.ChatTrigger;
 import com.ollamamod.client.DailyStatsUpdater;
 import com.ollamamod.client.OllamaChatHandler;
+import com.ollamamod.client.OllamaCommandActions;
 import com.ollamamod.client.OllamaKeyBindings;
-import com.ollamamod.commands.OllamaCommand;
+import com.ollamamod.client.OllamaStartupCheck;
 import com.ollamamod.gui.fabric.OllamaChatScreen;
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
+import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
-public class OllamaModFabric implements ModInitializer, ClientModInitializer {
+/**
+ * Client-only entry point. The mod talks to a local Ollama server from the player's own
+ * machine and registers only client commands, so it has nothing to do on a dedicated server.
+ */
+public class OllamaModFabric implements ClientModInitializer {
     private static FabricPlatform platform;
     private static OllamaChatHandler chatHandler;
     private static OllamaKeyBindings keyBindings;
@@ -31,32 +35,52 @@ public class OllamaModFabric implements ModInitializer, ClientModInitializer {
     }
     
     @Override
-    public void onInitialize() {
-        OllamaMod.init();
-        
-        platform = new FabricPlatform(() -> new OllamaChatScreen(null));
+    public void onInitializeClient() {
+        platform = new FabricPlatform(OllamaChatScreen::new);
+        OllamaMod.init(platform);
         chatHandler = new OllamaChatHandler(platform);
         
-        // Register mining event handler
         MiningEventHandler.register();
+        registerCommands();
+        registerChatTrigger();
         
-        // Register Fabric client commands
+        keyBindings = new OllamaKeyBindings(platform, OllamaChatScreen::new);
+        keyBindings.register();
+        
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (platform.getOpenGuiKey() != null && platform.getOpenGuiKey().consumeClick()) {
+                keyBindings.handleKeyPress();
+            }
+            
+            if (client.player != null) {
+                OllamaStartupCheck.runOnce(chatHandler.getOllamaClient());
+                DailyStatsUpdater.onPlayerTick(client.player);
+            }
+        });
+    }
+    
+    private void registerCommands() {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             dispatcher.register(literal("ollama")
+                .then(literal("do")
+                    .then(argument("request", StringArgumentType.greedyString())
+                        .executes(context -> {
+                            OllamaCommandActions.sendDoRequest(chatHandler,
+                                StringArgumentType.getString(context, "request"));
+                            return 1;
+                        })
+                    )
+                )
+                .then(literal("summary")
+                    .executes(context -> {
+                        OllamaCommandActions.showDailySummary();
+                        return 1;
+                    })
+                )
                 .then(argument("message", StringArgumentType.greedyString())
                     .executes(context -> {
-                        String message = StringArgumentType.getString(context, "message");
-                        String playerName = Minecraft.getInstance().player != null ?
-                            Minecraft.getInstance().player.getName().getString() : "Player";
-                        
-                        chatHandler.getOllamaClient().sendMessage(message, playerName)
-                            .thenAccept(response -> {
-                                if (Minecraft.getInstance().player != null) {
-                                    Minecraft.getInstance().player.sendSystemMessage(
-                                        Component.literal("AI: " + response)
-                                    );
-                                }
-                            });
+                        OllamaCommandActions.sendPrompt(chatHandler,
+                            StringArgumentType.getString(context, "message"));
                         return 1;
                     })
                 )
@@ -64,35 +88,23 @@ public class OllamaModFabric implements ModInitializer, ClientModInitializer {
             
             dispatcher.register(literal("ollama_clear")
                 .executes(context -> {
-                    String playerName = Minecraft.getInstance().player != null ?
-                        Minecraft.getInstance().player.getName().getString() : "Player";
-                    chatHandler.getConversationManager().clearSession(playerName);
-                    if (Minecraft.getInstance().player != null) {
-                        Minecraft.getInstance().player.sendSystemMessage(
-                            Component.literal("Conversation cleared")
-                        );
-                    }
+                    OllamaCommandActions.clearConversation(chatHandler);
                     return 1;
                 })
             );
         });
     }
     
-    @Override
-    public void onInitializeClient() {
-        keyBindings = new OllamaKeyBindings(platform, () -> new OllamaChatScreen(null));
-        keyBindings.register();
-        
-        // Handle key press events
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (platform.getOpenGuiKey() != null && platform.getOpenGuiKey().consumeClick()) {
-                keyBindings.handleKeyPress();
+    private void registerChatTrigger() {
+        ClientSendMessageEvents.ALLOW_CHAT.register(message -> {
+            String prompt = ChatTrigger.extractPrompt(message);
+            if (prompt == null) {
+                return true;
             }
             
-            // Update daily stats including food tracking
-            if (client.player != null) {
-                DailyStatsUpdater.onPlayerTick(client.player);
-            }
+            // Keep the trigger message off the server; it was addressed to the mod.
+            OllamaCommandActions.sendPrompt(chatHandler, prompt);
+            return false;
         });
     }
 }

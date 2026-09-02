@@ -1,44 +1,48 @@
 package com.ollamamod.config;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.ollamamod.OllamaMod;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class OllamaConfig {
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static Path configPath;
+
     // Ollama Connection
     public static String ollamaUrl = "http://localhost:11434";
     public static String defaultModel = "llama2";
-    public static String fallbackModel = "tinyllama";
     public static int timeoutSeconds = 30;
-    
+
     // Features
     public static boolean enableChatCommand = true;
     public static boolean enableGui = true;
+    public static boolean enableChatTrigger = true;
+    public static String chatTrigger = "@ai";
     public static boolean enableWorldContext = true;
-    public static boolean enableCommandExecution = true;
-    public static boolean enableBroadcast = false;
-    public static boolean enableStreaming = false;
-    public static boolean confirmBeforeExecute = true;
-    
+    public static boolean enableCommandExecution = false;
+    public static boolean blockDestructiveCommands = true;
+
     // Command Execution & Learning
     public static boolean enableCommandLearning = true;
     public static boolean enableFailureAnalysis = true;
     public static int maxCommandLearningEntries = 500;
-    public static List<String> commandExecutionWhitelist = new ArrayList<>();
+    public static List<String> commandExecutionWhitelist = defaultWhitelist();
     public static List<String> commandExecutionBlacklist = new ArrayList<>();
-    
+
     // AI Settings
     public static String overseerPersonality = "Assistant";
-    public static int maxContextTokens = 0; // 0 = unlimited
-    
-    // Memory Management
-    public static boolean enableMemoryMonitoring = true;
-    public static double memoryWarningThreshold = 0.8;
-    public static boolean enableMemoryManagement = true;
-    public static int memoryCleanupInterval = 300; // seconds
-    
+    /** Maximum conversation turns kept per player (0 = unlimited). */
+    public static int maxContextMessages = 20;
+
     // Daily Summary
     public static boolean enableDailySummary = true;
-    public static List<String> summaryTimes = new ArrayList<>(List.of("00:00", "06:00", "12:00", "18:00"));
     public static boolean showDistanceStats = true;
     public static boolean showCombatStats = true;
     public static boolean showMiningStats = true;
@@ -46,45 +50,188 @@ public class OllamaConfig {
     public static boolean showFoodStats = true;
     public static int foodTrackingInterval = 100; // ticks (5 seconds at 20 TPS)
     public static double foodRecommendationSafetyMultiplier = 1.5;
-    
+
     // Action Recording & Learning
     public static boolean enableActionRecording = true;
     public static int recordingInterval = 1; // ticks
-    public static int maxRecordingDuration = 0; // minutes, 0 = unlimited
     public static int patternLearningThreshold = 5;
-    public static boolean autoReplicateEnabled = false;
-    
+
     // Mining Tracking
     public static boolean enableMiningTracking = true;
     public static boolean showMinerType = true;
     public static boolean showOreProbabilities = true;
     public static int minBlocksForAnalysis = 10;
-    
+
     // Limits
-    public static int maxSessionsPerPlayer = 10;
     public static int maxPatterns = 100;
     public static int maxLearningEntries = 1000;
-    public static int maxBehaviorEntries = 500;
     public static int maxRecordingQueueSize = 1000;
-    public static int sessionRetentionDays = 30;
-    public static int patternRetentionDays = 60;
-    
-    // AI Tips
-    public static boolean enableAiTips = true;
-    public static long tipCooldownInventoryMs = 5000;
-    public static long tipCooldownBiomeMs = 10000;
-    public static long tipCooldownPeriodicMs = 30000;
-    public static long tipPeriodicIntervalMs = 120000;
-    public static int maxTipsPerSession = 0; // 0 = unlimited
-    
-    // Performance
-    public static boolean enableAsyncFileIO = true;
-    
-    public static void init() {
-        // Config will be loaded by platform-specific implementations
+
+    public static void init(Path configDirectory) {
+        configPath = configDirectory.resolve("ollamamod.json");
+        load();
     }
-    
+
     public static void load() {
-        // Platform-specific config loading
+        if (configPath == null) {
+            OllamaMod.LOGGER.warn("Config path not set; using defaults");
+            return;
+        }
+
+        if (!Files.exists(configPath)) {
+            save();
+            return;
+        }
+
+        try {
+            String json = Files.readString(configPath);
+            ConfigData data = GSON.fromJson(json, ConfigData.class);
+            if (data != null) {
+                apply(data);
+            }
+        } catch (IOException e) {
+            OllamaMod.LOGGER.error("Failed to load config from {}", configPath, e);
+        }
+    }
+
+    public static void save() {
+        if (configPath == null) {
+            OllamaMod.LOGGER.warn("Config path not set; cannot save");
+            return;
+        }
+
+        try {
+            Files.createDirectories(configPath.getParent());
+            Files.writeString(configPath, GSON.toJson(toData()));
+        } catch (IOException e) {
+            OllamaMod.LOGGER.error("Failed to save config to {}", configPath, e);
+        }
+    }
+
+    private static List<String> defaultWhitelist() {
+        return new ArrayList<>(Arrays.asList(
+            "give", "tp", "teleport", "gamemode", "time", "weather",
+            "say", "me", "tell", "msg", "w", "seed", "list", "help"
+        ));
+    }
+
+    private static void apply(ConfigData data) {
+        if (data.ollamaUrl != null) ollamaUrl = data.ollamaUrl;
+        if (data.defaultModel != null) defaultModel = data.defaultModel;
+        timeoutSeconds = data.timeoutSeconds;
+        enableChatCommand = data.enableChatCommand;
+        enableGui = data.enableGui;
+        enableChatTrigger = data.enableChatTrigger;
+        if (data.chatTrigger != null) chatTrigger = data.chatTrigger;
+        enableWorldContext = data.enableWorldContext;
+        enableCommandExecution = data.enableCommandExecution;
+        blockDestructiveCommands = data.blockDestructiveCommands;
+        enableCommandLearning = data.enableCommandLearning;
+        enableFailureAnalysis = data.enableFailureAnalysis;
+        maxCommandLearningEntries = data.maxCommandLearningEntries;
+        if (data.commandExecutionWhitelist != null) {
+            commandExecutionWhitelist = new ArrayList<>(data.commandExecutionWhitelist);
+        }
+        if (data.commandExecutionBlacklist != null) {
+            commandExecutionBlacklist = new ArrayList<>(data.commandExecutionBlacklist);
+        }
+        if (data.overseerPersonality != null) overseerPersonality = data.overseerPersonality;
+        maxContextMessages = data.maxContextMessages;
+        enableDailySummary = data.enableDailySummary;
+        showDistanceStats = data.showDistanceStats;
+        showCombatStats = data.showCombatStats;
+        showMiningStats = data.showMiningStats;
+        showPlaytimeStats = data.showPlaytimeStats;
+        showFoodStats = data.showFoodStats;
+        foodTrackingInterval = data.foodTrackingInterval;
+        foodRecommendationSafetyMultiplier = data.foodRecommendationSafetyMultiplier;
+        enableActionRecording = data.enableActionRecording;
+        recordingInterval = data.recordingInterval;
+        patternLearningThreshold = data.patternLearningThreshold;
+        enableMiningTracking = data.enableMiningTracking;
+        showMinerType = data.showMinerType;
+        showOreProbabilities = data.showOreProbabilities;
+        minBlocksForAnalysis = data.minBlocksForAnalysis;
+        maxPatterns = data.maxPatterns;
+        maxLearningEntries = data.maxLearningEntries;
+        maxRecordingQueueSize = data.maxRecordingQueueSize;
+    }
+
+    private static ConfigData toData() {
+        ConfigData data = new ConfigData();
+        data.ollamaUrl = ollamaUrl;
+        data.defaultModel = defaultModel;
+        data.timeoutSeconds = timeoutSeconds;
+        data.enableChatCommand = enableChatCommand;
+        data.enableGui = enableGui;
+        data.enableChatTrigger = enableChatTrigger;
+        data.chatTrigger = chatTrigger;
+        data.enableWorldContext = enableWorldContext;
+        data.enableCommandExecution = enableCommandExecution;
+        data.blockDestructiveCommands = blockDestructiveCommands;
+        data.enableCommandLearning = enableCommandLearning;
+        data.enableFailureAnalysis = enableFailureAnalysis;
+        data.maxCommandLearningEntries = maxCommandLearningEntries;
+        data.commandExecutionWhitelist = commandExecutionWhitelist;
+        data.commandExecutionBlacklist = commandExecutionBlacklist;
+        data.overseerPersonality = overseerPersonality;
+        data.maxContextMessages = maxContextMessages;
+        data.enableDailySummary = enableDailySummary;
+        data.showDistanceStats = showDistanceStats;
+        data.showCombatStats = showCombatStats;
+        data.showMiningStats = showMiningStats;
+        data.showPlaytimeStats = showPlaytimeStats;
+        data.showFoodStats = showFoodStats;
+        data.foodTrackingInterval = foodTrackingInterval;
+        data.foodRecommendationSafetyMultiplier = foodRecommendationSafetyMultiplier;
+        data.enableActionRecording = enableActionRecording;
+        data.recordingInterval = recordingInterval;
+        data.patternLearningThreshold = patternLearningThreshold;
+        data.enableMiningTracking = enableMiningTracking;
+        data.showMinerType = showMinerType;
+        data.showOreProbabilities = showOreProbabilities;
+        data.minBlocksForAnalysis = minBlocksForAnalysis;
+        data.maxPatterns = maxPatterns;
+        data.maxLearningEntries = maxLearningEntries;
+        data.maxRecordingQueueSize = maxRecordingQueueSize;
+        return data;
+    }
+
+    private static class ConfigData {
+        String ollamaUrl;
+        String defaultModel;
+        int timeoutSeconds;
+        boolean enableChatCommand;
+        boolean enableGui;
+        boolean enableChatTrigger;
+        String chatTrigger;
+        boolean enableWorldContext;
+        boolean enableCommandExecution;
+        boolean blockDestructiveCommands;
+        boolean enableCommandLearning;
+        boolean enableFailureAnalysis;
+        int maxCommandLearningEntries;
+        List<String> commandExecutionWhitelist;
+        List<String> commandExecutionBlacklist;
+        String overseerPersonality;
+        int maxContextMessages;
+        boolean enableDailySummary;
+        boolean showDistanceStats;
+        boolean showCombatStats;
+        boolean showMiningStats;
+        boolean showPlaytimeStats;
+        boolean showFoodStats;
+        int foodTrackingInterval;
+        double foodRecommendationSafetyMultiplier;
+        boolean enableActionRecording;
+        int recordingInterval;
+        int patternLearningThreshold;
+        boolean enableMiningTracking;
+        boolean showMinerType;
+        boolean showOreProbabilities;
+        int minBlocksForAnalysis;
+        int maxPatterns;
+        int maxLearningEntries;
+        int maxRecordingQueueSize;
     }
 }

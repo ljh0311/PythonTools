@@ -2,8 +2,7 @@ package com.ollamamod.forge;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.ollamamod.client.OllamaChatHandler;
-import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
+import com.ollamamod.client.OllamaCommandActions;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -21,20 +20,25 @@ public class ForgeCommands {
         if (chatHandler == null) return;
         
         event.getDispatcher().register(literal("ollama")
+            .then(literal("do")
+                .then(argument("request", StringArgumentType.greedyString())
+                    .executes(context -> {
+                        OllamaCommandActions.sendDoRequest(chatHandler,
+                            StringArgumentType.getString(context, "request"));
+                        return 1;
+                    })
+                )
+            )
+            .then(literal("summary")
+                .executes(context -> {
+                    OllamaCommandActions.showDailySummary();
+                    return 1;
+                })
+            )
             .then(argument("message", StringArgumentType.greedyString())
                 .executes(context -> {
-                    String message = StringArgumentType.getString(context, "message");
-                    String playerName = Minecraft.getInstance().player != null ?
-                        Minecraft.getInstance().player.getName().getString() : "Player";
-                    
-                    chatHandler.getOllamaClient().sendMessage(message, playerName)
-                        .thenAccept(response -> {
-                            if (Minecraft.getInstance().player != null) {
-                                Minecraft.getInstance().player.sendSystemMessage(
-                                    Component.literal("AI: " + response)
-                                );
-                            }
-                        });
+                    OllamaCommandActions.sendPrompt(chatHandler,
+                        StringArgumentType.getString(context, "message"));
                     return 1;
                 })
             )
@@ -42,14 +46,7 @@ public class ForgeCommands {
         
         event.getDispatcher().register(literal("ollama_clear")
             .executes(context -> {
-                String playerName = Minecraft.getInstance().player != null ?
-                    Minecraft.getInstance().player.getName().getString() : "Player";
-                chatHandler.getConversationManager().clearSession(playerName);
-                if (Minecraft.getInstance().player != null) {
-                    Minecraft.getInstance().player.sendSystemMessage(
-                        Component.literal("Conversation cleared")
-                    );
-                }
+                OllamaCommandActions.clearConversation(chatHandler);
                 return 1;
             })
         );

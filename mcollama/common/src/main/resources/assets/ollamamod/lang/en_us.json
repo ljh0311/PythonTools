@@ -6,6 +6,5 @@
   "gui.ollamamod.chat.clear": "Clear",
   "gui.ollamamod.chat.placeholder": "Enter your message...",
   "gui.ollamamod.chat.response_placeholder": "AI responses will appear here...",
-  "gui.ollamamod.chat.loading": "Sending message to AI...",
-  "gui.ollamamod.chat.ready": "Ready"
+  "gui.ollamamod.chat.loading": "Sending message to AI..."
 }

@@ -4,6 +4,7 @@ import com.ollamamod.OllamaMod;
 import com.ollamamod.client.DailyStatsUpdater;
 import com.ollamamod.client.OllamaChatHandler;
 import com.ollamamod.client.OllamaKeyBindings;
+import com.ollamamod.client.OllamaStartupCheck;
 import com.ollamamod.gui.forge.OllamaChatScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraftforge.common.MinecraftForge;
@@ -36,17 +37,16 @@ public class OllamaModForge {
         modEventBus.addListener(this::onClientSetup);
         
         MinecraftForge.EVENT_BUS.register(this);
-        
-        OllamaMod.init();
     }
     
     private void onCommonSetup(FMLCommonSetupEvent event) {
-        platform = new ForgePlatform(() -> new OllamaChatScreen(null));
+        platform = new ForgePlatform(OllamaChatScreen::new);
+        OllamaMod.init(platform);
         chatHandler = new OllamaChatHandler(platform);
     }
     
     private void onClientSetup(FMLClientSetupEvent event) {
-        keyBindings = new OllamaKeyBindings(platform, () -> new OllamaChatScreen(null));
+        keyBindings = new OllamaKeyBindings(platform, OllamaChatScreen::new);
         keyBindings.register();
     }
     
@@ -62,6 +62,7 @@ public class OllamaModForge {
             // Update daily stats including food tracking
             LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
             if (player != null) {
+                OllamaStartupCheck.runOnce(chatHandler.getOllamaClient());
                 DailyStatsUpdater.onPlayerTick(player);
             }
         }

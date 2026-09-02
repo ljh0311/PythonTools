@@ -5,14 +5,20 @@ import com.google.gson.JsonObject;
 import com.ollamamod.OllamaMod;
 import com.ollamamod.config.OllamaConfig;
 import com.ollamamod.session.ConversationManager;
+import com.ollamamod.world.WorldContext;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+
+import net.minecraft.world.entity.player.Player;
 
 public class OllamaClient {
     private static final Gson GSON = new Gson();
@@ -33,18 +39,27 @@ public class OllamaClient {
     }
     
     public CompletableFuture<String> sendMessage(String message, String playerName) {
+        return sendMessage(message, playerName, null);
+    }
+
+    public CompletableFuture<String> sendMessage(String message, String playerName, Player player) {
+        final String worldContext = (OllamaConfig.enableWorldContext && player != null)
+            ? WorldContext.gatherContext(player) : "";
+
         return CompletableFuture.supplyAsync(() -> {
             try {
                 String model = OllamaConfig.defaultModel;
                 String context = conversationManager.getContext(playerName);
-                
+
                 // Store player name for command learning context
                 this.currentPlayerName = playerName;
-                
+
                 JsonObject requestBody = new JsonObject();
                 requestBody.addProperty("model", model);
-                requestBody.addProperty("prompt", buildPrompt(message, context));
-                requestBody.addProperty("stream", OllamaConfig.enableStreaming);
+                requestBody.addProperty("prompt", buildPrompt(message, context, worldContext));
+                // Non-streaming only: the parser below expects a single JSON object, whereas
+                // a streaming response is newline-delimited JSON.
+                requestBody.addProperty("stream", false);
                 
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(OllamaConfig.ollamaUrl + "/api/generate"))
@@ -55,28 +70,78 @@ public class OllamaClient {
                 
                 HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
                 
-                if (response.statusCode() == 200) {
-                    JsonObject jsonResponse = GSON.fromJson(response.body(), JsonObject.class);
-                    String aiResponse = jsonResponse.get("response").getAsString();
-                    
-                    conversationManager.addMessage(playerName, message, aiResponse);
-                    return aiResponse;
-                } else {
-                    OllamaMod.LOGGER.error("Ollama API error: {}", response.statusCode());
-                    return "Error: Failed to get response from Ollama";
+                if (response.statusCode() != 200) {
+                    OllamaMod.LOGGER.error("Ollama API error {}: {}", response.statusCode(), response.body());
+                    throw new OllamaException(describeHttpFailure(response.statusCode(), response.body(), model));
                 }
-            } catch (IOException | InterruptedException e) {
+                
+                String aiResponse = readResponseField(response.body());
+                conversationManager.addMessage(playerName, message, aiResponse);
+                return aiResponse;
+                
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new OllamaException("Request to Ollama was interrupted.", e);
+            } catch (IOException e) {
                 OllamaMod.LOGGER.error("Error communicating with Ollama", e);
-                return "Error: " + e.getMessage();
+                throw new OllamaException(describeTransportFailure(e), e);
             }
         });
     }
     
-    private String buildPrompt(String message, String context) {
+    private static String readResponseField(String body) {
+        try {
+            JsonObject json = GSON.fromJson(body, JsonObject.class);
+            if (json != null && json.has("response")) {
+                return json.get("response").getAsString();
+            }
+        } catch (RuntimeException e) {
+            OllamaMod.LOGGER.error("Could not parse Ollama response body: {}", body, e);
+        }
+        throw new OllamaException("Ollama sent a reply this mod could not read. See latest.log for the raw body.");
+    }
+    
+    private static String describeHttpFailure(int statusCode, String body, String model) {
+        if (statusCode == 404) {
+            return "Ollama has no model named '" + model + "'. Pull it first with: ollama pull " + model;
+        }
+        String detail = readErrorField(body);
+        return "Ollama returned HTTP " + statusCode + (detail.isEmpty() ? "." : ": " + detail);
+    }
+    
+    private static String describeTransportFailure(IOException e) {
+        if (e instanceof HttpTimeoutException) {
+            return "Ollama at " + OllamaConfig.ollamaUrl + " did not reply within "
+                    + OllamaConfig.timeoutSeconds + "s. Try a smaller model, or raise timeoutSeconds.";
+        }
+        if (e instanceof ConnectException) {
+            return "Cannot reach Ollama at " + OllamaConfig.ollamaUrl
+                    + ". Is it running? Start it with: ollama serve";
+        }
+        return "Cannot reach Ollama at " + OllamaConfig.ollamaUrl + " (" + e.getMessage() + ")";
+    }
+    
+    private static String readErrorField(String body) {
+        try {
+            JsonObject json = GSON.fromJson(body, JsonObject.class);
+            if (json != null && json.has("error")) {
+                return json.get("error").getAsString();
+            }
+        } catch (RuntimeException ignored) {
+            // Fall through to the bare status code, which is still better than nothing.
+        }
+        return "";
+    }
+    
+    private String buildPrompt(String message, String context, String worldContext) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("You are ").append(OllamaConfig.overseerPersonality)
               .append(" in Minecraft. ");
-        
+
+        if (!worldContext.isEmpty()) {
+            prompt.append("\n\nWorld Context:\n").append(worldContext);
+        }
+
         if (!context.isEmpty()) {
             prompt.append("\n\nContext:\n").append(context);
         }

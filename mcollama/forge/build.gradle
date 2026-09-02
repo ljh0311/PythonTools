@@ -1,5 +1,5 @@
 plugins {
-    id 'dev.architectury.loom' version '1.6-SNAPSHOT'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
 architectury {
@@ -7,22 +7,46 @@ architectury {
     forge()
 }
 
+base {
+    archivesName = 'ollamamod-forge'
+}
+
+configurations {
+    common
+    shadowCommon
+    compileClasspath.extendsFrom common
+    runtimeClasspath.extendsFrom common
+    developmentForge.extendsFrom common
+}
+
 dependencies {
-    minecraft "com.mojang:minecraft:1.20.1"
-    mappings loom.officialMojangMappings()
+    forge "net.minecraftforge:forge:${rootProject.minecraft_version}-${rootProject.forge_version}"
+    modImplementation "dev.architectury:architectury-forge:${rootProject.architectury_version}"
 
-    forge "net.minecraftforge:forge:1.20.1-47.2.0"
-    modImplementation "dev.architectury:architectury-forge:9.1.10"
-
-    implementation(project(":common")) {
-        transitive = false
-    }
+    common(project(path: ':common', configuration: 'namedElements')) { transitive false }
+    shadowCommon(project(path: ':common', configuration: 'transformProductionForge')) { transitive false }
 }
 
 processResources {
-    inputs.property "version", project.version
+    inputs.property 'version', project.version
 
-    filesMatching("META-INF/mods.toml") {
-        expand "version": project.version
+    filesMatching('META-INF/mods.toml') {
+        expand 'version': project.version
     }
+}
+
+shadowJar {
+    exclude 'fabric.mod.json'
+    configurations = [project.configurations.shadowCommon]
+    archiveClassifier.set 'dev-shadow'
+}
+
+remapJar {
+    inputFile.set shadowJar.archiveFile
+    dependsOn shadowJar
+    archiveClassifier.set ''
+}
+
+jar {
+    archiveClassifier.set 'dev'
 }
