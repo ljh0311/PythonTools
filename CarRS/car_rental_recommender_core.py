@@ -588,23 +588,26 @@ def calculate_estimated_cost(
         base_cost = config.get(base_key, config.get("base_weekday", 0.0))
 
         if pricing_type == "mileage":
-            km_rate = config.get(km_rate_key, config.get("mileage_rate", 0.39))
+            km_rate = config.get(km_rate_key, config.get("mileage_rate", 0.44))
             mileage_cost = distance * km_rate
             duration_cost = duration * hour_rate
             fuel_cost = 0
-            total_cost = base_cost + mileage_cost + duration_cost
+            platform_fee = float(config.get("platform_fee", 0) or 0)
+            total_cost = base_cost + mileage_cost + duration_cost + platform_fee
         else:  # fuel-based
             fuel_rate = config.get("fuel_rate", config.get("usual_fuel_amount", 20.0))
             duration_cost = duration * hour_rate
             fuel_cost = fuel_rate
             mileage_cost = 0
-            total_cost = base_cost + duration_cost + fuel_cost
+            platform_fee = float(config.get("platform_fee", 0) or 0)
+            total_cost = base_cost + duration_cost + fuel_cost + platform_fee
 
         return {
             "total_cost": total_cost,
             "duration_cost": duration_cost,
             "mileage_cost": mileage_cost,
             "fuel_cost": fuel_cost,
+            "platform_fee": platform_fee if pricing_type == "mileage" or config.get("platform_fee") else 0,
         }
     
     # Fallback to cost_analysis if pricing_config not available
@@ -625,7 +628,7 @@ def calculate_estimated_cost(
     # Calculate base costs
     if provider in ["Getgo", "Car Club"]:
         # These providers charge per km and per hour
-        mileage_rate = 0.39 if provider == "Getgo" else 0.33
+        mileage_rate = 0.44 if provider == "Getgo" else 0.43
         mileage_cost = distance * mileage_rate
         duration_cost = duration * cost_per_hour
         total_cost = mileage_cost + duration_cost
@@ -647,6 +650,94 @@ def calculate_estimated_cost(
         "mileage_cost": mileage_cost if provider in ["Getgo", "Car Club"] else 0,
         "fuel_cost": fuel_cost if provider in ["Econ", "Stand"] else 0,
     }
+
+
+def _load_pricing_config(pricing_config=None):
+    if pricing_config is not None:
+        return pricing_config
+    try:
+        with open("pricing_config.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def create_current_rate_recommendations(
+    distance, duration, is_weekend=False, pricing_config=None, top_n=5
+):
+    """Build recommendations from published pricing_config rates (not old CSV totals)."""
+    pricing_config = _load_pricing_config(pricing_config)
+    providers = ["Getgo", "Getgo(EV)", "Tribecar", "Car Club"]
+    recommendations = []
+    for provider in providers:
+        if provider not in pricing_config:
+            continue
+        if pricing_config[provider].get("pricing_type") != "mileage":
+            continue
+        cost = calculate_estimated_cost(
+            distance,
+            duration,
+            provider,
+            is_weekend=is_weekend,
+            pricing_config=pricing_config,
+        )
+        if not cost:
+            continue
+        recommendations.append(
+            {
+                "provider": provider,
+                "model": "Published rates",
+                "total_cost": cost["total_cost"],
+                "duration_cost": cost.get("duration_cost", 0),
+                "mileage_cost": cost.get("mileage_cost", 0),
+                "fuel_cost": cost.get("fuel_cost", 0),
+                "platform_fee": cost.get("platform_fee", 0),
+                "confidence": 0.95,
+                "method": "Current rates",
+            }
+        )
+    recommendations.sort(key=lambda x: x["total_cost"])
+    return recommendations[:top_n]
+
+
+def apply_live_rate_floor(
+    recommendations, distance, duration, is_weekend=False, pricing_config=None
+):
+    """
+    Raise ML/history guesses that fall below today's published mileage rates.
+    Stops GetGo (etc.) from looking cheaper than the live tariff.
+    """
+    pricing_config = _load_pricing_config(pricing_config)
+    if not recommendations or not pricing_config:
+        return recommendations
+
+    for rec in recommendations:
+        provider = rec.get("provider")
+        if not provider or provider not in pricing_config:
+            continue
+        if pricing_config[provider].get("pricing_type") != "mileage":
+            continue
+        floor = calculate_estimated_cost(
+            distance,
+            duration,
+            provider,
+            is_weekend=is_weekend,
+            pricing_config=pricing_config,
+        )
+        if not floor:
+            continue
+        floor_cost = float(floor["total_cost"])
+        current = float(rec.get("total_cost") or 0)
+        if current + 1e-9 >= floor_cost:
+            continue
+        rec["raw_total_cost"] = current
+        rec["total_cost"] = floor_cost
+        rec["rate_floor_applied"] = True
+        rec["mileage_cost"] = floor.get("mileage_cost", rec.get("mileage_cost", 0))
+        rec["duration_cost"] = floor.get("duration_cost", rec.get("duration_cost", 0))
+        if floor.get("platform_fee") is not None:
+            rec["platform_fee"] = floor.get("platform_fee")
+    return recommendations
 
 
 def get_recommendations(distance, duration, cost_analysis, is_weekend=False, top_n=5):
@@ -711,14 +802,13 @@ def analyze_rental_costs(df):
 def calculate_required_mileage(target_cost, duration, provider="Getgo"):
     """Calculate required mileage to reach target cost given duration"""
     if provider == "Getgo":
-        # Getgo: cost = mileage * 0.39 + duration * 8
-        # mileage = (target_cost - duration * 8) / 0.39
-        mileage_rate = 0.39
-        hourly_rate = 8.0
+        # Getgo: cost = mileage * 0.44 + duration * 5
+        mileage_rate = 0.44
+        hourly_rate = 5.0
     elif provider == "Car Club":
-        # Car Club: cost = mileage * 0.33 + duration * hourly_rate
-        mileage_rate = 0.33
-        hourly_rate = 8.0  # Adjust based on actual rates
+        # Car Club / Tribecar Standard-aligned
+        mileage_rate = 0.43
+        hourly_rate = 6.54
     else:
         # For other providers, use different calculation
         return None
@@ -737,14 +827,12 @@ def calculate_required_mileage(target_cost, duration, provider="Getgo"):
 def calculate_required_duration(target_cost, mileage, provider="Getgo"):
     """Calculate required duration to reach target cost given mileage"""
     if provider == "Getgo":
-        # Getgo: cost = mileage * 0.39 + duration * 8
-        # duration = (target_cost - mileage * 0.39) / 8
-        mileage_rate = 0.39
-        hourly_rate = 8.0
+        # Getgo: cost = mileage * 0.44 + duration * 5
+        mileage_rate = 0.44
+        hourly_rate = 5.0
     elif provider == "Car Club":
-        # Car Club: cost = mileage * 0.33 + duration * hourly_rate
-        mileage_rate = 0.33
-        hourly_rate = 8.0  # Adjust based on actual rates
+        mileage_rate = 0.43
+        hourly_rate = 6.54
     else:
         # For other providers, use different calculation
         return None
@@ -875,11 +963,11 @@ def generate_booking_scenarios(
 def calculate_cost_breakdown(mileage, duration, provider="Getgo"):
     """Calculate detailed cost breakdown for a rental"""
     if provider == "Getgo":
-        mileage_rate = 0.39
-        hourly_rate = 8.0
+        mileage_rate = 0.44
+        hourly_rate = 5.0
     elif provider == "Car Club":
-        mileage_rate = 0.33
-        hourly_rate = 8.0  # Adjust based on actual rates
+        mileage_rate = 0.43
+        hourly_rate = 6.54
     else:
         return None
 
@@ -969,6 +1057,8 @@ def create_ml_recommendations(distance, duration, df, is_weekend=False, top_n=5)
         from sklearn.ensemble import RandomForestRegressor
         from sklearn.preprocessing import StandardScaler
         import numpy as np
+        from components.ml_calibration import apply_calibration, ensure_calibration
+        from components.ml_trainer import load_model_meta
 
         # Convert to numpy arrays
         X = np.array(features)
@@ -978,21 +1068,18 @@ def create_ml_recommendations(distance, duration, df, is_weekend=False, top_n=5)
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
 
-        # Train a simple ML model
-        model = RandomForestRegressor(n_estimators=50, random_state=42)
+        meta = load_model_meta()
+        params = meta.get("best_params") or {}
+        model = RandomForestRegressor(
+            n_estimators=int(params.get("n_estimators", 50)),
+            max_depth=params.get("max_depth"),
+            min_samples_leaf=int(params.get("min_samples_leaf", 1)),
+            random_state=42,
+        )
         model.fit(X_scaled, y)
 
-        # Prepare input for prediction
-        provider_encoded = {"Getgo": 0, "Car Club": 1, "Econ": 2, "Stand": 3}.get(
-            "Getgo", 0
-        )
+        calibration = ensure_calibration(df)
         weekend_encoded = 1 if is_weekend else 0
-
-        input_features = np.array(
-            [[distance, duration, provider_encoded, weekend_encoded]]
-        )
-
-        input_scaled = scaler.transform(input_features)
 
         # Get predictions for different providers
         recommendations = []
@@ -1017,7 +1104,15 @@ def create_ml_recommendations(distance, duration, df, is_weekend=False, top_n=5)
                     [[distance, duration, provider_encoded, weekend_encoded]]
                 )
                 input_scaled = scaler.transform(input_features)
-                predicted_cost = model.predict(input_scaled)[0]
+                predicted_cost = float(model.predict(input_scaled)[0])
+                adjusted = apply_calibration(
+                    predicted_cost,
+                    calibration,
+                    provider,
+                    distance,
+                    duration,
+                    is_weekend,
+                )
 
                 # Calculate confidence based on data availability
                 confidence = min(
@@ -1028,7 +1123,10 @@ def create_ml_recommendations(distance, duration, df, is_weekend=False, top_n=5)
                     {
                         "provider": provider,
                         "model": most_common_model,
-                        "total_cost": max(0, predicted_cost),
+                        "total_cost": adjusted["total_cost"],
+                        "raw_total_cost": adjusted["raw_total_cost"],
+                        "calibration_factor": adjusted["calibration_factor"],
+                        "calibration_bucket": adjusted["calibration_bucket"],
                         "confidence": confidence,
                         "data_points": len(provider_data),
                         "method": "ML Prediction",
@@ -1074,6 +1172,16 @@ def get_enhanced_recommendations(
             distance, duration, is_weekend
         )
 
+    pricing_config = _load_pricing_config()
+    recommendations.extend(
+        create_current_rate_recommendations(
+            distance, duration, is_weekend, pricing_config, top_n
+        )
+    )
+    apply_live_rate_floor(
+        recommendations, distance, duration, is_weekend, pricing_config
+    )
+
     # Sort by total cost and return top N
     recommendations.sort(key=lambda x: x["total_cost"])
     return recommendations[:top_n]
@@ -1087,8 +1195,8 @@ def create_fallback_recommendations(distance, duration, is_weekend=False):
     for provider in providers:
         if provider in ["Getgo", "Car Club"]:
             # Per km + per hour pricing
-            mileage_rate = 0.39 if provider == "Getgo" else 0.33
-            hourly_rate = 8.0
+            mileage_rate = 0.44 if provider == "Getgo" else 0.43
+            hourly_rate = 5.0 if provider == "Getgo" else 6.54
             mileage_cost = distance * mileage_rate
             duration_cost = duration * hourly_rate
             total_cost = mileage_cost + duration_cost
@@ -2191,7 +2299,7 @@ Missing Fields: {', '.join(missing_fields)}
 
 {historical_context if historical_context else ""}
 {format_ref}
-Pricing: Getgo $0.39/km+$8/hr, Car Club $0.33/km+$8/hr, Econ/Stand ~$15/hr+fuel
+Pricing: Getgo $0.44/km+$5/hr (+$1.20 fee), Tribecar/Car Club ~$0.43/km+$4.91–9.81/hr, Econ/Stand ~$15/hr+fuel
 
 Return this exact JSON format (replace values or use null):
 {example_json}
@@ -2321,6 +2429,8 @@ def get_ollama_enhanced_recommendations(
     print(f"Getting recommendations: distance={distance}, duration={duration}, df_size={len(df) if df is not None else 0}, cost_analysis={cost_analysis is not None}")
     recommendations = []
     method_recommendations = {}
+    if pricing_config is None:
+        pricing_config = _load_pricing_config()
     
     # Get size requirements if passenger info provided
     size_requirements = None
@@ -2335,12 +2445,26 @@ def get_ollama_enhanced_recommendations(
         for rec in traditional_recs:
             rec["method"] = "Historical Analysis"
             rec["confidence"] = 0.8
+        apply_live_rate_floor(
+            traditional_recs, distance, duration, is_weekend, pricing_config
+        )
+        traditional_recs.sort(key=lambda x: x["total_cost"])
         method_recommendations["Historical Analysis"] = traditional_recs
 
     # Get ML recommendations if data is available and ML is enabled
     if use_ml and len(df) >= 10:
         ml_recs = create_ml_recommendations(distance, duration, df, is_weekend, top_n)
+        apply_live_rate_floor(
+            ml_recs, distance, duration, is_weekend, pricing_config
+        )
+        ml_recs.sort(key=lambda x: x["total_cost"])
         method_recommendations["ML Prediction"] = ml_recs
+
+    current_recs = create_current_rate_recommendations(
+        distance, duration, is_weekend, pricing_config, top_n
+    )
+    if current_recs:
+        method_recommendations["Current rates"] = current_recs
 
     # Get Ollama recommendations if requested
     if use_ollama:
@@ -2391,17 +2515,25 @@ def get_ollama_enhanced_recommendations(
     
     # Add pricing model comparison info
     if pricing_config is None:
-        try:
-            with open("pricing_config.json", "r") as f:
-                pricing_config = json.load(f)
-        except:
-            pricing_config = {}
-    
+        pricing_config = _load_pricing_config()
+
+    apply_live_rate_floor(
+        recommendations, distance, duration, is_weekend, pricing_config
+    )
+
     pricing_comparison = compare_pricing_models(distance, duration, is_weekend, pricing_config)
+    mileage_providers = {
+        p
+        for p, cfg in pricing_config.items()
+        if isinstance(cfg, dict) and cfg.get("pricing_type") == "mileage"
+    }
     for rec in recommendations:
-        rec["pricing_model"] = "mileage_included" if rec.get("provider") in ["Econ", "Stand", "Tribecar"] else "pay_per_km"
+        provider = rec.get("provider")
+        rec["pricing_model"] = (
+            "pay_per_km" if provider in mileage_providers else "mileage_included"
+        )
         rec["pricing_comparison"] = pricing_comparison
-    
+
     # Sort by total cost and return top N
     recommendations.sort(key=lambda x: x["total_cost"])
     return recommendations[:top_n]
@@ -2683,11 +2815,11 @@ def calculate_cost_requirements(target_cost, duration=None, mileage=None, provid
         if duration is not None and mileage is not None:
             # Both provided - calculate if target is achievable
             if provider == "Getgo":
-                mileage_rate = 0.39
-                hourly_rate = 8.0
+                mileage_rate = 0.44
+                hourly_rate = 5.0
             elif provider == "Car Club":
-                mileage_rate = 0.33
-                hourly_rate = 8.0
+                mileage_rate = 0.43
+                hourly_rate = 6.54
             else:
                 return {"error": f"Provider {provider} not supported for cost planning"}
             
@@ -3684,7 +3816,7 @@ def get_preference_based_recommendations(distance, duration, user_preferences, d
             # Calculate estimated cost
             if provider_name in ["Getgo", "Car Club"]:
                 # Per km + per hour pricing
-                mileage_rate = 0.39 if provider_name == "Getgo" else 0.33
+                mileage_rate = 0.44 if provider_name == "Getgo" else 0.43
                 mileage_cost = distance * mileage_rate
                 duration_cost = duration * avg_cost_per_hour
                 total_cost = mileage_cost + duration_cost
@@ -4186,7 +4318,7 @@ def compare_pricing_models(distance, duration, is_weekend=False, pricing_config=
             km_rate_key = f"km_rate_{day_type}" if f"km_rate_{day_type}" in config else "mileage_rate"
             
             hour_rate = config.get(hour_rate_key, config.get("hour_rate", 10.0))
-            km_rate = config.get(km_rate_key, config.get("mileage_rate", 0.39))
+            km_rate = config.get(km_rate_key, config.get("mileage_rate", 0.44))
             
             pay_per_km_hour_rate += hour_rate
             pay_per_km_km_rate += km_rate
@@ -4198,7 +4330,7 @@ def compare_pricing_models(distance, duration, is_weekend=False, pricing_config=
         pay_per_km_cost = (duration * avg_hour_rate) + (distance * avg_km_rate)
     else:
         # Fallback
-        pay_per_km_cost = (duration * 10.0) + (distance * 0.39)
+        pay_per_km_cost = (duration * 5.0) + (distance * 0.44) + 1.2
     
     # Determine recommendation
     cost_difference = abs(mileage_included_cost - pay_per_km_cost)

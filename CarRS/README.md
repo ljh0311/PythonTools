@@ -8,6 +8,14 @@ Personalized car rental recommendations from your historical trip CSV. Supports 
 CarRentalApp.bat
 ```
 
+**Web (phone / other laptop on same Wi‑Fi):**
+
+```bat
+CarRSWeb.bat
+```
+
+See [docs/features/web-local.md](docs/features/web-local.md).
+
 Or manually:
 
 ```bash

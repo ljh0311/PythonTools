@@ -25,6 +25,27 @@
 | ML eval | Compare predictions vs historical medians | `python scripts/evaluate_ml.py` |
 | Privacy | CSV/settings/xlsx stay local | Confirm not in `git ls-files` after commit |
 
+### 2026-09-03 — Multi-pass ML training
+
+- Added `scripts/train_ml.py` + `components/ml_trainer.py` (3 passes: baseline → hyperparams → recalibrate).
+- Saves local `ml_model_meta.json` + refreshed `ml_calibration.json`.
+- `create_ml_recommendations` uses best params + calibration again.
+- Run: `python scripts/train_ml.py --passes 3`
+
+### 2026-09-02 — Live GetGo / Tribecar rate refresh
+
+- Sources: [getgo.sg/rates](https://www.getgo.sg/rates), [tribecar.com/page/our-rates](https://www.tribecar.com/page/our-rates).
+- GetGo petrol mileage **$0.39 → $0.44**/km; EV **$0.35 → $0.29**/km; Economy hour Normal **$5** (was flat $8); platform fee **$1.20**.
+- Tribecar switched to **mileage** Economy **$0.43**/km + Off-Peak **$4.91**/hr (was fuel + $8.5/hr).
+- Car Club aligned to Tribecar Standard **$0.43**/km + **$6.54**/hr.
+- Hardcoded fallbacks in core/GUI updated to match.
+
+### 2026-09-02 — Local web UI
+
+- Added FastAPI app under `web/` + `CarRSWeb.bat` (binds `0.0.0.0:8765`).
+- Phone/laptop on same Wi‑Fi; brand hero SVG assets in `web/static/assets/`.
+- Docs: `docs/features/web-local.md`. Verify: `pip install -r requirements-web.txt` then `python -m pytest tests/test_web_api.py -q`.
+
 ### Known gaps
 
 - Quick-add shortcut UI not shipped (parser/settings key reserved in `.gitignore`).

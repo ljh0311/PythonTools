@@ -12,5 +12,6 @@ __pycache__/
 quick_add_shortcuts.json
 settings.json
 ml_calibration.json
+ml_model_meta.json
 data/
 *.xlsx
