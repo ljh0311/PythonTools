@@ -15,6 +15,7 @@ from backend.routes.agent import router as agent_router
 from backend.routes.api import router as api_router
 from backend.routes.auth import router as auth_router
 from backend.routes.user_account import router as user_account_router
+from backend.routes.v2_api import router as v2_router
 from backend.routes.webhook import router as webhook_router
 from backend.services.mtproto_service import mtproto_service
 
@@ -46,10 +47,18 @@ app.include_router(auth_router)
 app.include_router(agent_router)
 app.include_router(user_account_router)
 app.include_router(webhook_router)
+app.include_router(v2_router)
 
 frontend_path = Path(FRONTEND_DIR)
+v2_frontend_path = frontend_path / "v2"
 if frontend_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
+if v2_frontend_path.exists():
+    app.mount(
+        "/v2/static",
+        StaticFiles(directory=str(v2_frontend_path)),
+        name="v2_static",
+    )
 
 
 @app.get("/")
@@ -58,6 +67,15 @@ async def serve_dashboard():
     if index.exists():
         return FileResponse(index)
     return {"message": "Telegram Dashboard API is running. Frontend not found."}
+
+
+@app.get("/v2")
+@app.get("/v2/")
+async def serve_v2_dashboard():
+    index = v2_frontend_path / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return {"message": "Telegram Dashboard v2 UI not found."}
 
 
 @app.get("/login")

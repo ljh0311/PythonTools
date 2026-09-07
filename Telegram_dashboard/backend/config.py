@@ -50,6 +50,8 @@ SESSION_TTL_HOURS = int(os.getenv("SESSION_TTL_HOURS", "24"))
 OPENCLAW_ENABLED = os.getenv("OPENCLAW_ENABLED", "false").lower() in ("1", "true", "yes")
 OPENCLAW_GATEWAY_URL = os.getenv("OPENCLAW_GATEWAY_URL", "http://127.0.0.1:18789")
 DATABASE_PATH = DATA_DIR / "dashboard.db"
+PROFILES_DIR = DATA_DIR / "profiles"
+PROFILES_DIR.mkdir(exist_ok=True)
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 HOST = os.getenv("HOST", "0.0.0.0")

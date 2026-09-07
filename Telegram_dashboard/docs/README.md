@@ -13,6 +13,9 @@ This folder contains project documentation aligned with **Agile software develop
 | [Definition of Done](definition-of-done.md) | Shared quality bar for every backlog item |
 | [Architecture](architecture.md) | System design: current state and target v2 |
 | [Risks & Decisions](risks-and-decisions.md) | Open client decisions, risks, and assumptions |
+| [Dashboard v2](v2.md) | Awareness UI (Talk / Act / Profiles), gaps, verification |
+| [Dev log](dev-log.md) | Session progress and verification notes |
+| [AGENTS.md](../AGENTS.md) | Cloud Agent install / run / Desktop checklist |
 
 ## Agile framework in use
 
