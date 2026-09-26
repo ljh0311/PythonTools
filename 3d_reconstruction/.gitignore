@@ -1,5 +1,7 @@
 venv/
 venv_gsplat/
+workspaces/
+vendor/
 captures/
 output/
 test_output/

@@ -46,8 +46,20 @@ Examples:
                         help="Maximum number of photos to use (default: 20)")
     parser.add_argument("--save-intermediate", action="store_true",
                         help="Save intermediate processing results")
-    parser.add_argument("--mode", choices=["panorama", "reconstruction"], default="panorama",
-                        help="Processing mode contract (default: panorama)")
+    parser.add_argument(
+        "--mode",
+        choices=["panorama", "reconstruction", "gaussian"],
+        default="panorama",
+        help="Processing mode: panorama | reconstruction | gaussian (default: panorama)",
+    )
+    parser.add_argument("--max-steps", type=int, default=7000,
+                        help="Gaussian mode: gsplat max_steps (default: 7000)")
+    parser.add_argument("--data-factor", type=int, default=2,
+                        help="Gaussian mode: training data_factor (default: 2)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Gaussian mode: prepare COLMAP only, skip training")
+    parser.add_argument("--run-id", type=str, default=None,
+                        help="Gaussian mode: workspace id under workspaces/")
     parser.add_argument("--calibration-file", type=str, default=None,
                         help="Optional camera calibration JSON with camera_matrix/dist_coeffs")
     
@@ -149,19 +161,43 @@ def main():
     
     print(f"Found {len(photo_files)} photo files")
     
-    # Limit number of photos if specified
-    if len(photo_files) > args.max_photos:
+    # Limit number of photos if specified (panorama/reconstruction only)
+    if args.mode != "gaussian" and len(photo_files) > args.max_photos:
         print(f"Limiting to {args.max_photos} photos (use --max-photos to change)")
         photo_files = photo_files[:args.max_photos]
     
     # Create output directory
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Initialize processor
-    processor = PhotoUploadProcessor(str(output_dir))
-    
+    processor = None
+
     try:
+        if args.mode == "gaussian":
+            from gaussian_pipeline import run_gaussian_pipeline
+
+            print(f"Starting Gaussian Splatting pipeline ({len(photo_files)} photos)...")
+            result = run_gaussian_pipeline(
+                image_paths=photo_files,
+                run_id=args.run_id,
+                max_steps=args.max_steps,
+                data_factor=args.data_factor,
+                dry_run=args.dry_run,
+                progress_callback=print_progress,
+            )
+            if result.success:
+                print("\nGaussian pipeline completed.")
+                print(f"Workspace: {result.workspace}")
+                print(f"Results:   {result.result_dir}")
+                if result.train_command:
+                    print(f"Train cmd: {' '.join(result.train_command)}")
+                for key, path in (result.artifacts or {}).items():
+                    if path:
+                        print(f"  {key}: {path}")
+            else:
+                print(f"\nGaussian pipeline failed: {result.message}")
+            return
+
+        processor = PhotoUploadProcessor(str(output_dir))
         processor.set_mode(args.mode)
         if args.calibration_file:
             loaded = processor.reconstruction_engine.load_camera_params(args.calibration_file)
@@ -201,7 +237,8 @@ def main():
     except Exception as e:
         print(f"\nError during reconstruction: {e}")
     finally:
-        processor.close()
+        if processor is not None:
+            processor.close()
 
 if __name__ == "__main__":
     main() 

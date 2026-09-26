@@ -1,244 +1,447 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Basic 3D Reconstruction Launcher GUI
-Simple launcher for 3D reconstruction applications.
+3D Reconstruction Suite — launcher UI.
+Clear modes, status feedback, and Gaussian preflight checks.
 """
 
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from __future__ import annotations
+
+import os
 import subprocess
 import sys
-import os
-from pathlib import Path
-import glob
 import threading
+import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
 
-# Import the processor to use its logic directly
 from photo_upload_processor import PhotoUploadProcessor
 
+# Visual tokens (warm charcoal + amber accent — not purple/cream AI defaults)
+COLORS = {
+    "bg": "#1c1b1a",
+    "panel": "#2a2826",
+    "panel_hi": "#343230",
+    "text": "#f2eee8",
+    "muted": "#a39e96",
+    "accent": "#d97706",
+    "accent_dim": "#b45309",
+    "ok": "#4ade80",
+    "warn": "#fbbf24",
+    "err": "#f87171",
+    "border": "#3f3c39",
+}
+
+
+class ModeCard(ttk.Frame):
+    """One clickable mode with title + short tip."""
+
+    def __init__(self, master, title: str, tip: str, command, style_name: str = "Card.TFrame"):
+        super().__init__(master, style=style_name, padding=(14, 12))
+        self._command = command
+        title_lbl = ttk.Label(self, text=title, style="CardTitle.TLabel")
+        tip_lbl = ttk.Label(self, text=tip, style="CardTip.TLabel", wraplength=420, justify=tk.LEFT)
+        title_lbl.pack(anchor=tk.W)
+        tip_lbl.pack(anchor=tk.W, pady=(4, 8))
+        btn = ttk.Button(self, text="Open", command=command, style="Accent.TButton")
+        btn.pack(anchor=tk.E)
+        for widget in (self, title_lbl, tip_lbl):
+            widget.bind("<Button-1>", lambda _e: command())
+
+
 class BasicLauncherGUI:
-    """Basic launcher GUI for 3D reconstruction applications."""
-    
+    """Launcher for live, panorama, and Gaussian workflows."""
+
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("3D Reconstruction Launcher")
-        self.root.geometry("500x450")
-        self.root.resizable(False, False)
-        
-        # Center the window
+        self.root.title("3D Reconstruction Suite")
+        self.root.geometry("560x720")
+        self.root.minsize(520, 640)
+        self.root.configure(bg=COLORS["bg"])
+        self._configure_styles()
         self.center_window()
-        
         self.setup_ui()
-        
-    def center_window(self):
-        """Center the window on screen."""
-        self.root.update_idletasks()
-        width = self.root.winfo_width()
-        height = self.root.winfo_height()
-        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (height // 2)
-        self.root.geometry(f"{width}x{height}+{x}+{y}")
-    
-    def setup_ui(self):
-        """Setup the user interface."""
-        # Main frame
-        main_frame = ttk.Frame(self.root, padding="20")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Title
-        title_label = ttk.Label(main_frame, text="3D Reconstruction Suite", 
-                               font=("Arial", 20, "bold"))
-        title_label.grid(row=0, column=0, pady=(0, 30))
-        
-        # Subtitle
-        subtitle_label = ttk.Label(main_frame, text="Choose an option:", 
-                                  font=("Arial", 12))
-        subtitle_label.grid(row=1, column=0, pady=(0, 20))
-        
-        # Buttons frame
-        self.buttons_frame = ttk.Frame(main_frame)
-        self.buttons_frame.grid(row=2, column=0, pady=(0, 30))
-        
-        # Live reconstruction button
-        self.live_btn = ttk.Button(self.buttons_frame, text="📹 Live Camera Reconstruction", 
-                             command=self.launch_live_reconstruction,
-                             style="Action.TButton")
-        self.live_btn.grid(row=0, column=0, pady=10, padx=10, sticky=(tk.W, tk.E))
-        
-        # Photo to 360 Panorama button
-        self.photo_btn = ttk.Button(self.buttons_frame, text="📸 Photo to 360 Panorama", 
-                              command=self.launch_photo_reconstruction,
-                              style="Action.TButton")
-        self.photo_btn.grid(row=1, column=0, pady=10, padx=10, sticky=(tk.W, tk.E))
-        
-        # View Panorama button
-        self.view_btn = ttk.Button(self.buttons_frame, text="👁️ View Panorama", 
-                             command=self.view_panorama,
-                             style="Action.TButton")
-        self.view_btn.grid(row=2, column=0, pady=10, padx=10, sticky=(tk.W, tk.E))
-        
-        # Separator
-        separator = ttk.Separator(main_frame, orient=tk.HORIZONTAL)
-        separator.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=20)
-        
-        # Utility buttons frame
-        utils_frame = ttk.Frame(main_frame)
-        utils_frame.grid(row=4, column=0, pady=(0, 20))
-        
-        # Help button
-        help_btn = ttk.Button(utils_frame, text="❓ Help", 
-                             command=self.show_help)
-        help_btn.grid(row=0, column=0, pady=5, padx=5)
-        
-        # Exit button
-        exit_btn = ttk.Button(utils_frame, text="🚪 Exit", 
-                             command=self.root.quit)
-        exit_btn.grid(row=0, column=1, pady=5, padx=5)
-        
-        # Status frame
-        status_frame = ttk.LabelFrame(main_frame, text="Status", padding="10")
-        status_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        
-        self.status_var = tk.StringVar(value="Ready to launch applications")
-        self.status_label = ttk.Label(status_frame, textvariable=self.status_var)
-        self.status_label.grid(row=0, column=0, sticky=tk.W)
 
-        self.progress_bar = ttk.Progressbar(status_frame, orient="horizontal", length=100, mode="determinate")
-        self.progress_bar.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(5,0))
-        
-        # Configure grid weights
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(0, weight=1)
-        self.buttons_frame.columnconfigure(0, weight=1)
-        utils_frame.columnconfigure(0, weight=1)
-        utils_frame.columnconfigure(1, weight=1)
-        status_frame.columnconfigure(0, weight=1)
-        
-        # Configure button styles
+    def _configure_styles(self) -> None:
         style = ttk.Style()
-        style.configure("Action.TButton", font=("Arial", 12, "bold"), padding=10)
-    
-    def set_buttons_state(self, state):
-        """Enable or disable the main action buttons."""
-        for button in [self.live_btn, self.photo_btn, self.view_btn]:
-            button.config(state=state)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
 
-    def launch_live_reconstruction(self):
-        """Launch the live camera reconstruction in a new console window."""
-        self.status_var.set("Launching live reconstruction in a new window...")
+        style.configure("Root.TFrame", background=COLORS["bg"])
+        style.configure("Panel.TFrame", background=COLORS["panel"])
+        style.configure("Card.TFrame", background=COLORS["panel_hi"], relief="flat")
+        style.configure(
+            "Title.TLabel",
+            background=COLORS["bg"],
+            foreground=COLORS["text"],
+            font=("Segoe UI Semibold", 20),
+        )
+        style.configure(
+            "Subtitle.TLabel",
+            background=COLORS["bg"],
+            foreground=COLORS["muted"],
+            font=("Segoe UI", 10),
+        )
+        style.configure(
+            "CardTitle.TLabel",
+            background=COLORS["panel_hi"],
+            foreground=COLORS["text"],
+            font=("Segoe UI Semibold", 12),
+        )
+        style.configure(
+            "CardTip.TLabel",
+            background=COLORS["panel_hi"],
+            foreground=COLORS["muted"],
+            font=("Segoe UI", 9),
+        )
+        style.configure(
+            "Status.TLabel",
+            background=COLORS["panel"],
+            foreground=COLORS["text"],
+            font=("Segoe UI", 9),
+            wraplength=480,
+        )
+        style.configure(
+            "Section.TLabelframe",
+            background=COLORS["panel"],
+            foreground=COLORS["muted"],
+        )
+        style.configure(
+            "Section.TLabelframe.Label",
+            background=COLORS["panel"],
+            foreground=COLORS["muted"],
+            font=("Segoe UI", 9),
+        )
+        style.configure(
+            "Accent.TButton",
+            font=("Segoe UI Semibold", 10),
+            padding=(12, 6),
+        )
+        style.map(
+            "Accent.TButton",
+            background=[("!disabled", COLORS["accent"]), ("disabled", COLORS["border"])],
+            foreground=[("!disabled", "#1c1b1a")],
+        )
+        style.configure("Ghost.TButton", font=("Segoe UI", 9), padding=(10, 4))
+        style.configure(
+            "Horizontal.TProgressbar",
+            troughcolor=COLORS["border"],
+            background=COLORS["accent"],
+            thickness=8,
+        )
+
+    def center_window(self) -> None:
+        self.root.update_idletasks()
+        w, h = 560, 720
+        x = (self.root.winfo_screenwidth() // 2) - (w // 2)
+        y = (self.root.winfo_screenheight() // 2) - (h // 2)
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
+
+    def setup_ui(self) -> None:
+        outer = ttk.Frame(self.root, style="Root.TFrame", padding=20)
+        outer.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(outer, text="3D Reconstruction", style="Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            outer,
+            text="Pick a mode. Tips under each card say how to shoot.",
+            style="Subtitle.TLabel",
+        ).pack(anchor=tk.W, pady=(4, 16))
+
+        cards = ttk.Frame(outer, style="Root.TFrame")
+        cards.pack(fill=tk.BOTH, expand=True)
+
+        self.live_card = ModeCard(
+            cards,
+            "Live camera",
+            "Space = keyframe (need 5+). R = rebuild. S = save PLY. Move around the subject.",
+            self.launch_live_reconstruction,
+        )
+        self.live_card.pack(fill=tk.X, pady=6)
+
+        self.pano_card = ModeCard(
+            cards,
+            "360 panorama",
+            "Rotate in place. Overlap shots. Output is a wide PNG, not a 3D model.",
+            self.launch_photo_reconstruction,
+        )
+        self.pano_card.pack(fill=tk.X, pady=6)
+
+        self.view_card = ModeCard(
+            cards,
+            "View panorama",
+            "Open a saved PNG from the output folder.",
+            self.view_panorama,
+        )
+        self.view_card.pack(fill=tk.X, pady=6)
+
+        self.gaussian_card = ModeCard(
+            cards,
+            "Gaussian Splatting (3D space)",
+            "Walk around the subject (not spin in place). 20+ photos, same camera. "
+            "Mixed sizes are auto-resized. Needs COLMAP + RTX.",
+            self.launch_gaussian_splatting,
+        )
+        self.gaussian_card.pack(fill=tk.X, pady=6)
+
+        utils = ttk.Frame(outer, style="Root.TFrame")
+        utils.pack(fill=tk.X, pady=(12, 8))
+        ttk.Button(utils, text="Help", command=self.show_help, style="Ghost.TButton").pack(
+            side=tk.LEFT
+        )
+        ttk.Button(utils, text="Exit", command=self.root.quit, style="Ghost.TButton").pack(
+            side=tk.RIGHT
+        )
+
+        status = ttk.LabelFrame(outer, text="Status", style="Section.TLabelframe", padding=10)
+        status.pack(fill=tk.X, pady=(4, 0))
+        self.status_var = tk.StringVar(value="Ready.")
+        self.status_label = ttk.Label(status, textvariable=self.status_var, style="Status.TLabel")
+        self.status_label.pack(fill=tk.X)
+        self.progress_bar = ttk.Progressbar(status, orient="horizontal", mode="determinate")
+        self.progress_bar.pack(fill=tk.X, pady=(8, 0))
+
+        self._action_cards = [
+            self.live_card,
+            self.pano_card,
+            self.view_card,
+            self.gaussian_card,
+        ]
+
+    def set_buttons_state(self, state) -> None:
+        for card in self._action_cards:
+            for child in card.winfo_children():
+                if isinstance(child, ttk.Button):
+                    child.config(state=state)
+
+    def _project_python(self) -> Path:
+        root = Path(__file__).resolve().parent.parent
+        venv_python = root / "venv" / "Scripts" / "python.exe"
+        if venv_python.exists():
+            return venv_python
+        return Path(sys.executable)
+
+    def launch_live_reconstruction(self) -> None:
+        self.status_var.set("Launching live reconstruction…")
         try:
             src_dir = Path(__file__).parent
             script_path = src_dir / "live_reconstruction_app.py"
-            
-            # On Windows, 'start' runs the command in a new window.
-            # /k keeps the window open after the script finishes.
-            command = f"start cmd /k python \"{script_path}\""
+            python_exe = self._project_python()
+            command = f'start cmd /k "{python_exe}" "{script_path}"'
             subprocess.Popen(command, shell=True, cwd=src_dir)
-            
-            self.status_var.set("Live reconstruction launched. See new window.")
+            self.status_var.set("Live reconstruction opened in a new window.")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to launch live reconstruction: {e}")
-            self.status_var.set("Error launching live reconstruction")
-    
-    def launch_photo_reconstruction(self):
-        """Open file dialog and launch photo reconstruction in a thread."""
-        photo_paths = filedialog.askopenfilenames(
-            title="Select Photos for 360 Panorama",
-            filetypes=[
-                ("Image files", "*.jpg *.jpeg *.png"),
-                ("All files", "*.*")
-            ]
+            messagebox.showerror("Error", f"Failed to launch live reconstruction:\n{e}")
+            self.status_var.set("Live launch failed.")
+
+    def launch_gaussian_splatting(self) -> None:
+        folder = filedialog.askdirectory(title="Select photo folder for Gaussian Splatting")
+        if not folder:
+            self.status_var.set("Gaussian cancelled.")
+            return
+
+        from colmap_workspace import detect_mixed_dimensions, list_image_files
+
+        images = list_image_files(Path(folder))
+        if len(images) < 8:
+            messagebox.showerror(
+                "Not enough photos",
+                f"Found {len(images)} images. Need at least 8 (20+ recommended).\n"
+                "Walk around the subject with overlapping shots.",
+            )
+            self.status_var.set("Gaussian blocked: too few images.")
+            return
+
+        mixed = detect_mixed_dimensions(images)
+        if mixed:
+            proceed = messagebox.askokcancel(
+                "Mixed image sizes",
+                mixed
+                + "\n\nContinue? (Recommended.) Portrait + landscape mixed without this often fails COLMAP.",
+            )
+            if not proceed:
+                self.status_var.set("Gaussian cancelled.")
+                return
+
+        tip = (
+            f"About to process {len(images)} photos.\n\n"
+            "Shoot tip: walk around the subject. Do not only spin in place.\n"
+            "This can take a long time (COLMAP + GPU training)."
         )
-        
-        if not photo_paths:
-            self.status_var.set("Photo reconstruction cancelled.")
+        if not messagebox.askokcancel("Start Gaussian Splatting", tip):
+            self.status_var.set("Gaussian cancelled.")
             return
 
         self.set_buttons_state(tk.DISABLED)
-        self.status_var.set("Starting photo reconstruction...")
-        
-        # Run reconstruction in a background thread
-        thread = threading.Thread(
-            target=self._run_photo_reconstruction_thread,
-            args=(photo_paths,),
-            daemon=True
-        )
-        thread.start()
+        self.status_var.set("Starting Gaussian Splatting…")
+        threading.Thread(
+            target=self._run_gaussian_thread,
+            args=(folder,),
+            daemon=True,
+        ).start()
 
-    def _run_photo_reconstruction_thread(self, photo_paths):
-        """The actual reconstruction logic that runs in a thread."""
-        try:
-            processor = PhotoUploadProcessor()
+    def _resolve_gsplat_python(self) -> str:
+        root = Path(__file__).resolve().parent.parent
+        venv_py = root / "venv_gsplat" / "Scripts" / "python.exe"
+        if venv_py.is_file():
+            return str(venv_py)
+        return sys.executable
 
-            # The reconstruct_from_photos method will call self.update_status
-            success = processor.reconstruct_from_photos(
-                photo_paths, 
-                progress_callback=self.update_status
+    def _friendly_gaussian_error(self, raw: str) -> str:
+        text = raw or "unknown error"
+        lower = text.lower()
+        if "camera_single_dim" in lower or "different dimensions" in lower:
+            return (
+                "Photos have different widths/heights.\n"
+                "Re-run: the app now auto-resizes them. Prefer one camera orientation."
             )
+        if "no images with matches" in lower or "failed to create any sparse" in lower:
+            return (
+                "COLMAP found almost no matching views.\n"
+                "Walk around the subject with 60–80% overlap. Avoid blurry frames."
+            )
+        if "colmap" in lower and "not found" in lower:
+            return "COLMAP not found. Install it and open a new terminal, or use run_gaussian.bat."
+        if "cv2" in lower or "opencv" in lower:
+            return "OpenCV missing in venv_gsplat. Run: venv_gsplat\\Scripts\\pip install opencv-python"
+        # Keep a short tail of the real log for debugging
+        return text[-900:]
 
-            if success and processor.panorama_image is not None and processor.panorama_image.size > 0:
-                self.update_status(100, "Saving panorama...")
-                saved_files = processor.save_reconstruction()
-                if saved_files and saved_files.get('panorama'):
-                    saved_path = saved_files['panorama']
-                    self.root.after(0, messagebox.showinfo, "Success", f"Panorama created!\nSaved to:\n{saved_path}")
-                    self.update_status(100, "Panorama complete!")
-                else:
-                    self.root.after(0, messagebox.showerror, "Error", "Panorama built but failed to save.")
-                    self.update_status(100, "Failed to save panorama.")
+    def _run_gaussian_thread(self, folder: str) -> None:
+        try:
+            src_dir = Path(__file__).parent
+            cli = src_dir / "gaussian_cli.py"
+            python_exe = self._resolve_gsplat_python()
+            self.update_status(5, f"Running with {Path(python_exe).name}…")
+
+            cmd = [
+                python_exe,
+                str(cli),
+                "--input-dir",
+                folder,
+                "--max-steps",
+                "7000",
+                "--data-factor",
+                "2",
+            ]
+            completed = subprocess.run(
+                cmd,
+                cwd=str(src_dir),
+                capture_output=True,
+                text=True,
+            )
+            if completed.stdout:
+                print(completed.stdout)
+            if completed.stderr:
+                print(completed.stderr)
+
+            if completed.returncode == 0:
+                self.root.after(
+                    0,
+                    messagebox.showinfo,
+                    "Success",
+                    "Gaussian Splatting finished.\nSee workspaces/<run_id>/results/",
+                )
+                self.update_status(100, "Gaussian complete. Check workspaces/.")
             else:
-                self.root.after(0, messagebox.showerror, "Error", "Panorama failed. Try different photos (rotate camera in place for best results).")
-                self.update_status(100, "Panorama failed.")
-
+                err = self._friendly_gaussian_error(
+                    completed.stderr or completed.stdout or ""
+                )
+                self.root.after(0, messagebox.showerror, "Gaussian failed", err)
+                self.update_status(100, "Gaussian failed — see message.")
         except Exception as e:
-            self.root.after(0, messagebox.showerror, "Critical Error", f"An unexpected error occurred during reconstruction: {e}")
-            self.update_status(100, "A critical error occurred.")
+            self.root.after(0, messagebox.showerror, "Critical Error", str(e))
+            self.update_status(100, "Critical error.")
         finally:
             self.root.after(0, self.set_buttons_state, tk.NORMAL)
 
-    def update_status(self, progress, message):
-        """Thread-safe method to update the GUI's status and progress bar."""
+    def launch_photo_reconstruction(self) -> None:
+        photo_paths = filedialog.askopenfilenames(
+            title="Select photos for 360 panorama",
+            filetypes=[
+                ("Image files", "*.jpg *.jpeg *.png"),
+                ("All files", "*.*"),
+            ],
+        )
+        if not photo_paths:
+            self.status_var.set("Panorama cancelled.")
+            return
+
+        self.set_buttons_state(tk.DISABLED)
+        self.status_var.set("Building panorama…")
+        threading.Thread(
+            target=self._run_photo_reconstruction_thread,
+            args=(photo_paths,),
+            daemon=True,
+        ).start()
+
+    def _run_photo_reconstruction_thread(self, photo_paths) -> None:
+        try:
+            processor = PhotoUploadProcessor()
+            success = processor.reconstruct_from_photos(
+                photo_paths,
+                progress_callback=self.update_status,
+            )
+            if success and processor.panorama_image is not None and processor.panorama_image.size > 0:
+                self.update_status(100, "Saving panorama…")
+                saved_files = processor.save_reconstruction()
+                if saved_files and saved_files.get("panorama"):
+                    saved_path = saved_files["panorama"]
+                    self.root.after(
+                        0,
+                        messagebox.showinfo,
+                        "Success",
+                        f"Panorama saved:\n{saved_path}",
+                    )
+                    self.update_status(100, "Panorama complete.")
+                else:
+                    self.root.after(0, messagebox.showerror, "Error", "Built but failed to save.")
+                    self.update_status(100, "Save failed.")
+            else:
+                self.root.after(
+                    0,
+                    messagebox.showerror,
+                    "Error",
+                    "Panorama failed. Rotate in place with overlapping shots.",
+                )
+                self.update_status(100, "Panorama failed.")
+        except Exception as e:
+            self.root.after(0, messagebox.showerror, "Critical Error", str(e))
+            self.update_status(100, "Critical error.")
+        finally:
+            self.root.after(0, self.set_buttons_state, tk.NORMAL)
+
+    def update_status(self, progress: int, message: str) -> None:
         def do_update():
             self.status_var.set(message)
-            self.progress_bar['value'] = progress
-        
+            self.progress_bar["value"] = progress
+
         self.root.after(0, do_update)
 
-    def view_panorama(self):
-        """Open output folder and let user select a panorama image to view."""
-        self.status_var.set("Opening panorama...")
+    def view_panorama(self) -> None:
+        self.status_var.set("Opening panorama…")
         try:
             output_dir = Path(__file__).parent.parent / "output"
             if not output_dir.exists():
-                messagebox.showwarning("No Output Directory",
-                                     "No output directory found. Run Photo to 360 Panorama first.")
-                self.status_var.set("No output directory found")
-                return
-            panorama_files = list(output_dir.glob("*panorama*.png")) + list(output_dir.glob("*.png"))
-            panorama_files = sorted(set(panorama_files), key=lambda p: p.stat().st_mtime, reverse=True)
-            if not panorama_files:
-                messagebox.showwarning("No Panoramas",
-                                     "No panorama images found in the output directory.")
-                self.status_var.set("No panoramas found")
+                messagebox.showwarning("No output", "Run panorama first.")
+                self.status_var.set("No output folder.")
                 return
             file_path = filedialog.askopenfilename(
-                title="Select Panorama to View",
+                title="Select panorama",
                 initialdir=str(output_dir),
-                filetypes=[("PNG images", "*.png"), ("All files", "*.*")]
+                filetypes=[("PNG images", "*.png"), ("All files", "*.*")],
             )
             if not file_path:
-                self.status_var.set("No file selected")
+                self.status_var.set("No file selected.")
                 return
             self.launch_panorama_viewer(file_path)
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to open panorama viewer: {e}")
-            self.status_var.set("Error opening panorama")
+            messagebox.showerror("Error", str(e))
+            self.status_var.set("Open failed.")
 
-    def launch_panorama_viewer(self, file_path: str):
-        """Open the panorama image with the default system viewer."""
-        self.status_var.set(f"Opening {Path(file_path).name}...")
+    def launch_panorama_viewer(self, file_path: str) -> None:
         try:
             path = Path(file_path).resolve()
             if sys.platform == "win32":
@@ -247,45 +450,28 @@ class BasicLauncherGUI:
                 subprocess.Popen(["open", str(path)])
             else:
                 subprocess.Popen(["xdg-open", str(path)])
-            self.status_var.set("Panorama opened in default viewer.")
+            self.status_var.set(f"Opened {path.name}")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to open panorama: {e}")
-            self.status_var.set("Error opening panorama")
-    
-    def show_help(self):
-        """Show help information."""
-        help_text = """
-3D Reconstruction Suite - Help
+            messagebox.showerror("Error", str(e))
+            self.status_var.set("Viewer failed.")
 
-📹 Live Camera Reconstruction:
-- Uses your computer's camera to capture images in real-time
-- Launches in a separate window; press 'S' to save.
+    def show_help(self) -> None:
+        messagebox.showinfo(
+            "Help",
+            "Live — capture keyframes around a subject (5+), then rebuild.\n\n"
+            "Panorama — rotate in place; output is a flat 360 PNG.\n\n"
+            "Gaussian — walk around for a real 3D space (COLMAP + RTX).\n"
+            "Use 20+ overlapping photos. Mixed sizes are auto-resized.\n\n"
+            "Docs: docs/README_Gaussian.md",
+        )
 
-📸 Photo to 360 Panorama:
-- Select multiple photos taken by rotating the camera in place
-- Builds a 360-degree equirectangular panorama image
-- Result is saved as a PNG in the output/ directory (viewable in any image or 360 viewer)
-
-👁️ View Panorama:
-- Open a saved panorama image with your default image viewer
-- Panoramas are equirectangular and can be used in 360 viewers
-
-Requirements:
-- Python 3.7 or higher
-- Webcam (for live reconstruction)
-
-For more detailed information, check the README files in the project directory.
-        """
-        messagebox.showinfo("Help", help_text)
-    
-    def run(self):
-        """Run the GUI application."""
+    def run(self) -> None:
         self.root.mainloop()
 
-def main():
-    """Main function to launch the GUI."""
-    app = BasicLauncherGUI()
-    app.run()
+
+def main() -> None:
+    BasicLauncherGUI().run()
+
 
 if __name__ == "__main__":
-    main() 
+    main()

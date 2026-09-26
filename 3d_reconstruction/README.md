@@ -1,8 +1,9 @@
 # 3D Reconstruction from Video and Photos
 
-This project implements a modular pipeline for processing camera/video and photo sets with two explicit photo contracts:
+This project implements a modular pipeline for processing camera/video and photo sets with three explicit photo contracts:
 - `panorama` mode: builds a 360 equirectangular panorama.
 - `reconstruction` mode: builds a 3D point cloud/mesh (COLMAP-first, manual SfM fallback).
+- `gaussian` mode: offline 3D Gaussian Splatting (COLMAP poses → gsplat on RTX). See [docs/README_Gaussian.md](docs/README_Gaussian.md).
 
 ## Project Structure
 
@@ -30,7 +31,7 @@ This project implements a modular pipeline for processing camera/video and photo
 
 ### ✅ Implemented
 - **Live Camera Reconstruction**: Incremental triangulation from live camera feed
-- **Photo Upload & Processing**: Multi-photo processing with explicit mode selection (`panorama` or `reconstruction`)
+- **Photo Upload & Processing**: Multi-photo processing with explicit mode selection (`panorama`, `reconstruction`, or `gaussian`)
 - **GUI Interface**: User-friendly graphical interface for photo processing
 - **Command-Line Interface**: Flexible CLI for batch processing
 - **Feature Detection & Matching**: ORB-based feature extraction
@@ -69,6 +70,9 @@ python src/photo_reconstruction_cli.py --input-dir ./photos --mode panorama
 
 # Command line 3D reconstruction (COLMAP-first backend)
 python src/photo_reconstruction_cli.py --input-dir ./photos --mode reconstruction
+
+# Gaussian Splatting (requires venv_gsplat + COLMAP; see docs/README_Gaussian.md)
+run_gaussian.bat --input-dir ./photos --dry-run
 ```
 
 ## Setup
@@ -120,6 +124,7 @@ python src/photo_reconstruction_cli.py --input-dir ./photos --mode reconstructio
 The system generates mode-specific outputs:
 - **Panorama mode**: Panorama image (`.png`) + info file (`.txt`)
 - **Reconstruction mode**: Point cloud (`.ply`) + optional mesh (`.ply`) + info file (`.txt`)
+- **Gaussian mode**: `workspaces/<run_id>/` with COLMAP `sparse/0/` + gsplat `results/` (see [docs/README_Gaussian.md](docs/README_Gaussian.md))
 
 ## Dependencies
 
@@ -134,6 +139,7 @@ The system generates mode-specific outputs:
 
 - [Live 3D Reconstruction Guide](README_Live_3D.md)
 - [Photo Upload Guide](README_Photo_Upload.md)
+- [Gaussian Splatting Guide](docs/README_Gaussian.md)
 - [Troubleshooting Guide](TROUBLESHOOTING.md)
 
 ## License
