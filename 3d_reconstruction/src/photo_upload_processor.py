@@ -18,7 +18,7 @@ from panorama_engine import build_equirectangular_panorama
 class PhotoUploadProcessor:
     """Processor for handling multiple photo uploads in panorama or 3D mode."""
     
-    SUPPORTED_MODES = ("panorama", "reconstruction")
+    SUPPORTED_MODES = ("panorama", "reconstruction", "gaussian")
 
     def __init__(self, output_dir: str = "output"):
         """Initialize the photo upload processor.
@@ -38,6 +38,7 @@ class PhotoUploadProcessor:
         self.mode = "panorama"
         self.processing_thread = None
         self.is_processing = False
+        self.gaussian_result = None  # set when mode == gaussian
 
     def set_mode(self, mode: str) -> None:
         if mode not in self.SUPPORTED_MODES:
@@ -199,6 +200,20 @@ class PhotoUploadProcessor:
                 for invalid in invalid_photos:
                     print(f"  - {invalid}")
             
+            if self.mode == "gaussian":
+                from gaussian_pipeline import run_gaussian_pipeline
+
+                if len(valid_photos) < 2:
+                    print("Need at least 2 valid photos for gaussian mode")
+                    return False
+                if progress_callback:
+                    progress_callback(10, f"Gaussian Splatting with {len(valid_photos)} photos...")
+                self.gaussian_result = run_gaussian_pipeline(
+                    image_paths=valid_photos,
+                    progress_callback=progress_callback,
+                )
+                return bool(self.gaussian_result and self.gaussian_result.success)
+
             if len(valid_photos) < 2:
                 print("Need at least 2 valid photos for panorama")
                 return False
@@ -284,6 +299,12 @@ class PhotoUploadProcessor:
                     import open3d as o3d
                     o3d.io.write_triangle_mesh(str(mesh_path), self.reconstruction_engine.mesh)
                     saved_files["mesh"] = str(mesh_path)
+            if self.mode == "gaussian" and self.gaussian_result is not None:
+                for key, value in (self.gaussian_result.artifacts or {}).items():
+                    if value:
+                        saved_files[key] = value
+                saved_files["workspace"] = str(self.gaussian_result.workspace)
+                saved_files["result_dir"] = str(self.gaussian_result.result_dir)
             
             info_path = self.output_dir / f"{filename_prefix}_info_{timestamp}.txt"
             with open(info_path, 'w') as f:
@@ -294,7 +315,12 @@ class PhotoUploadProcessor:
                 f.write(f"Panorama saved: {saved_files.get('panorama', 'No')}\n")
                 f.write(f"Point cloud saved: {saved_files.get('pointcloud', 'No')}\n")
                 f.write(f"Mesh saved: {saved_files.get('mesh', 'No')}\n")
-                f.write(f"Metrics: {self.reconstruction_engine.get_metrics_summary()}\n")
+                if self.mode == "gaussian" and self.gaussian_result is not None:
+                    f.write(f"Gaussian workspace: {self.gaussian_result.workspace}\n")
+                    f.write(f"Gaussian results: {self.gaussian_result.result_dir}\n")
+                    f.write(f"Gaussian message: {self.gaussian_result.message}\n")
+                else:
+                    f.write(f"Metrics: {self.reconstruction_engine.get_metrics_summary()}\n")
             
             saved_files['info'] = str(info_path)
             
@@ -445,6 +471,12 @@ class PhotoUploadGUI:
             self.save_btn.config(state=tk.NORMAL)
             if self.processor.mode == "panorama":
                 messagebox.showinfo("Success", "Panorama created successfully!")
+            elif self.processor.mode == "gaussian":
+                ws = getattr(self.processor.gaussian_result, "workspace", None)
+                messagebox.showinfo(
+                    "Success",
+                    f"Gaussian Splatting finished.\nWorkspace:\n{ws}",
+                )
             else:
                 messagebox.showinfo("Success", "3D reconstruction completed successfully!")
         else:
