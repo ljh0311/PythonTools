@@ -1,0 +1,116 @@
+export function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+export function formatTime(iso) {
+  if (!iso) return "";
+  const raw = String(iso);
+  const date = new Date(raw.endsWith("Z") || raw.includes("+") ? raw : `${raw}Z`);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString();
+}
+
+/** Short relative/local stamp for dense Act cards (full string stays in title). */
+export function formatCompactTime(iso) {
+  if (!iso) return "";
+  const raw = String(iso);
+  const date = new Date(raw.endsWith("Z") || raw.includes("+") ? raw : `${raw}Z`);
+  if (Number.isNaN(date.getTime())) return raw;
+  const now = Date.now();
+  const diffSec = Math.round((now - date.getTime()) / 1000);
+  if (diffSec >= 0 && diffSec < 60) return "just now";
+  if (diffSec >= 60 && diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec >= 3600 && diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec >= 86400 && diffSec < 86400 * 7) return `${Math.floor(diffSec / 86400)}d ago`;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function showToast(message, { error = false } = {}) {
+  const el = document.getElementById("v2-toast");
+  if (!el) return;
+  el.textContent = message;
+  el.hidden = false;
+  el.classList.toggle("is-error", Boolean(error));
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => {
+    el.hidden = true;
+  }, 3200);
+}
+
+export function asList(payload, keys = ["items", "threads", "messages", "profiles", "suggestions"]) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  return [];
+}
+
+export function threadTitle(thread) {
+  if (!thread) return "Chat";
+  if (thread.chat_type === "group" || thread.chat_type === "channel") {
+    return thread.chat_title || `Chat ${thread.chat_id}`;
+  }
+  if (thread.title || thread.name) return thread.title || thread.name;
+  if (thread.chat_title) return thread.chat_title;
+  const first = Array.isArray(thread.messages) ? thread.messages[0] : null;
+  if (first?.username) return `@${first.username}`;
+  if (first?.user_id != null) return `User ${first.user_id}`;
+  return thread.chat_id != null ? `Chat ${thread.chat_id}` : "Chat";
+}
+
+export function suggestionFields(item) {
+  const payload = item?.payload && typeof item.payload === "object" ? item.payload : {};
+  const draft = item?.draft ?? payload.draft ?? "";
+  const displayDraft = item?.display_draft ?? payload.display_draft ?? draft;
+  return {
+    id: item?.id ?? payload.id,
+    status: item?.status || "pending",
+    type: item?.type || payload.type || "next_action",
+    priority: item?.priority || payload.priority || "medium",
+    chatId: item?.chat_id ?? payload.chat_id,
+    chatTitle: item?.chat_title || payload.chat_title || "",
+    chatType: item?.chat_type || payload.chat_type || "",
+    user: item?.user || payload.user || "",
+    displayTitle: item?.display_title || payload.display_title || "",
+    draft,
+    displayDraft,
+    action: item?.action || payload.action || "",
+    dueHint: item?.due_hint || payload.due_hint || "",
+    confidence: item?.confidence ?? payload.confidence,
+    createdAt: item?.created_at || payload.created_at,
+    replyState: item?.reply_state || payload.reply_state || "",
+    needsReply: Boolean(item?.needs_reply ?? payload.needs_reply),
+    alreadyReplied: Boolean(item?.already_replied ?? payload.already_replied),
+    lastInboundText: item?.last_inbound_text || payload.last_inbound_text || "",
+    lastOutboundText: item?.last_outbound_text || payload.last_outbound_text || "",
+    lastInboundAt: item?.last_inbound_at || payload.last_inbound_at || "",
+    lastOutboundAt: item?.last_outbound_at || payload.last_outbound_at || "",
+    draftSuppressed: Boolean(item?.draft_suppressed ?? payload.draft_suppressed),
+    aiUnavailable: Boolean(item?.ai_unavailable ?? payload.ai_unavailable),
+  };
+}
+
+export function profileFields(item) {
+  if (typeof item === "string") {
+    return { chatId: item, name: item, content: "", updatedAt: "" };
+  }
+  const front = item?.frontmatter && typeof item.frontmatter === "object" ? item.frontmatter : {};
+  return {
+    chatId: item?.chat_id ?? front.chat_id ?? item?.id,
+    name: item?.name || front.name || item?.title || `Chat ${item?.chat_id ?? ""}`,
+    filename: item?.filename || item?.path || "",
+    relationship: item?.relationship || front.relationship || "",
+    updatedAt: item?.updated_at || front.updated_at || "",
+    content: item?.content ?? item?.markdown ?? item?.body ?? "",
+  };
+}

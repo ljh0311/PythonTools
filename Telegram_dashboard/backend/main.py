@@ -1,28 +1,47 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import logging
+import os
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Act quality logger (+ app) — INFO by default; set LOG_LEVEL=DEBUG for more
+_log_level = getattr(logging, (os.getenv("LOG_LEVEL") or "INFO").upper(), logging.INFO)
+logging.basicConfig(
+    level=_log_level,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logging.getLogger("act_quality").setLevel(_log_level)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import FRONTEND_DIR, HOST, PORT
+from backend.config import FRONTEND_DIR, HOST, PORT, UNREAD_DIGEST_ENABLED
 from backend.routes.agent import router as agent_router
 from backend.routes.api import router as api_router
 from backend.routes.auth import router as auth_router
 from backend.routes.user_account import router as user_account_router
+from backend.routes.v2_api import router as v2_router
 from backend.routes.webhook import router as webhook_router
 from backend.services.mtproto_service import mtproto_service
+from backend.services.unread_digest_service import start_digest_loop, stop_digest_loop
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await mtproto_service.start_listening()
+    # Loop always runs; each tick no-ops unless enabled (env or UI toggle).
+    start_digest_loop()
+    if UNREAD_DIGEST_ENABLED:
+        logging.getLogger(__name__).info(
+            "Unread digest loop active (UNREAD_DIGEST_ENABLED=true)"
+        )
     yield
+    await stop_digest_loop()
     await mtproto_service.disconnect()
 
 
@@ -46,10 +65,18 @@ app.include_router(auth_router)
 app.include_router(agent_router)
 app.include_router(user_account_router)
 app.include_router(webhook_router)
+app.include_router(v2_router)
 
 frontend_path = Path(FRONTEND_DIR)
+v2_frontend_path = frontend_path / "v2"
 if frontend_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
+if v2_frontend_path.exists():
+    app.mount(
+        "/v2/static",
+        StaticFiles(directory=str(v2_frontend_path)),
+        name="v2_static",
+    )
 
 
 @app.get("/")
@@ -58,6 +85,15 @@ async def serve_dashboard():
     if index.exists():
         return FileResponse(index)
     return {"message": "Telegram Dashboard API is running. Frontend not found."}
+
+
+@app.get("/v2")
+@app.get("/v2/")
+async def serve_v2_dashboard():
+    index = v2_frontend_path / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return {"message": "Telegram Dashboard v2 UI not found."}
 
 
 @app.get("/login")

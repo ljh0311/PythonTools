@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from typing import Any
 
+from backend.config import AI_PRIMARY_PROVIDER, OLLAMA_FALLBACK_MODELS, OLLAMA_MODEL
 from backend.services.providers.gemini import GeminiProvider
 from backend.services.providers.ollama import OllamaProvider
 from backend.services.redaction_service import redaction_service
@@ -12,6 +13,73 @@ from backend.services.summary_cache import summary_cache
 from backend.services.summary_corrector import align_summary_with_context
 
 logger = logging.getLogger(__name__)
+
+_SECRET_IN_URL = re.compile(r"([?&]key=)[^&\s'\"]+", re.IGNORECASE)
+_REPEATED_CHAR = re.compile(r"^(.)\1{7,}$", re.DOTALL)
+
+
+def _safe_provider_error(exc: BaseException) -> str:
+    """Surface provider failures without leaking API keys from URL query strings."""
+    text = f"{type(exc).__name__}: {exc}"
+    return _SECRET_IN_URL.sub(r"\1[REDACTED]", text)
+
+
+def _friendly_provider_failure(exc_or_text: BaseException | str) -> str:
+    """Short operator-facing reason (no raw URLs)."""
+    text = (
+        _safe_provider_error(exc_or_text)
+        if isinstance(exc_or_text, BaseException)
+        else str(exc_or_text)
+    )
+    lowered = text.lower()
+    if "429" in text or "too many requests" in lowered or "resource_exhausted" in lowered:
+        if "gemini" in lowered:
+            return "Gemini rate-limited (429)"
+        return "AI provider rate-limited (429)"
+    if "unusable" in lowered or "garbled" in lowered:
+        return text.split(";")[0].strip()[:120]
+    if "ollama" in lowered and ("not reachable" in lowered or "not available" in lowered):
+        return "Ollama not reachable"
+    # Drop URL tails from httpx errors
+    text = re.sub(r"\s+for url '[^']*'", "", text)
+    text = re.sub(r"\s*For more information check:.*$", "", text, flags=re.I | re.S)
+    return text.strip()[:160]
+
+
+def _is_usable_ai_text(text: str | None, *, min_letters: int = 4) -> bool:
+    """Reject empty/garbled model output (e.g. strings of '@' from a broken local model).
+
+    Short but alphabetic replies (e.g. READY) are allowed; summaries typically
+    exceed this floor. Dominant-character checks still catch @@@-style garbage.
+    """
+    if not text or not str(text).strip():
+        return False
+    cleaned = str(text).strip()
+    if _REPEATED_CHAR.match(cleaned.replace("\n", "")):
+        return False
+    letters = sum(1 for ch in cleaned if ch.isalpha())
+    if letters < min_letters:
+        return False
+    # Mostly the same non-space character
+    compact = "".join(cleaned.split())
+    if len(compact) >= 8:
+        dominant = max(compact.count(c) for c in set(compact))
+        if dominant / len(compact) >= 0.85:
+            return False
+    return True
+
+
+def _format_provider_chain_reason(errors: list[str], used: str | None = None) -> str:
+    parts = [_friendly_provider_failure(e) for e in errors]
+    # Collapse "Gemini failed (…)" wrappers if already friendly
+    cleaned: list[str] = []
+    for part in parts:
+        m = re.match(r"^(Gemini|Ollama) failed \((.+)\)$", part, re.I)
+        cleaned.append(m.group(2) if m else part)
+    reason = "; ".join(cleaned)
+    if used:
+        reason = f"{reason}; using {used}" if reason else f"using {used}"
+    return reason
 
 AI_SUGGEST_MESSAGE_CAP = 60
 AI_SUGGEST_RETRY_CAP = 25
@@ -92,6 +160,9 @@ SUGGEST_SYSTEM = (
     "Write summary and drafts in English. "
     "Only attribute speech to usernames in the transcript. "
     "A group or channel title is never a person who spoke. "
+    "Only suggest type=reply when the latest message in that chat is inbound (needs a response). "
+    "If the user already sent the latest message, do not invent a reply draft for that chat. "
+    "Drafts must be substantive and grounded in the last inbound text, not placeholders. "
     "Schema: {\"summary\": string, \"suggestions\": [{\"type\": \"reply\"|\"next_action\", "
     "\"chat_id\": number|null, \"user\": string, \"draft\": string, \"action\": string, "
     "\"priority\": \"high\"|\"medium\"|\"low\", \"confidence\": number, \"due_hint\": string}]}"
@@ -143,6 +214,16 @@ class AIService:
         return self.gemini.configured or self.ollama.configured
 
     async def provider_status(self) -> dict:
+        primary = AI_PRIMARY_PROVIDER
+        if primary == "gemini" and not self.gemini.configured:
+            primary = "ollama"
+        elif primary == "ollama" and not self.ollama.configured and self.gemini.configured:
+            primary = "gemini"
+        fallback = None
+        if primary == "ollama" and self.gemini.configured:
+            fallback = "gemini"
+        elif primary == "gemini" and self.ollama.configured:
+            fallback = "ollama"
         return {
             "gemini": {
                 "configured": self.gemini.configured,
@@ -154,8 +235,8 @@ class AIService:
                 "available": await self.ollama.is_available(),
                 "base_url": self.ollama.base_url,
             },
-            "primary": "gemini" if self.gemini.configured else "ollama",
-            "fallback": "ollama" if self.gemini.configured and self.ollama.configured else None,
+            "primary": primary,
+            "fallback": fallback,
             "fallback_commands": True,
             "rate_limit": ai_rate_limiter.status(),
         }
@@ -242,38 +323,104 @@ class AIService:
         if meta.get("failure_reason"):
             result["failure_reason"] = meta["failure_reason"]
 
+    async def _try_ollama_text(
+        self, prompt: str, system: str
+    ) -> tuple[str | None, str | None]:
+        if not self.ollama.configured:
+            return None, None
+        names = await self.ollama.list_model_names()
+        if names is None:
+            return None, "Ollama not reachable"
+
+        candidates: list[str] = []
+        for model in [self.ollama.model, OLLAMA_MODEL, *OLLAMA_FALLBACK_MODELS]:
+            if model and model not in candidates:
+                candidates.append(model)
+
+        last_err: str | None = None
+        tried = False
+        for model in candidates:
+            if not self.ollama._model_installed(names, model):
+                continue
+            tried = True
+            try:
+                text = await self.ollama.generate_text(
+                    prompt, system=system, model=model
+                )
+                if not _is_usable_ai_text(text):
+                    last_err = f"Ollama model {model} returned unusable text"
+                    logger.warning("%s (len=%s)", last_err, len(text or ""))
+                    continue
+                if model != self.ollama.model:
+                    logger.info(
+                        "Ollama using fallback model %s (primary=%s)",
+                        model,
+                        self.ollama.model,
+                    )
+                return text, None
+            except Exception as exc:
+                last_err = f"Ollama model {model}: {_friendly_provider_failure(exc)}"
+                logger.warning("Ollama generate failed for %s: %s", model, last_err)
+
+        if not tried:
+            return None, f"Ollama model not installed ({self.ollama.model})"
+        return None, last_err or "Ollama returned unusable text"
+
+    async def _try_gemini_text(
+        self, prompt: str, system: str
+    ) -> tuple[str | None, str | None]:
+        if not self.gemini.configured:
+            return None, None
+        try:
+            text = await self.gemini.generate_text(prompt, system=system)
+            if not _is_usable_ai_text(text):
+                return None, "Gemini returned unusable text"
+            return text, None
+        except Exception as exc:
+            err = _friendly_provider_failure(exc)
+            logger.warning("Gemini text generation failed, trying fallback: %s", err)
+            return None, err
+
     async def _generate_text(
         self, prompt: str, system: str
     ) -> tuple[str, str, dict[str, Any]]:
         ai_rate_limiter.check()
         meta: dict[str, Any] = {}
-        gemini_error: str | None = None
+        primary = AI_PRIMARY_PROVIDER
+        errors: list[str] = []
 
-        if self.gemini.configured:
-            try:
-                text = await self.gemini.generate_text(prompt, system=system)
-                return text, "gemini", meta
-            except Exception as exc:
-                gemini_error = f"{type(exc).__name__}: {exc}"
-                logger.warning(
-                    "Gemini text generation failed, trying fallback: %s",
-                    gemini_error,
-                    exc_info=True,
-                )
+        order = (
+            ("ollama", "gemini")
+            if primary == "ollama"
+            else ("gemini", "ollama")
+        )
 
-        if self.ollama.configured and await self.ollama.is_available():
-            text = await self.ollama.generate_text(prompt, system=system)
-            if gemini_error:
-                meta["degraded"] = True
-                meta["failure_reason"] = (
-                    f"Gemini failed ({gemini_error}); using Ollama fallback"
-                )
-            return text, "ollama", meta
+        for name in order:
+            if name == "ollama":
+                text, err = await self._try_ollama_text(prompt, system)
+                if text is not None:
+                    if errors:
+                        meta["degraded"] = True
+                        meta["failure_reason"] = _format_provider_chain_reason(
+                            errors, used="Ollama"
+                        )
+                    return text, "ollama", meta
+                if err:
+                    errors.append(f"Ollama failed ({err})")
+            else:
+                text, err = await self._try_gemini_text(prompt, system)
+                if text is not None:
+                    if errors:
+                        meta["degraded"] = True
+                        meta["failure_reason"] = _format_provider_chain_reason(
+                            errors, used="Gemini"
+                        )
+                    return text, "gemini", meta
+                if err:
+                    errors.append(f"Gemini failed ({err})")
 
-        if gemini_error:
-            raise RuntimeError(
-                f"Gemini failed ({gemini_error}); no fallback provider available"
-            )
+        if errors:
+            raise RuntimeError(_format_provider_chain_reason(errors))
         raise RuntimeError("No AI provider available")
 
     def _parse_json_response(self, raw: str) -> dict[str, Any]:
@@ -881,33 +1028,19 @@ class AIService:
         messages: list[dict],
         relationship_map: dict[int, str] | None = None,
     ) -> dict[str, Any]:
-        suggestions = []
-        by_chat: dict[int | None, list[dict]] = {}
-        for msg in messages:
-            by_chat.setdefault(msg.get("chat_id"), []).append(msg)
+        from backend.services.act_reply_state import (
+            build_fallback_reply_suggestion,
+            messages_by_chat,
+        )
 
+        suggestions: list[dict[str, Any]] = []
+        by_chat = messages_by_chat(messages)
         for chat_id, chat_messages in by_chat.items():
-            incoming = [m for m in chat_messages if m.get("direction") == "incoming"]
-            if not incoming:
-                continue
-            latest = sorted(incoming, key=lambda m: m.get("created_at", ""))[-1]
-            user = latest.get("username") or f"User {latest.get('user_id')}"
-            rel = (relationship_map or {}).get(chat_id or 0, "")
-            greeting = f"Hi {user}, thanks for your message."
-            if rel:
-                greeting = f"Hi {user}, thanks for reaching out."
-            suggestions.append(
-                {
-                    "type": "reply",
-                    "chat_id": chat_id,
-                    "user": user,
-                    "draft": f"{greeting} I'll follow up shortly.",
-                    "action": "",
-                    "priority": "medium",
-                    "confidence": 0.5,
-                    "due_hint": "",
-                }
+            item = build_fallback_reply_suggestion(
+                chat_id, chat_messages, relationship_map
             )
+            if item:
+                suggestions.append(item)
 
         if not suggestions:
             suggestions.append(
@@ -920,6 +1053,7 @@ class AIService:
                     "priority": "low",
                     "confidence": 0.4,
                     "due_hint": "today",
+                    "ai_unavailable": True,
                 }
             )
 
@@ -928,6 +1062,8 @@ class AIService:
             "message_highlights": self._fallback_message_highlights(messages),
             "suggestions": suggestions,
             "provider": "fallback",
+            "degraded": True,
+            "ai_unavailable": True,
         }
 
     def _fallback_message_highlights(
@@ -1069,7 +1205,7 @@ class AIService:
         result["messages_total"] = total
         result["degraded"] = True
         if last_error:
-            result["failure_reason"] = str(last_error)
+            result["failure_reason"] = _safe_provider_error(last_error)
         return result
 
     def _fallback_conversation_intel(self, messages: list[dict]) -> dict[str, Any]:
@@ -1314,20 +1450,27 @@ class AIService:
 
     async def process_message(self, user_text: str, store) -> str:
         errors: list[str] = []
+        order = (
+            ("ollama", "gemini")
+            if AI_PRIMARY_PROVIDER == "ollama"
+            else ("gemini", "ollama")
+        )
 
-        if self.gemini.configured:
-            try:
-                return await self.gemini.chat(user_text, store)
-            except Exception as exc:
-                errors.append(f"Gemini: {exc}")
-
-        if self.ollama.configured:
-            try:
-                if not await self.ollama.is_available():
-                    raise RuntimeError("Ollama is not reachable. Start it with: ollama serve")
-                return await self.ollama.chat(user_text, store)
-            except Exception as exc:
-                errors.append(f"Ollama: {exc}")
+        for name in order:
+            if name == "gemini" and self.gemini.configured:
+                try:
+                    return await self.gemini.chat(user_text, store)
+                except Exception as exc:
+                    errors.append(f"Gemini: {_safe_provider_error(exc)}")
+            elif name == "ollama" and self.ollama.configured:
+                try:
+                    if not await self.ollama.is_available():
+                        raise RuntimeError(
+                            "Ollama is not reachable. Start it with: ollama serve"
+                        )
+                    return await self.ollama.chat(user_text, store)
+                except Exception as exc:
+                    errors.append(f"Ollama: {_safe_provider_error(exc)}")
 
         if errors:
             return (

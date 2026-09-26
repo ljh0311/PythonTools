@@ -90,6 +90,7 @@ cp .env.example .env
 ```env
 GEMINI_API_KEY=your-gemini-api-key
 GEMINI_MODEL=gemini-3.6-flash
+AI_PRIMARY_PROVIDER=gemini
 ```
 
 **Ollama (fallback)** — install from [ollama.ai](https://ollama.ai), pull a model, and start the service:
@@ -101,10 +102,10 @@ ollama serve
 
 ```env
 OLLAMA_BASE_URL=http://localhost:11434/v1
-OLLAMA_MODEL=llama3.2
+OLLAMA_MODEL=qwen2.5:3b
 ```
 
-The bot tries Gemini first. If Gemini fails or is not configured, it falls back to Ollama. If both are unavailable, built-in `/help`, `/status`, `/analytics`, and `/feedback` commands still work.
+The app tries Gemini first (`AI_PRIMARY_PROVIDER=gemini`). On 429 or other Gemini errors it falls back to Ollama; failure text redacts API keys. If both are unavailable, built-in `/help`, `/status`, `/analytics`, and `/feedback` commands still work.
 
 5. Start the server:
 
@@ -113,6 +114,45 @@ python -m backend.main
 ```
 
 Open `http://localhost:8000` for the dashboard.
+
+## Dashboard v2 (Awareness)
+
+Personal awareness UI **alongside** the classic Operator dashboard (v1 is not replaced).
+
+| URL | UI |
+|-----|-----|
+| `http://localhost:8000/` | **v1 Operator** — inbox, analytics, tools, bot ops |
+| `http://localhost:8000/v2` | **v2 Awareness** — Talk / Act / Profiles |
+
+### How to open
+
+1. Start the server as usual (`python -m backend.main`).
+2. Sign in if prompted (`/login`, same operator auth as v1).
+3. Open **`/v2`**, or use **Open classic dashboard** from v2 to return to `/`.
+
+Cloud Agents: see **[AGENTS.md](AGENTS.md)** (install → env → start → health → Desktop checklist).
+
+### Current state
+
+Early usable slice:
+
+- **Talk** — browse personal (`user_account`) threads and messages
+- **Act** — AI suggestion queue with done/dismiss; heuristic “open” threads from API
+- **Profiles** — Markdown contact cards in `data/profiles/`, editable + refresh-from-chat
+
+Focused tests: `pytest backend/tests/test_profile_md.py backend/tests/test_v2_act.py`.
+
+### What needs improvement
+
+1. Talk send/reply and richer filters (v1 inbox is still deeper for ops)
+2. Surface Act `open_items` in the UI; tighter AI empty/degraded feedback
+3. Create/open Profiles from Talk without leaving the view
+4. Demo path when MTProto is off (Talk often empty without user-account ingest)
+5. Broader automated coverage (Talk routes, UI smoke)
+
+### Known gaps vs v1 Operator
+
+No metrics/analytics/tools panels on `/v2`; no message send from Talk; UI biased to user-account data. Full detail: **[docs/v2.md](docs/v2.md)**. Session notes: **[docs/dev-log.md](docs/dev-log.md)**.
 
 ## Telegram Webhook
 

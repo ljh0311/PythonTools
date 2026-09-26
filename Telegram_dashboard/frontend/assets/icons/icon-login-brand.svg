@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Telegram Dashboard">
+  <defs>
+    <linearGradient id="loginBrandGrad" x1="8" y1="6" x2="42" y2="42" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2aabee"/>
+      <stop offset="1" stop-color="#1f8bc7"/>
+    </linearGradient>
+  </defs>
+  <rect width="48" height="48" rx="14" fill="#101820"/>
+  <rect x="1" y="1" width="46" height="46" rx="13" fill="none" stroke="#2d3a4f" stroke-width="1"/>
+  <path
+    fill="url(#loginBrandGrad)"
+    d="M12.2 23.4c7.1-3.1 11.9-5.2 19.8-8.6 3.3-1.4 5.5-2.1 5.5-2.1s.9-.3.9.4c0 .2 0 .7-.2 1.3-.8 3.4-3.3 14.7-4.7 19.5-.6 2-1.9 2.7-3.1 2.6-2.6-.2-4.6-1.7-7.1-3.4-2.7-1.8-4.2-2.9-6.8-4.7-3-2-1.8-3.2.7-4.9 2.7-1.9 12.6-8.2 12.6-8.2s.5-.3.1-.6c-.4-.3-2.1-.1-3.8.5-5.4 1.9-12.3 4.4-12.3 4.4s-1.4.5-4 .1c-1.7-.3-3.1-1-3.1-1s-1.2-.7.9-1.6z"
+  />
+</svg>
