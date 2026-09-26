@@ -49,8 +49,12 @@ def estimate_provider_cost(distance, duration, provider, is_weekend=False) -> Op
     if not rates or rates.get("pricing_type") == "traditional":
         return None
     distance, duration = float(distance or 0), float(duration or 0)
-    duration_cost = duration * rates.get("hour_rate", 0)
+    day = "weekend" if is_weekend else "weekday"
+    hour_key = f"hour_rate_{day}"
+    hour_rate = rates.get(hour_key, rates.get("hour_rate", 0))
+    duration_cost = duration * hour_rate
     mileage_cost, fuel_cost = 0.0, 0.0
+    platform_fee = float(rates.get("platform_fee", 0) or 0)
 
     if rates.get("pricing_type") == "mileage":
         mileage_cost = distance * rates.get("mileage_rate", 0)
@@ -63,12 +67,16 @@ def estimate_provider_cost(distance, duration, provider, is_weekend=False) -> Op
     else:
         fuel_cost = rates.get("fuel_rate", rates.get("usual_fuel_amount", 0))
 
-    subtotal = duration_cost + mileage_cost + fuel_cost
+    subtotal = duration_cost + mileage_cost + fuel_cost + platform_fee
+    # Weekend hour rates already applied when configured; only multiply fuel-type leftovers
+    if is_weekend and hour_key not in rates and rates.get("pricing_type") != "mileage":
+        subtotal *= 1.2
     return {
-        "total_cost": subtotal * (1.2 if is_weekend else 1),
+        "total_cost": subtotal,
         "duration_cost": duration_cost,
         "mileage_cost": mileage_cost,
         "fuel_cost": fuel_cost,
+        "platform_fee": platform_fee,
     }
 
 

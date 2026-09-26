@@ -144,8 +144,8 @@ class CarRentalRecommenderApp:
             "fuel_price_var": "2.51",
             "fuel_cost_var": "20",
             "tank_distance_var": "110",
-            "getgo_mileage_var": "0.39",
-            "carclub_mileage_var": "0.33",
+            "getgo_mileage_var": "0.44",
+            "carclub_mileage_var": "0.43",
         }
         self.__dict__.update(create_stringvars(shared_vars.keys(), shared_vars))
 
@@ -2925,9 +2925,9 @@ class CarRentalRecommenderApp:
                 # Mileage cost
                 mileage_cost = 0
                 if provider == "Getgo":
-                    mileage_cost = distance * 0.39
+                    mileage_cost = distance * 0.44
                 elif provider == "Car Club":
-                    mileage_cost = distance * 0.33
+                    mileage_cost = distance * 0.43
 
                 # Duration cost (use user input or estimate)
                 user_duration_cost = (
@@ -3051,16 +3051,16 @@ class CarRentalRecommenderApp:
                 # Regular car calculation
                 mileage_cost = 0
                 if provider == "Getgo":
-                    mileage_cost = distance_val * 0.39
+                    mileage_cost = distance_val * 0.44
                 elif provider == "Car Club":
-                    mileage_cost = distance_val * 0.33
+                    mileage_cost = distance_val * 0.43
                 
                 if duration_cost:
                     duration_cost_val = float(duration_cost)
                 elif historical_stats.get('avg_cost_per_hour'):
                     duration_cost_val = hours_val * historical_stats['avg_cost_per_hour']
                 else:
-                    duration_cost_val = hours_val * 8.0
+                    duration_cost_val = hours_val * 5.0
 
                 region = getattr(self, "record_region_var", None)
                 region = (region.get() or "Singapore").strip() if region else "Singapore"
@@ -6747,23 +6747,33 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
         # Initialize simplified pricing data: Singapore providers + Malaysia SoCar
         self.pricing_data = {
             "Getgo": {
-                "mileage_rate": 0.39,
-                "hour_rate": 8.0,
+                "mileage_rate": 0.44,
+                "hour_rate": 5.0,
+                "hour_rate_weekday": 5.0,
+                "hour_rate_weekend": 9.0,
+                "platform_fee": 1.2,
                 "pricing_type": "mileage",
             },
             "Getgo EV": {
-                "mileage_rate": 0.35,
-                "hour_rate": 9.0,
+                "mileage_rate": 0.29,
+                "hour_rate": 5.0,
+                "hour_rate_weekday": 5.0,
+                "hour_rate_weekend": 9.0,
+                "platform_fee": 1.2,
                 "pricing_type": "mileage",
             },
             "Tribecar": {
-                "usual_fuel_amount": 20,
-                "hour_rate": 8.5,
-                "pricing_type": "fuel",
+                "mileage_rate": 0.43,
+                "hour_rate": 4.91,
+                "hour_rate_weekday": 4.91,
+                "hour_rate_weekend": 8.18,
+                "pricing_type": "mileage",
             },
             "Car Club": {
-                "mileage_rate": 0.30,
-                "hour_rate": 9.5,
+                "mileage_rate": 0.43,
+                "hour_rate": 6.54,
+                "hour_rate_weekday": 6.54,
+                "hour_rate_weekend": 9.81,
                 "pricing_type": "mileage",
             },
             "Econ": {"usual_fuel_amount": 15, "hour_rate": 7.5, "pricing_type": "fuel"},
@@ -7103,10 +7113,36 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
     # --- Refactored to remove repeated code ---
 
     default_pricing = {
-        "Getgo": {"mileage_rate": 0.39, "hour_rate": 8.0, "pricing_type": "mileage"},
-        "Getgo EV": {"mileage_rate": 0.35, "hour_rate": 9.0, "pricing_type": "mileage"},
-        "Tribecar": {"usual_fuel_amount": 20, "hour_rate": 8.5, "pricing_type": "fuel"},
-        "Car Club": {"mileage_rate": 0.30, "hour_rate": 9.5, "pricing_type": "mileage"},
+        "Getgo": {
+            "mileage_rate": 0.44,
+            "hour_rate": 5.0,
+            "hour_rate_weekday": 5.0,
+            "hour_rate_weekend": 9.0,
+            "platform_fee": 1.2,
+            "pricing_type": "mileage",
+        },
+        "Getgo EV": {
+            "mileage_rate": 0.29,
+            "hour_rate": 5.0,
+            "hour_rate_weekday": 5.0,
+            "hour_rate_weekend": 9.0,
+            "platform_fee": 1.2,
+            "pricing_type": "mileage",
+        },
+        "Tribecar": {
+            "mileage_rate": 0.43,
+            "hour_rate": 4.91,
+            "hour_rate_weekday": 4.91,
+            "hour_rate_weekend": 8.18,
+            "pricing_type": "mileage",
+        },
+        "Car Club": {
+            "mileage_rate": 0.43,
+            "hour_rate": 6.54,
+            "hour_rate_weekday": 6.54,
+            "hour_rate_weekend": 9.81,
+            "pricing_type": "mileage",
+        },
         "Econ": {"usual_fuel_amount": 15, "hour_rate": 7.5, "pricing_type": "fuel"},
         "Stand": {"usual_fuel_amount": 25, "hour_rate": 10.0, "pricing_type": "fuel"},
         "SoCar": {
@@ -10465,9 +10501,9 @@ Tip: Ollama recommendations are personalized based on your user profile and hist
                 # Mileage cost (always recalculate for non-EV)
                 mileage_cost = 0
                 if provider == "Getgo":
-                    mileage_cost = distance * 0.39
+                    mileage_cost = distance * 0.44
                 elif provider == "Car Club":
-                    mileage_cost = distance * 0.33
+                    mileage_cost = distance * 0.43
                 else:
                     mileage_cost = 0
                 self.record_mileage_cost_var.set(

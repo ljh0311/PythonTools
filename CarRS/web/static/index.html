@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1f262e" />
+  <title>CarRS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="icon" href="/static/assets/carrs-mark.svg" type="image/svg+xml" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+
+  <header class="hero">
+    <div class="hero-copy">
+      <p class="brand">CarRS</p>
+      <h1>Know the trip cost before you book.</h1>
+      <p class="lede">Local recommendations from your rental history. Same Wi‑Fi, phone or laptop.</p>
+      <div class="hero-cta">
+        <a class="btn primary" href="#plan">Plan a trip</a>
+        <p class="status" id="healthStatus">Checking data…</p>
+      </div>
+    </div>
+    <img class="hero-visual" src="/static/assets/carrs-hero.svg" width="640" height="360" alt="" />
+  </header>
+
+  <main>
+    <section id="plan" class="plan" aria-labelledby="plan-title">
+      <h2 id="plan-title">Trip plan</h2>
+      <p class="section-lede">Distance and hours in. Ranked costs out.</p>
+
+      <form id="recForm" class="trip-form">
+        <label>
+          Distance (km)
+          <input id="distance" name="distance" type="number" inputmode="decimal" min="1" step="1" value="40" required />
+        </label>
+        <label>
+          Duration (hours)
+          <input id="duration" name="duration" type="number" inputmode="decimal" min="0.25" step="0.25" value="1" required />
+        </label>
+        <label>
+          Region
+          <select id="region" name="region">
+            <option value="Singapore">Singapore</option>
+            <option value="Malaysia">Malaysia</option>
+          </select>
+        </label>
+        <label class="check">
+          <input id="weekend" name="weekend" type="checkbox" />
+          Weekend pricing
+        </label>
+        <button type="submit" class="btn primary wide" id="submitBtn">Get recommendations</button>
+      </form>
+
+      <div class="form-note" id="formNote" hidden role="status" aria-live="polite"></div>
+      <ol class="results" id="results" aria-live="polite"></ol>
+    </section>
+
+    <section class="glance" aria-labelledby="glance-title">
+      <h2 id="glance-title">Quick glance</h2>
+      <p class="section-lede">Rental chance and calibration from your CSV.</p>
+      <div class="glance-row">
+        <article>
+          <h3>Will I rent?</h3>
+          <label>
+            Date
+            <input id="possDate" type="date" />
+          </label>
+          <button type="button" class="btn ghost" id="possBtn">Check</button>
+          <p id="possOut" class="metric">—</p>
+        </article>
+        <article>
+          <h3>ML calibration</h3>
+          <p id="calOut" class="metric">—</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Runs only on your machine. Data stays local.</p>
+  </footer>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

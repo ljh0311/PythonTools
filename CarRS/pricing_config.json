@@ -1,8 +1,38 @@
 {
-  "Getgo": {"mileage_rate": 0.39, "hour_rate": 8, "pricing_type": "mileage"},
-  "Getgo(EV)": {"mileage_rate": 0.35, "hour_rate": 9, "pricing_type": "mileage"},
-  "Tribecar": {"usual_fuel_amount": 20, "hour_rate": 8.5, "pricing_type": "fuel"},
-  "Car Club": {"mileage_rate": 0.3, "hour_rate": 9.5, "pricing_type": "mileage"},
+  "Getgo": {
+    "mileage_rate": 0.44,
+    "hour_rate": 5,
+    "hour_rate_weekday": 5,
+    "hour_rate_weekend": 9,
+    "platform_fee": 1.2,
+    "pricing_type": "mileage",
+    "notes": "Economy Normal/Peak from getgo.sg/rates (2026-09); petrol mileage $0.44/km"
+  },
+  "Getgo(EV)": {
+    "mileage_rate": 0.29,
+    "hour_rate": 5,
+    "hour_rate_weekday": 5,
+    "hour_rate_weekend": 9,
+    "platform_fee": 1.2,
+    "pricing_type": "mileage",
+    "notes": "EV mileage $0.29/km from getgo.sg/rates"
+  },
+  "Tribecar": {
+    "mileage_rate": 0.43,
+    "hour_rate": 4.91,
+    "hour_rate_weekday": 4.91,
+    "hour_rate_weekend": 8.18,
+    "pricing_type": "mileage",
+    "notes": "Economy rates from tribecar.com/page/our-rates; mileage fuel policy"
+  },
+  "Car Club": {
+    "mileage_rate": 0.43,
+    "hour_rate": 6.54,
+    "hour_rate_weekday": 6.54,
+    "hour_rate_weekend": 9.81,
+    "pricing_type": "mileage",
+    "notes": "Aligned to Tribecar Standard sedan rates (2026-09)"
+  },
   "Econ": {"usual_fuel_amount": 15, "hour_rate": 7.5, "pricing_type": "fuel"},
   "Stand": {"usual_fuel_amount": 25, "hour_rate": 10, "pricing_type": "fuel"},
   "SoCar": {
