@@ -41,6 +41,9 @@ venv.bak/
 *.sublime-workspace
 *.sublime-project
 
+# Local agent / Cursor worktrees
+.worktrees/
+
 # OS
 .DS_Store
 Thumbs.db
