@@ -15,7 +15,13 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from backend.models.store import DashboardStore
-from backend.routes.v2_api import ActStatusRequest, act_update_status
+from backend.routes.v2_api import (
+    ActStatusRequest,
+    _chat_reply_state,
+    _enrich_with_reply_state,
+    act_update_status,
+)
+from backend.services.ai_service import AIService
 
 
 class TestActStatusUpdate(unittest.TestCase):
@@ -67,6 +73,89 @@ class TestActStatusUpdate(unittest.TestCase):
                 ws.broadcast.assert_awaited()
 
         asyncio.run(run())
+
+
+class TestFallbackReplyDraft(unittest.TestCase):
+    def test_fallback_draft_is_multi_sentence_and_references_content(self) -> None:
+        svc = AIService()
+        messages = [
+            {
+                "chat_id": 42,
+                "direction": "incoming",
+                "username": "cherrychrissy",
+                "user_id": 1,
+                "text": "i wanna show u the KEYCHAINSSSS",
+                "created_at": "2026-03-01T12:00:00",
+            }
+        ]
+        result = svc._fallback_suggestions(messages)
+        self.assertEqual(result["provider"], "fallback")
+        self.assertEqual(len(result["suggestions"]), 1)
+        suggestion = result["suggestions"][0]
+        draft = suggestion["draft"]
+        sentences = [s for s in draft.replace("?", ".").split(".") if s.strip()]
+        self.assertGreaterEqual(len(sentences), 2, draft)
+        self.assertIn("KEYCHAIN", draft.upper())
+        self.assertNotRegex(draft, r"^Hi \w+ - re:")
+        self.assertTrue(suggestion.get("action"))
+        self.assertIn("cherrychrissy", suggestion["action"])
+
+
+class TestActReplyState(unittest.TestCase):
+    def test_already_replied_when_outbound_follows_inbound(self) -> None:
+        state = _chat_reply_state(
+            [
+                {
+                    "direction": "incoming",
+                    "text": "ping",
+                    "created_at": "2026-03-01T10:00:00",
+                },
+                {
+                    "direction": "outgoing",
+                    "text": "pong",
+                    "created_at": "2026-03-01T10:05:00",
+                },
+            ]
+        )
+        self.assertTrue(state["already_replied"])
+        self.assertEqual(state["last_inbound_text"], "ping")
+        self.assertEqual(state["last_outbound_text"], "pong")
+
+    def test_needs_reply_when_inbound_is_latest(self) -> None:
+        state = _chat_reply_state(
+            [
+                {
+                    "direction": "outgoing",
+                    "text": "hey",
+                    "created_at": "2026-03-01T09:00:00",
+                },
+                {
+                    "direction": "incoming",
+                    "text": "need help",
+                    "created_at": "2026-03-01T11:00:00",
+                },
+            ]
+        )
+        self.assertFalse(state["already_replied"])
+        self.assertEqual(state["last_inbound_text"], "need help")
+
+    def test_enrich_suggestions_merges_reply_state(self) -> None:
+        by_chat = {
+            9: [
+                {
+                    "direction": "incoming",
+                    "text": "hello",
+                    "created_at": "2026-03-01T08:00:00",
+                }
+            ]
+        }
+        enriched = _enrich_with_reply_state(
+            [{"id": 1, "chat_id": 9, "type": "reply", "payload": {"chat_id": 9}}],
+            by_chat,
+        )
+        self.assertFalse(enriched[0]["already_replied"])
+        self.assertEqual(enriched[0]["last_inbound_text"], "hello")
+        self.assertEqual(enriched[0]["payload"]["already_replied"], False)
 
 
 if __name__ == "__main__":

@@ -364,6 +364,16 @@ input {
   color: var(--ok);
 }
 
+.badge-reply-needed {
+  color: var(--warn);
+  border-color: rgba(230, 184, 77, 0.45);
+}
+
+.badge-reply-done {
+  color: var(--ok);
+  border-color: rgba(110, 190, 130, 0.45);
+}
+
 .act-body {
   margin: 0 0 0.65rem;
   white-space: pre-wrap;
@@ -373,6 +383,20 @@ input {
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+.act-action-help {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.act-talk-link {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--accent, #6ea8fe);
 }
 
 .profile-editor {

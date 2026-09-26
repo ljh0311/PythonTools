@@ -876,6 +876,53 @@ class AIService:
                 "failure_reason": f"{type(exc).__name__}: {exc}",
             }
 
+    @staticmethod
+    def _clip_for_draft(text: str, limit: int = 120) -> str:
+        cleaned = " ".join((text or "").split())
+        if len(cleaned) <= limit:
+            return cleaned
+        return cleaned[: limit - 1].rstrip() + "…"
+
+    def _build_fallback_reply_draft(self, user: str, text: str) -> tuple[str, str]:
+        """Heuristic multi-sentence reply: acknowledge + react + next step."""
+        display = user or "there"
+        snippet = self._clip_for_draft(text, 120)
+        if not snippet:
+            draft = (
+                f"Hey {display}, I saw your message. "
+                "Happy to help — what would you like to do next?"
+            )
+            action = f"Ask {display} what they need and propose a next step"
+            return draft, action
+
+        lower = snippet.lower()
+        if "?" in snippet:
+            react = "Good question — I want to make sure I answer it clearly."
+            next_step = "Here's my take: … — does that cover what you needed?"
+            action = f"Answer {display}'s question and confirm it lands"
+        elif any(k in lower for k in ("show", "share", "send", "look", "see", "pic", "photo")):
+            react = "That sounds interesting — I'd love to see it."
+            next_step = "Want to send a photo or a quick link when you have a sec?"
+            action = f"Invite {display} to share what they mentioned"
+        elif any(k in lower for k in ("meet", "call", "when", "free", "schedule", "tomorrow")):
+            react = "Happy to figure out timing with you."
+            next_step = "What days or times work best on your side?"
+            action = f"Propose scheduling options with {display}"
+        elif any(k in lower for k in ("thank", "thanks", "thx", "appreciate")):
+            react = "You're welcome — glad it helped."
+            next_step = "Anything else you want to tackle next?"
+            action = f"Acknowledge thanks from {display} and offer further help"
+        else:
+            react = "Got it — that makes sense."
+            next_step = "What would be the most useful next step from your side?"
+            action = f"Reply to {display} about their latest message and ask a clear next step"
+
+        draft = (
+            f'Hey {display} — thanks for the note about "{snippet}". '
+            f"{react} {next_step}"
+        )
+        return draft, action
+
     def _fallback_suggestions(
         self,
         messages: list[dict],
@@ -892,19 +939,20 @@ class AIService:
                 continue
             latest = sorted(incoming, key=lambda m: m.get("created_at", ""))[-1]
             user = latest.get("username") or f"User {latest.get('user_id')}"
+            text = (latest.get("text") or "").strip()
+            draft, action = self._build_fallback_reply_draft(user, text)
             rel = (relationship_map or {}).get(chat_id or 0, "")
-            greeting = f"Hi {user}, thanks for your message."
             if rel:
-                greeting = f"Hi {user}, thanks for reaching out."
+                action = f"{action} ({self._clip_for_draft(rel, 80)})"
             suggestions.append(
                 {
                     "type": "reply",
                     "chat_id": chat_id,
                     "user": user,
-                    "draft": f"{greeting} I'll follow up shortly.",
-                    "action": "",
+                    "draft": draft,
+                    "action": action,
                     "priority": "medium",
-                    "confidence": 0.5,
+                    "confidence": 0.45,
                     "due_hint": "",
                 }
             )

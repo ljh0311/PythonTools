@@ -50,6 +50,8 @@ export function threadTitle(thread) {
 
 export function suggestionFields(item) {
   const payload = item?.payload && typeof item.payload === "object" ? item.payload : {};
+  const already =
+    item?.already_replied ?? payload.already_replied;
   return {
     id: item?.id ?? payload.id,
     status: item?.status || "pending",
@@ -62,6 +64,11 @@ export function suggestionFields(item) {
     dueHint: item?.due_hint || payload.due_hint || "",
     confidence: item?.confidence ?? payload.confidence,
     createdAt: item?.created_at || payload.created_at,
+    alreadyReplied: Boolean(already),
+    lastInboundText: item?.last_inbound_text || payload.last_inbound_text || "",
+    lastOutboundText: item?.last_outbound_text || payload.last_outbound_text || "",
+    lastInboundAt: item?.last_inbound_at || payload.last_inbound_at || "",
+    lastOutboundAt: item?.last_outbound_at || payload.last_outbound_at || "",
   };
 }
 

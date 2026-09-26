@@ -52,6 +52,64 @@ def _user_account_messages(limit: int = 500) -> list[dict[str, Any]]:
     )["items"]
 
 
+def _chat_reply_state(chat_messages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Derive inbound/outbound reply state from stored chat messages."""
+    ordered = sorted(chat_messages, key=lambda m: m.get("created_at") or "")
+    incoming = [m for m in ordered if m.get("direction") == "incoming"]
+    outgoing = [m for m in ordered if m.get("direction") == "outgoing"]
+    last_in = incoming[-1] if incoming else None
+    last_out = outgoing[-1] if outgoing else None
+    last_in_at = (last_in or {}).get("created_at") or ""
+    last_out_at = (last_out or {}).get("created_at") or ""
+    already_replied = bool(last_in and last_out and last_out_at >= last_in_at)
+    return {
+        "already_replied": already_replied,
+        "last_inbound_text": ((last_in or {}).get("text") or "")[:240],
+        "last_outbound_text": ((last_out or {}).get("text") or "")[:240],
+        "last_inbound_at": last_in_at or None,
+        "last_outbound_at": last_out_at or None,
+    }
+
+
+def _messages_by_chat(messages: list[dict[str, Any]]) -> dict[int, list[dict[str, Any]]]:
+    by_chat: dict[int, list[dict[str, Any]]] = {}
+    for msg in messages:
+        chat_id = msg.get("chat_id")
+        if chat_id is None:
+            continue
+        by_chat.setdefault(int(chat_id), []).append(msg)
+    return by_chat
+
+
+def _enrich_with_reply_state(
+    items: list[dict[str, Any]],
+    by_chat: dict[int, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        row = dict(item)
+        payload = row.get("payload")
+        chat_id = row.get("chat_id")
+        if chat_id is None and isinstance(payload, dict):
+            chat_id = payload.get("chat_id")
+        state = (
+            _chat_reply_state(by_chat.get(int(chat_id), []))
+            if chat_id is not None
+            else {
+                "already_replied": False,
+                "last_inbound_text": "",
+                "last_outbound_text": "",
+                "last_inbound_at": None,
+                "last_outbound_at": None,
+            }
+        )
+        row.update(state)
+        if isinstance(payload, dict):
+            row["payload"] = {**payload, **state}
+        enriched.append(row)
+    return enriched
+
+
 def _heuristic_open_items(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Private/group threads whose latest message is inbound (needs attention)."""
     by_chat: dict[int, list[dict[str, Any]]] = {}
@@ -71,6 +129,7 @@ def _heuristic_open_items(messages: list[dict[str, Any]]) -> list[dict[str, Any]
         latest = ordered[-1]
         if latest.get("direction") != "incoming":
             continue
+        reply_state = _chat_reply_state(chat_messages)
         open_items.append(
             {
                 "chat_id": chat_id,
@@ -80,6 +139,7 @@ def _heuristic_open_items(messages: list[dict[str, Any]]) -> list[dict[str, Any]
                 "last_text": (latest.get("text") or "")[:240],
                 "from_user": latest.get("username") or f"User {latest.get('user_id')}",
                 "reason": "last_inbound_unanswered",
+                **reply_state,
             }
         )
     open_items.sort(key=lambda i: i.get("last_message_at") or "", reverse=True)
@@ -151,8 +211,9 @@ async def act_queue(include_dismissed: bool = False) -> dict[str, Any]:
     if not include_dismissed:
         suggestions = [s for s in suggestions if s.get("status") in ("pending", "done")]
     messages = _user_account_messages(limit=400)
+    by_chat = _messages_by_chat(messages)
     return {
-        "suggestions": suggestions,
+        "suggestions": _enrich_with_reply_state(suggestions, by_chat),
         "open_items": _heuristic_open_items(messages),
         "filter_hash": V2_ACT_FILTER_HASH,
     }
@@ -179,14 +240,16 @@ async def act_refresh() -> dict[str, Any]:
     saved = store.save_suggestions(
         V2_ACT_FILTER_HASH, suggest_result.get("suggestions", [])
     )
+    by_chat = _messages_by_chat(messages)
     return {
         "filter_hash": V2_ACT_FILTER_HASH,
-        "suggestions": saved,
+        "suggestions": _enrich_with_reply_state(saved, by_chat),
         "summary": suggest_result.get("summary"),
         "provider": suggest_result.get("provider"),
         "intel": intel,
         "open_items": _heuristic_open_items(messages),
         "degraded": bool(suggest_result.get("degraded")),
+        "failure_reason": suggest_result.get("failure_reason"),
     }
 
 
