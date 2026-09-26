@@ -329,8 +329,18 @@ input {
 }
 
 .act-card.is-done,
-.act-card.is-dismissed {
+.act-card.is-dismissed,
+.act-card.is-sent {
   opacity: 0.72;
+}
+
+.act-card.is-needs-reply {
+  border-color: rgba(230, 184, 77, 0.55);
+}
+
+.act-card.is-already-replied,
+.act-card.is-sent {
+  border-color: rgba(122, 194, 122, 0.45);
 }
 
 .act-meta {
@@ -360,8 +370,58 @@ input {
   border-color: rgba(230, 184, 77, 0.4);
 }
 
-.badge-status-done {
+.badge-status-done,
+.badge-status-sent,
+.badge-reply-state {
   color: var(--ok);
+}
+
+.act-who {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.act-reply-banner {
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+  color: var(--ok);
+}
+
+.act-reply-banner.is-warn {
+  color: var(--warn);
+}
+
+.act-preview {
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.act-preview-label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.2rem;
+}
+
+.act-draft {
+  margin: 0 0 0.5rem;
+  padding: 0.55rem 0.65rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  font: inherit;
+  color: inherit;
+}
+
+.act-draft-empty {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-style: italic;
 }
 
 .act-body {
@@ -369,10 +429,20 @@ input {
   white-space: pre-wrap;
 }
 
+.act-send-reason {
+  margin: 0.35rem 0 0;
+  color: var(--warn);
+}
+
 .act-actions {
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.act-actions a.btn {
+  text-decoration: none;
 }
 
 .profile-editor {

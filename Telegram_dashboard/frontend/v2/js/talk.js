@@ -182,6 +182,24 @@ async function selectThread(chatId) {
 export async function mountTalk() {
   renderShell();
   await loadThreads();
+  const pending = sessionStorage.getItem("v2-talk-chat");
+  if (pending) {
+    sessionStorage.removeItem("v2-talk-chat");
+    await openTalkChat(pending);
+  }
+}
+
+export async function openTalkChat(chatId) {
+  if (chatId == null || chatId === "") return;
+  if (!root()?.querySelector(".talk-workspace")) {
+    sessionStorage.setItem("v2-talk-chat", String(chatId));
+    return;
+  }
+  const exists = state.threads.some((t) => String(t.chat_id) === String(chatId));
+  if (!exists && state.threads.length) {
+    // Still open — messages endpoint may work even if not in current page
+  }
+  await selectThread(chatId);
 }
 
 export function refreshTalkIfVisible() {

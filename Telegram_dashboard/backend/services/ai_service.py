@@ -92,6 +92,9 @@ SUGGEST_SYSTEM = (
     "Write summary and drafts in English. "
     "Only attribute speech to usernames in the transcript. "
     "A group or channel title is never a person who spoke. "
+    "Only suggest type=reply when the latest message in that chat is inbound (needs a response). "
+    "If the user already sent the latest message, do not invent a reply draft for that chat. "
+    "Drafts must be substantive and grounded in the last inbound text, not placeholders. "
     "Schema: {\"summary\": string, \"suggestions\": [{\"type\": \"reply\"|\"next_action\", "
     "\"chat_id\": number|null, \"user\": string, \"draft\": string, \"action\": string, "
     "\"priority\": \"high\"|\"medium\"|\"low\", \"confidence\": number, \"due_hint\": string}]}"
@@ -881,33 +884,19 @@ class AIService:
         messages: list[dict],
         relationship_map: dict[int, str] | None = None,
     ) -> dict[str, Any]:
-        suggestions = []
-        by_chat: dict[int | None, list[dict]] = {}
-        for msg in messages:
-            by_chat.setdefault(msg.get("chat_id"), []).append(msg)
+        from backend.services.act_reply_state import (
+            build_fallback_reply_suggestion,
+            messages_by_chat,
+        )
 
+        suggestions: list[dict[str, Any]] = []
+        by_chat = messages_by_chat(messages)
         for chat_id, chat_messages in by_chat.items():
-            incoming = [m for m in chat_messages if m.get("direction") == "incoming"]
-            if not incoming:
-                continue
-            latest = sorted(incoming, key=lambda m: m.get("created_at", ""))[-1]
-            user = latest.get("username") or f"User {latest.get('user_id')}"
-            rel = (relationship_map or {}).get(chat_id or 0, "")
-            greeting = f"Hi {user}, thanks for your message."
-            if rel:
-                greeting = f"Hi {user}, thanks for reaching out."
-            suggestions.append(
-                {
-                    "type": "reply",
-                    "chat_id": chat_id,
-                    "user": user,
-                    "draft": f"{greeting} I'll follow up shortly.",
-                    "action": "",
-                    "priority": "medium",
-                    "confidence": 0.5,
-                    "due_hint": "",
-                }
+            item = build_fallback_reply_suggestion(
+                chat_id, chat_messages, relationship_map
             )
+            if item:
+                suggestions.append(item)
 
         if not suggestions:
             suggestions.append(
@@ -920,6 +909,7 @@ class AIService:
                     "priority": "low",
                     "confidence": 0.4,
                     "due_hint": "today",
+                    "ai_unavailable": True,
                 }
             )
 
@@ -928,6 +918,8 @@ class AIService:
             "message_highlights": self._fallback_message_highlights(messages),
             "suggestions": suggestions,
             "provider": "fallback",
+            "degraded": True,
+            "ai_unavailable": True,
         }
 
     def _fallback_message_highlights(

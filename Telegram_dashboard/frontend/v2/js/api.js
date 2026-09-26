@@ -106,6 +106,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  sendActDraft: (id, text) =>
+    request(`/api/v2/act/${encodeURIComponent(id)}/send`, {
+      method: "POST",
+      body: JSON.stringify(text ? { text } : {}),
+    }),
 
   getProfiles: () => request("/api/v2/profiles"),
   getProfile: (chatId) =>

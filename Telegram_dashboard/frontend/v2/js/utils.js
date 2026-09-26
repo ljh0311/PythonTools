@@ -50,6 +50,8 @@ export function threadTitle(thread) {
 
 export function suggestionFields(item) {
   const payload = item?.payload && typeof item.payload === "object" ? item.payload : {};
+  const draft = item?.draft ?? payload.draft ?? "";
+  const displayDraft = item?.display_draft ?? payload.display_draft ?? draft;
   return {
     id: item?.id ?? payload.id,
     status: item?.status || "pending",
@@ -57,11 +59,19 @@ export function suggestionFields(item) {
     priority: item?.priority || payload.priority || "medium",
     chatId: item?.chat_id ?? payload.chat_id,
     user: item?.user || payload.user || "",
-    draft: item?.draft || payload.draft || "",
+    draft,
+    displayDraft,
     action: item?.action || payload.action || "",
     dueHint: item?.due_hint || payload.due_hint || "",
     confidence: item?.confidence ?? payload.confidence,
     createdAt: item?.created_at || payload.created_at,
+    replyState: item?.reply_state || payload.reply_state || "",
+    needsReply: Boolean(item?.needs_reply ?? payload.needs_reply),
+    alreadyReplied: Boolean(item?.already_replied ?? payload.already_replied),
+    lastInboundText: item?.last_inbound_text || payload.last_inbound_text || "",
+    lastOutboundText: item?.last_outbound_text || payload.last_outbound_text || "",
+    draftSuppressed: Boolean(item?.draft_suppressed ?? payload.draft_suppressed),
+    aiUnavailable: Boolean(item?.ai_unavailable ?? payload.ai_unavailable),
   };
 }
 

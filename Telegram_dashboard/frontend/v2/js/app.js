@@ -1,5 +1,5 @@
 import { ensureAuthenticated } from "./api.js";
-import { mountTalk } from "./talk.js";
+import { mountTalk, openTalkChat } from "./talk.js";
 import { mountAct } from "./act.js";
 import { mountProfiles } from "./profiles.js";
 
@@ -10,7 +10,27 @@ const mounted = {
   profiles: false,
 };
 
-function showView(name) {
+function parseHash() {
+  const raw = (window.location.hash || "#talk").replace(/^#/, "") || "talk";
+  const [viewPart, queryPart = ""] = raw.split("?");
+  const view = (viewPart || "talk").split("/")[0];
+  const params = new URLSearchParams(queryPart);
+  const chatFromQuery = params.get("chat");
+  const chatFromPath = viewPart.includes("/") ? viewPart.split("/")[1] : null;
+  return {
+    view: VIEWS.includes(view) ? view : "talk",
+    chatId: chatFromQuery || chatFromPath || null,
+  };
+}
+
+function hashFor(view, chatId = null) {
+  if (view === "talk" && chatId != null && chatId !== "") {
+    return `#talk?chat=${encodeURIComponent(chatId)}`;
+  }
+  return `#${view}`;
+}
+
+function showView(name, { chatId = null, replaceHash = true } = {}) {
   if (!VIEWS.includes(name)) name = "talk";
 
   VIEWS.forEach((view) => {
@@ -28,11 +48,19 @@ function showView(name) {
     }
   });
 
-  if (window.location.hash !== `#${name}`) {
-    history.replaceState(null, "", `#${name}`);
+  if (replaceHash) {
+    const next = hashFor(name, name === "talk" ? chatId : null);
+    if (window.location.hash !== next) {
+      history.replaceState(null, "", next);
+    }
   }
 
-  return ensureMounted(name);
+  return ensureMounted(name).then(() => {
+    if (name === "talk" && chatId != null && chatId !== "") {
+      return openTalkChat(chatId);
+    }
+    return undefined;
+  });
 }
 
 async function ensureMounted(name) {
@@ -51,8 +79,11 @@ function bindNav() {
   });
 
   window.addEventListener("hashchange", () => {
-    const hash = window.location.hash.replace(/^#/, "") || "talk";
-    showView(hash);
+    const { view, chatId } = parseHash();
+    if (chatId) {
+      sessionStorage.setItem("v2-talk-chat", String(chatId));
+    }
+    showView(view, { chatId, replaceHash: false });
   });
 }
 
@@ -60,8 +91,13 @@ async function boot() {
   const ok = await ensureAuthenticated();
   if (!ok) return;
   bindNav();
-  const initial = window.location.hash.replace(/^#/, "") || "talk";
-  await showView(initial);
+  const { view, chatId } = parseHash();
+  const stored =
+    chatId || sessionStorage.getItem("v2-talk-chat") || null;
+  if (stored) {
+    sessionStorage.setItem("v2-talk-chat", String(stored));
+  }
+  await showView(view, { chatId: view === "talk" ? stored : null });
 }
 
 boot().catch((err) => {

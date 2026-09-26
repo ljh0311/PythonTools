@@ -9,10 +9,13 @@ from pydantic import BaseModel, Field
 
 from backend.models.store import store
 from backend.routes.deps import verify_operator
+from backend.services.act_reply_state import enrich_suggestions, flatten_suggestion
 from backend.services.ai_rate_limiter import RateLimitExceeded
 from backend.services.ai_service import ai_service
+from backend.services.mtproto_service import mtproto_service
 from backend.services.profile_learner import learn_from_chat as profile_learn_from_chat
 from backend.services import profile_md
+from backend.services.send_errors import raise_send_http_error
 from backend.services.ws_manager import ws_manager
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -22,7 +25,11 @@ _DEFAULT_INGESTION = "user_account"
 
 
 class ActStatusRequest(BaseModel):
-    status: str = Field(pattern="^(pending|done|dismissed)$")
+    status: str = Field(pattern="^(pending|done|dismissed|sent)$")
+
+
+class ActSendRequest(BaseModel):
+    text: str | None = Field(default=None, max_length=4096)
 
 
 class ProfilePutRequest(BaseModel):
@@ -141,20 +148,47 @@ async def talk_thread_messages(
 # --- Act -------------------------------------------------------------------
 
 
+async def _mtproto_send_ready() -> dict[str, Any]:
+    status = await mtproto_service.get_status()
+    ready = bool(status.get("authorized") and status.get("connected"))
+    reason = ""
+    if ready:
+        pass
+    elif not status.get("configured"):
+        reason = "MTProto not configured (TELEGRAM_API_ID / TELEGRAM_API_HASH)"
+    elif not status.get("authorized"):
+        reason = "Personal Telegram account not logged in (run mtproto_login.py)"
+    elif not status.get("connected"):
+        reason = "Personal Telegram account not connected"
+    else:
+        reason = "Personal account send unavailable"
+    return {
+        "ready": ready,
+        "reason": reason,
+        "status": status,
+    }
+
+
 @router.get("/act", dependencies=[Depends(verify_operator)])
 async def act_queue(include_dismissed: bool = False) -> dict[str, Any]:
     suggestions = store.list_suggestions(
         filter_hash=V2_ACT_FILTER_HASH,
         include_dismissed=include_dismissed,
     )
-    # Prefer pending/done; drop "sent" noise unless include_dismissed
+    # Triage lifecycle: pending / done / sent (dismissed only when requested)
     if not include_dismissed:
-        suggestions = [s for s in suggestions if s.get("status") in ("pending", "done")]
+        suggestions = [
+            s for s in suggestions if s.get("status") in ("pending", "done", "sent")
+        ]
     messages = _user_account_messages(limit=400)
+    enriched = enrich_suggestions(suggestions, messages)
+    send_info = await _mtproto_send_ready()
     return {
-        "suggestions": suggestions,
+        "suggestions": enriched,
         "open_items": _heuristic_open_items(messages),
         "filter_hash": V2_ACT_FILTER_HASH,
+        "send_available": send_info["ready"],
+        "send_unavailable_reason": send_info["reason"],
     }
 
 
@@ -179,14 +213,18 @@ async def act_refresh() -> dict[str, Any]:
     saved = store.save_suggestions(
         V2_ACT_FILTER_HASH, suggest_result.get("suggestions", [])
     )
+    enriched = enrich_suggestions(saved, messages)
+    send_info = await _mtproto_send_ready()
     return {
         "filter_hash": V2_ACT_FILTER_HASH,
-        "suggestions": saved,
+        "suggestions": enriched,
         "summary": suggest_result.get("summary"),
         "provider": suggest_result.get("provider"),
         "intel": intel,
         "open_items": _heuristic_open_items(messages),
         "degraded": bool(suggest_result.get("degraded")),
+        "send_available": send_info["ready"],
+        "send_unavailable_reason": send_info["reason"],
     }
 
 
@@ -201,7 +239,66 @@ async def act_update_status(
     if not updated:
         raise HTTPException(status_code=404, detail="Suggestion not found")
     await ws_manager.broadcast("suggestion_updated", updated)
-    return updated
+    return flatten_suggestion(updated)
+
+
+@router.post("/act/{suggestion_id}/send", dependencies=[Depends(verify_operator)])
+async def act_send_draft(
+    suggestion_id: int, body: ActSendRequest = ActSendRequest()
+) -> dict[str, Any]:
+    """Send draft via MTProto user account, then mark suggestion sent."""
+    listed = store.list_suggestions(filter_hash=V2_ACT_FILTER_HASH, include_dismissed=True)
+    match = next((s for s in listed if int(s.get("id") or 0) == int(suggestion_id)), None)
+    if not match:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    flat = flatten_suggestion(match)
+    chat_id = flat.get("chat_id")
+    text = (body.text or flat.get("draft") or "").strip()
+    if chat_id is None:
+        raise HTTPException(status_code=400, detail="Suggestion has no chat_id")
+    if not text:
+        raise HTTPException(status_code=400, detail="No draft text to send")
+
+    send_info = await _mtproto_send_ready()
+    if not send_info["ready"]:
+        raise HTTPException(
+            status_code=503,
+            detail=send_info["reason"] or "Personal account send unavailable",
+        )
+
+    try:
+        result = await mtproto_service.send_message(int(chat_id), text)
+    except Exception as exc:
+        raise_send_http_error(exc)
+
+    status = send_info["status"]
+    user = (status.get("user") or {}) if isinstance(status, dict) else {}
+    store.add_message(
+        user.get("id", 0),
+        user.get("username"),
+        "outgoing",
+        text,
+        chat_id=int(chat_id),
+        message_id=result.get("message_id"),
+        chat_type="private",
+        ingestion_source="user_account",
+    )
+
+    updated = store.update_suggestion_status(suggestion_id, "sent")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Suggestion not found after send")
+    flat_updated = flatten_suggestion(updated)
+    flat_updated["reply_state"] = "sent"
+    flat_updated["draft_suppressed"] = True
+    flat_updated["display_draft"] = ""
+    flat_updated["last_outbound_text"] = text
+    await ws_manager.broadcast("suggestion_updated", flat_updated)
+    await ws_manager.broadcast(
+        "message_sent",
+        {"chat_id": chat_id, "text": text, "via": "user_account", "source": "act"},
+    )
+    return {"send": result, "suggestion": flat_updated}
 
 
 # --- Profiles --------------------------------------------------------------
