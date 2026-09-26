@@ -1,4 +1,5 @@
 venv/
+venv_gsplat/
 captures/
 output/
 test_output/
