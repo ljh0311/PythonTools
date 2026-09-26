@@ -9,10 +9,29 @@ from pydantic import BaseModel, Field
 
 from backend.models.store import store
 from backend.routes.deps import verify_operator
+from backend.services.act_quality import (
+    ActTimer,
+    analyze_queue_quality,
+    log_act_queue_event,
+    log_triage_feedback,
+)
+from backend.services.act_open_items import heuristic_open_items
+from backend.services.act_reply_state import (
+    enrich_suggestions,
+    flatten_suggestion,
+    merge_open_items,
+)
 from backend.services.ai_rate_limiter import RateLimitExceeded
 from backend.services.ai_service import ai_service
+from backend.services.mtproto_service import mtproto_service
 from backend.services.profile_learner import learn_from_chat as profile_learn_from_chat
 from backend.services import profile_md
+from backend.services.send_errors import raise_send_http_error
+from backend.services.unread_digest_service import (
+    digest_status,
+    run_digest,
+    set_digest_enabled,
+)
 from backend.services.ws_manager import ws_manager
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -22,7 +41,11 @@ _DEFAULT_INGESTION = "user_account"
 
 
 class ActStatusRequest(BaseModel):
-    status: str = Field(pattern="^(pending|done|dismissed)$")
+    status: str = Field(pattern="^(pending|done|dismissed|sent)$")
+
+
+class ActSendRequest(BaseModel):
+    text: str | None = Field(default=None, max_length=4096)
 
 
 class ProfilePutRequest(BaseModel):
@@ -32,6 +55,14 @@ class ProfilePutRequest(BaseModel):
     relationship: str | None = None
     facts: str | None = None
     notes: str | None = None
+
+
+class DigestSettingsRequest(BaseModel):
+    enabled: bool
+
+
+class DigestSendRequest(BaseModel):
+    force: bool = True
 
 
 def _raise_ai_http_error(exc: Exception) -> None:
@@ -52,38 +83,48 @@ def _user_account_messages(limit: int = 500) -> list[dict[str, Any]]:
     )["items"]
 
 
-def _heuristic_open_items(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Private/group threads whose latest message is inbound (needs attention)."""
-    by_chat: dict[int, list[dict[str, Any]]] = {}
-    for msg in messages:
-        chat_id = msg.get("chat_id")
-        if chat_id is None:
-            continue
-        if msg.get("chat_type") not in ("private", "group", None):
-            continue
-        by_chat.setdefault(int(chat_id), []).append(msg)
+async def _mtproto_send_ready() -> dict[str, Any]:
+    status = await mtproto_service.get_status()
+    ready = bool(status.get("authorized") and status.get("connected"))
+    reason = ""
+    if ready:
+        pass
+    elif not status.get("configured"):
+        reason = "MTProto not configured (TELEGRAM_API_ID / TELEGRAM_API_HASH)"
+    elif not status.get("authorized"):
+        reason = "Personal Telegram account not logged in (run mtproto_login.py)"
+    elif not status.get("connected"):
+        reason = "Personal Telegram account not connected"
+    else:
+        reason = "Personal account send unavailable"
+    return {
+        "ready": ready,
+        "reason": reason,
+        "status": status,
+    }
 
-    open_items: list[dict[str, Any]] = []
-    for chat_id, chat_messages in by_chat.items():
-        ordered = sorted(chat_messages, key=lambda m: m.get("created_at") or "")
-        if not ordered:
-            continue
-        latest = ordered[-1]
-        if latest.get("direction") != "incoming":
-            continue
-        open_items.append(
-            {
-                "chat_id": chat_id,
-                "chat_title": latest.get("chat_title"),
-                "chat_type": latest.get("chat_type"),
-                "last_message_at": latest.get("created_at"),
-                "last_text": (latest.get("text") or "")[:240],
-                "from_user": latest.get("username") or f"User {latest.get('user_id')}",
-                "reason": "last_inbound_unanswered",
-            }
-        )
-    open_items.sort(key=lambda i: i.get("last_message_at") or "", reverse=True)
-    return open_items
+
+def _build_act_queue(
+    suggestions: list[dict[str, Any]],
+    messages: list[dict[str, Any]],
+    *,
+    include_dismissed: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    raw = list(suggestions)
+    if not include_dismissed:
+        suggestions = [
+            s for s in suggestions if s.get("status") in ("pending", "done", "sent")
+        ]
+    open_items = heuristic_open_items(messages)
+    enriched = enrich_suggestions(suggestions, messages)
+    queue = merge_open_items(enriched, open_items)
+    metrics = analyze_queue_quality(
+        raw_suggestions=raw,
+        enriched_before_merge=enriched,
+        open_items=open_items,
+        final_queue=queue,
+    )
+    return queue, open_items, metrics
 
 
 # --- Talk ------------------------------------------------------------------
@@ -143,23 +184,36 @@ async def talk_thread_messages(
 
 @router.get("/act", dependencies=[Depends(verify_operator)])
 async def act_queue(include_dismissed: bool = False) -> dict[str, Any]:
+    timer = ActTimer()
     suggestions = store.list_suggestions(
         filter_hash=V2_ACT_FILTER_HASH,
         include_dismissed=include_dismissed,
     )
-    # Prefer pending/done; drop "sent" noise unless include_dismissed
-    if not include_dismissed:
-        suggestions = [s for s in suggestions if s.get("status") in ("pending", "done")]
     messages = _user_account_messages(limit=400)
+    queue, open_items, metrics = _build_act_queue(
+        suggestions, messages, include_dismissed=include_dismissed
+    )
+    send_info = await _mtproto_send_ready()
+    log_act_queue_event("load", metrics, duration_ms=timer.ms())
     return {
-        "suggestions": suggestions,
-        "open_items": _heuristic_open_items(messages),
+        "suggestions": queue,
+        "open_items": open_items,
+        "needs_reply_count": metrics["needs_reply_count"],
+        "quality": {
+            "false_needs_reply_count": metrics["false_needs_reply_count"],
+            "missing_dues_count": metrics["missing_dues_count"],
+            "missing_due_hint_count": metrics["missing_due_hint_count"],
+            "merged_from_open_items": metrics["merged_from_open_items"],
+        },
         "filter_hash": V2_ACT_FILTER_HASH,
+        "send_available": send_info["ready"],
+        "send_unavailable_reason": send_info["reason"],
     }
 
 
 @router.post("/act/refresh", dependencies=[Depends(verify_operator)])
 async def act_refresh() -> dict[str, Any]:
+    timer = ActTimer()
     messages = _user_account_messages(limit=500)
     chat_ids = list({m["chat_id"] for m in messages if m.get("chat_id") is not None})
     relationship_map = store.get_relationship_map(chat_ids)
@@ -179,14 +233,36 @@ async def act_refresh() -> dict[str, Any]:
     saved = store.save_suggestions(
         V2_ACT_FILTER_HASH, suggest_result.get("suggestions", [])
     )
+    queue, open_items, metrics = _build_act_queue(
+        saved, messages, include_dismissed=False
+    )
+    send_info = await _mtproto_send_ready()
+    provider = suggest_result.get("provider")
+    degraded = bool(suggest_result.get("degraded"))
+    log_act_queue_event(
+        "refresh",
+        metrics,
+        duration_ms=timer.ms(),
+        provider=str(provider) if provider else None,
+        degraded=degraded,
+    )
     return {
         "filter_hash": V2_ACT_FILTER_HASH,
-        "suggestions": saved,
+        "suggestions": queue,
         "summary": suggest_result.get("summary"),
-        "provider": suggest_result.get("provider"),
+        "provider": provider,
         "intel": intel,
-        "open_items": _heuristic_open_items(messages),
-        "degraded": bool(suggest_result.get("degraded")),
+        "open_items": open_items,
+        "needs_reply_count": metrics["needs_reply_count"],
+        "quality": {
+            "false_needs_reply_count": metrics["false_needs_reply_count"],
+            "missing_dues_count": metrics["missing_dues_count"],
+            "missing_due_hint_count": metrics["missing_due_hint_count"],
+            "merged_from_open_items": metrics["merged_from_open_items"],
+        },
+        "degraded": degraded,
+        "send_available": send_info["ready"],
+        "send_unavailable_reason": send_info["reason"],
     }
 
 
@@ -194,14 +270,94 @@ async def act_refresh() -> dict[str, Any]:
 async def act_update_status(
     suggestion_id: int, body: ActStatusRequest
 ) -> dict[str, Any]:
+    listed = store.list_suggestions(filter_hash=V2_ACT_FILTER_HASH, include_dismissed=True)
+    prior = next((s for s in listed if int(s.get("id") or 0) == int(suggestion_id)), None)
     try:
         updated = store.update_suggestion_status(suggestion_id, body.status)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not updated:
         raise HTTPException(status_code=404, detail="Suggestion not found")
-    await ws_manager.broadcast("suggestion_updated", updated)
-    return updated
+    flat = flatten_suggestion(updated)
+    if prior:
+        # Attach live reply-state fields from prior payload when present
+        prior_flat = flatten_suggestion(prior)
+        for key in (
+            "needs_reply",
+            "already_replied",
+            "reply_state",
+            "due_hint",
+            "chat_id",
+        ):
+            if key not in flat and key in prior_flat:
+                flat[key] = prior_flat[key]
+    log_triage_feedback(
+        suggestion_id=suggestion_id, new_status=body.status, flat=flat
+    )
+    await ws_manager.broadcast("suggestion_updated", flat)
+    return flat
+
+
+@router.post("/act/{suggestion_id}/send", dependencies=[Depends(verify_operator)])
+async def act_send_draft(
+    suggestion_id: int, body: ActSendRequest = ActSendRequest()
+) -> dict[str, Any]:
+    """Send draft via MTProto user account, then mark suggestion sent."""
+    listed = store.list_suggestions(filter_hash=V2_ACT_FILTER_HASH, include_dismissed=True)
+    match = next((s for s in listed if int(s.get("id") or 0) == int(suggestion_id)), None)
+    if not match:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    flat = flatten_suggestion(match)
+    chat_id = flat.get("chat_id")
+    text = (body.text or flat.get("draft") or "").strip()
+    if chat_id is None:
+        raise HTTPException(status_code=400, detail="Suggestion has no chat_id")
+    if not text:
+        raise HTTPException(status_code=400, detail="No draft text to send")
+
+    send_info = await _mtproto_send_ready()
+    if not send_info["ready"]:
+        raise HTTPException(
+            status_code=503,
+            detail=send_info["reason"] or "Personal account send unavailable",
+        )
+
+    try:
+        result = await mtproto_service.send_message(int(chat_id), text)
+    except Exception as exc:
+        raise_send_http_error(exc)
+
+    status = send_info["status"]
+    user = (status.get("user") or {}) if isinstance(status, dict) else {}
+    store.add_message(
+        user.get("id", 0),
+        user.get("username"),
+        "outgoing",
+        text,
+        chat_id=int(chat_id),
+        message_id=result.get("message_id"),
+        chat_type="private",
+        ingestion_source="user_account",
+    )
+
+    updated = store.update_suggestion_status(suggestion_id, "sent")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Suggestion not found after send")
+    flat_updated = flatten_suggestion(updated)
+    flat_updated["reply_state"] = "sent"
+    flat_updated["draft_suppressed"] = True
+    flat_updated["display_draft"] = ""
+    flat_updated["last_outbound_text"] = text
+    log_triage_feedback(
+        suggestion_id=suggestion_id, new_status="sent", flat=flat_updated
+    )
+    await ws_manager.broadcast("suggestion_updated", flat_updated)
+    await ws_manager.broadcast(
+        "message_sent",
+        {"chat_id": chat_id, "text": text, "via": "user_account", "source": "act"},
+    )
+    return {"send": result, "suggestion": flat_updated}
 
 
 # --- Profiles --------------------------------------------------------------
@@ -298,3 +454,32 @@ async def profiles_refresh(chat_id: int) -> dict[str, Any]:
         "learn": learned.to_learn_meta(),
         "memories": saved_memories or store.list_chat_memories(chat_id, limit=5),
     }
+
+
+# --- Needs-reply digest ----------------------------------------------------
+
+
+@router.get("/digest", dependencies=[Depends(verify_operator)])
+async def digest_get() -> dict[str, Any]:
+    return digest_status()
+
+
+@router.put("/digest", dependencies=[Depends(verify_operator)])
+async def digest_put(body: DigestSettingsRequest) -> dict[str, Any]:
+    set_digest_enabled(body.enabled)
+    return digest_status()
+
+
+@router.post("/digest/send", dependencies=[Depends(verify_operator)])
+async def digest_send(body: DigestSendRequest | None = None) -> dict[str, Any]:
+    req = body or DigestSendRequest()
+    result = await run_digest(force=req.force, skip_quiet=True)
+    if result.get("reason") == "no_chat_id":
+        raise HTTPException(
+            status_code=400,
+            detail="Set UNREAD_DIGEST_CHAT_ID or NOTIFY_TELEGRAM_CHAT_ID",
+        )
+    if result.get("reason") == "bot_not_configured":
+        raise HTTPException(status_code=400, detail="TELEGRAM_BOT_TOKEN not configured")
+    # Flat fields + nested result for Act UI helpers
+    return {**digest_status(), **result, "result": result}

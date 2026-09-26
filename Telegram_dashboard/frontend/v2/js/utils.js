@@ -14,6 +14,26 @@ export function formatTime(iso) {
   return date.toLocaleString();
 }
 
+/** Short relative/local stamp for dense Act cards (full string stays in title). */
+export function formatCompactTime(iso) {
+  if (!iso) return "";
+  const raw = String(iso);
+  const date = new Date(raw.endsWith("Z") || raw.includes("+") ? raw : `${raw}Z`);
+  if (Number.isNaN(date.getTime())) return raw;
+  const now = Date.now();
+  const diffSec = Math.round((now - date.getTime()) / 1000);
+  if (diffSec >= 0 && diffSec < 60) return "just now";
+  if (diffSec >= 60 && diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec >= 3600 && diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec >= 86400 && diffSec < 86400 * 7) return `${Math.floor(diffSec / 86400)}d ago`;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function showToast(message, { error = false } = {}) {
   const el = document.getElementById("v2-toast");
   if (!el) return;
@@ -50,18 +70,33 @@ export function threadTitle(thread) {
 
 export function suggestionFields(item) {
   const payload = item?.payload && typeof item.payload === "object" ? item.payload : {};
+  const draft = item?.draft ?? payload.draft ?? "";
+  const displayDraft = item?.display_draft ?? payload.display_draft ?? draft;
   return {
     id: item?.id ?? payload.id,
     status: item?.status || "pending",
     type: item?.type || payload.type || "next_action",
     priority: item?.priority || payload.priority || "medium",
     chatId: item?.chat_id ?? payload.chat_id,
+    chatTitle: item?.chat_title || payload.chat_title || "",
+    chatType: item?.chat_type || payload.chat_type || "",
     user: item?.user || payload.user || "",
-    draft: item?.draft || payload.draft || "",
+    displayTitle: item?.display_title || payload.display_title || "",
+    draft,
+    displayDraft,
     action: item?.action || payload.action || "",
     dueHint: item?.due_hint || payload.due_hint || "",
     confidence: item?.confidence ?? payload.confidence,
     createdAt: item?.created_at || payload.created_at,
+    replyState: item?.reply_state || payload.reply_state || "",
+    needsReply: Boolean(item?.needs_reply ?? payload.needs_reply),
+    alreadyReplied: Boolean(item?.already_replied ?? payload.already_replied),
+    lastInboundText: item?.last_inbound_text || payload.last_inbound_text || "",
+    lastOutboundText: item?.last_outbound_text || payload.last_outbound_text || "",
+    lastInboundAt: item?.last_inbound_at || payload.last_inbound_at || "",
+    lastOutboundAt: item?.last_outbound_at || payload.last_outbound_at || "",
+    draftSuppressed: Boolean(item?.draft_suppressed ?? payload.draft_suppressed),
+    aiUnavailable: Boolean(item?.ai_unavailable ?? payload.ai_unavailable),
   };
 }
 

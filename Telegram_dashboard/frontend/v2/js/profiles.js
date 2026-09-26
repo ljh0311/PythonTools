@@ -9,6 +9,8 @@ const state = {
   dirty: false,
   loadingList: false,
   loadingDetail: false,
+  listError: null,
+  detailError: null,
 };
 
 function root() {
@@ -18,15 +20,17 @@ function root() {
 function renderShell() {
   const el = root();
   el.innerHTML = `
-    <div class="panel-grid">
+    <div class="profiles-workspace">
+      <p class="view-hint">Contact notes as markdown on disk under data/profiles. Refresh from chat uses the profile learner (Gemini primary; Ollama fallback).</p>
+      <div class="panel-grid">
       <aside class="panel">
         <div class="panel-header">
           <h2>Contacts</h2>
           <div class="panel-actions">
-            <button type="button" class="btn btn-ghost" id="profiles-reload">Reload</button>
+            <button type="button" class="btn btn-ghost" id="profiles-reload" title="Reload profiles from disk">Reload</button>
           </div>
         </div>
-        <div class="panel-body" id="profiles-list"></div>
+        <div class="panel-body tight" id="profiles-list"></div>
       </aside>
       <section class="panel">
         <div class="panel-header">
@@ -40,6 +44,7 @@ function renderShell() {
           <p class="empty-state">Select a profile to preview and edit markdown.</p>
         </div>
       </section>
+      </div>
     </div>
   `;
 
@@ -64,8 +69,18 @@ function renderList() {
     return;
   }
 
+  if (state.listError) {
+    list.innerHTML = `<p class="error-state">${escapeHtml(state.listError)}</p>`;
+    return;
+  }
+
   if (!state.profiles.length) {
-    list.innerHTML = `<p class="empty-state">No profiles yet. Refresh from a chat to create one.</p>`;
+    list.innerHTML = `
+      <div class="empty-card">
+        <p class="empty-state">No contact profiles on disk yet.</p>
+        <p class="empty-detail">Open a Talk thread and click <strong>Create profile</strong> in the messages header.</p>
+        <a class="btn btn-primary" href="/v2#talk">Go to Talk</a>
+      </div>`;
     return;
   }
 
@@ -108,6 +123,12 @@ function renderEditor() {
     return;
   }
 
+  if (state.detailError) {
+    pane.innerHTML = `<p class="error-state">${escapeHtml(state.detailError)}</p>`;
+    setActionEnabled(false);
+    return;
+  }
+
   pane.innerHTML = `
     <div class="profile-editor">
       <label class="sr-only" for="profile-md">Profile markdown</label>
@@ -133,19 +154,17 @@ function renderEditor() {
 
 async function loadProfiles() {
   state.loadingList = true;
+  state.listError = null;
   renderList();
   try {
     const data = await api.getProfiles();
     state.profiles = asList(data, ["profiles", "items"]);
-    renderList();
   } catch (err) {
-    const list = document.getElementById("profiles-list");
-    if (list) {
-      list.innerHTML = `<p class="error-state">${escapeHtml(err.message || "Failed to load profiles")}</p>`;
-    }
-    showToast(err.message || "Failed to load profiles", { error: true });
+    state.listError = err.message || "Failed to load profiles";
+    showToast(state.listError, { error: true });
   } finally {
     state.loadingList = false;
+    renderList();
   }
 }
 
@@ -156,6 +175,7 @@ async function selectProfile(chatId) {
   }
   state.selectedChatId = chatId;
   state.loadingDetail = true;
+  state.detailError = null;
   state.dirty = false;
   renderList();
   renderEditor();
@@ -164,15 +184,13 @@ async function selectProfile(chatId) {
     const fields = profileFields(data);
     state.name = fields.name;
     state.content = fields.content || "";
-    renderEditor();
   } catch (err) {
-    const pane = document.getElementById("profile-pane");
-    if (pane) {
-      pane.innerHTML = `<p class="error-state">${escapeHtml(err.message || "Failed to load profile")}</p>`;
-    }
-    showToast(err.message || "Failed to load profile", { error: true });
+    state.detailError = err.message || "Failed to load profile";
+    showToast(state.detailError, { error: true });
   } finally {
     state.loadingDetail = false;
+    renderList();
+    renderEditor();
   }
 }
 
@@ -223,6 +241,29 @@ async function refreshFromChat() {
 export async function mountProfiles() {
   renderShell();
   await loadProfiles();
+  const pending = sessionStorage.getItem("v2-profiles-chat");
+  if (pending) {
+    sessionStorage.removeItem("v2-profiles-chat");
+    await openProfileChat(pending);
+  }
+}
+
+export async function openProfileChat(chatId, { forceReload = true } = {}) {
+  if (chatId == null || chatId === "") return;
+  if (!root()?.querySelector(".profiles-workspace")) {
+    sessionStorage.setItem("v2-profiles-chat", String(chatId));
+    return;
+  }
+  // Always reload after Talk create / deep-link so the list picks up new files
+  if (forceReload) {
+    await loadProfiles();
+  } else {
+    const exists = state.profiles.some(
+      (raw) => String(profileFields(raw).chatId) === String(chatId),
+    );
+    if (!exists) await loadProfiles();
+  }
+  await selectProfile(chatId);
 }
 
 export function refreshProfilesIfVisible() {

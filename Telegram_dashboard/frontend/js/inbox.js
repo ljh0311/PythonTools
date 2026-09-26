@@ -8,6 +8,26 @@ const TOPIC_CHIP_LIMIT = 12;
 let filterDebounceTimer = null;
 let cachedTopics = [];
 
+/** Short operator-facing AI degradation copy (no raw API URLs). */
+export function formatDegradationNotice(raw) {
+  const text = String(raw || "Using fallback provider");
+  if (/429|too many requests|rate-?limit/i.test(text)) {
+    if (/unusable|garbled/i.test(text)) {
+      return "Gemini is rate-limited; local model returned unusable text — try OLLAMA_MODEL=qwen2.5:3b.";
+    }
+    if (/ollama/i.test(text) && /using/i.test(text)) {
+      return "Gemini is rate-limited (429) — using Ollama.";
+    }
+    return "Gemini is rate-limited (429).";
+  }
+  return text
+    .replace(/\s+for url '[^']*'/gi, "")
+    .replace(/\s*For more information check:.*$/i, "")
+    .replace(/\?key=\S+/gi, "?key=[REDACTED]")
+    .trim()
+    .slice(0, 180);
+}
+
 /** Local calendar date as YYYY-MM-DD for <input type="date">. */
 export function localTodayInputValue() {
   const now = new Date();
@@ -522,7 +542,7 @@ function renderThreadSummaryPanel(summaryEl, result) {
     }
     ${
       result.degraded || result.failure_reason
-        ? `<p class="degradation-notice">${escapeHtml(result.failure_reason || "Using fallback provider")}</p>`
+        ? `<p class="degradation-notice">${escapeHtml(formatDegradationNotice(result.failure_reason))}</p>`
         : ""
     }
     <p>${escapeHtml(result.summary)}</p>

@@ -90,6 +90,7 @@ cp .env.example .env
 ```env
 GEMINI_API_KEY=your-gemini-api-key
 GEMINI_MODEL=gemini-3.6-flash
+AI_PRIMARY_PROVIDER=gemini
 ```
 
 **Ollama (fallback)** — install from [ollama.ai](https://ollama.ai), pull a model, and start the service:
@@ -101,10 +102,10 @@ ollama serve
 
 ```env
 OLLAMA_BASE_URL=http://localhost:11434/v1
-OLLAMA_MODEL=llama3.2
+OLLAMA_MODEL=qwen2.5:3b
 ```
 
-The bot tries Gemini first. If Gemini fails or is not configured, it falls back to Ollama. If both are unavailable, built-in `/help`, `/status`, `/analytics`, and `/feedback` commands still work.
+The app tries Gemini first (`AI_PRIMARY_PROVIDER=gemini`). On 429 or other Gemini errors it falls back to Ollama; failure text redacts API keys. If both are unavailable, built-in `/help`, `/status`, `/analytics`, and `/feedback` commands still work.
 
 5. Start the server:
 

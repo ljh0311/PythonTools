@@ -25,9 +25,10 @@ class TestOllamaModelInstalled(unittest.TestCase):
         names = ["llama3.2:latest", "qwen2.5:latest"]
         self.assertTrue(provider._model_installed(names))
 
-    def test_rejects_missing_model(self) -> None:
-        provider = OllamaProvider(model="llama3.2")
-        self.assertFalse(provider._model_installed(["qwen2.5:latest"]))
+    def test_matches_tagged_qwen(self) -> None:
+        provider = OllamaProvider(model="qwen2.5:3b")
+        self.assertTrue(provider._model_installed(["qwen2.5:3b"]))
+        self.assertFalse(provider._model_installed(["llama3.2:latest"]))
 
 
 if __name__ == "__main__":

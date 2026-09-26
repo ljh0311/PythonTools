@@ -106,6 +106,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  sendActDraft: (id, text) =>
+    request(`/api/v2/act/${encodeURIComponent(id)}/send`, {
+      method: "POST",
+      body: JSON.stringify(text ? { text } : {}),
+    }),
 
   getProfiles: () => request("/api/v2/profiles"),
   getProfile: (chatId) =>
@@ -118,5 +123,17 @@ export const api = {
   refreshProfile: (chatId) =>
     request(`/api/v2/profiles/${encodeURIComponent(chatId)}/refresh`, {
       method: "POST",
+    }),
+
+  getDigest: () => request("/api/v2/digest"),
+  setDigestEnabled: (enabled) =>
+    request("/api/v2/digest", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: Boolean(enabled) }),
+    }),
+  sendDigestNow: (force = true) =>
+    request("/api/v2/digest/send", {
+      method: "POST",
+      body: JSON.stringify({ force: Boolean(force) }),
     }),
 };

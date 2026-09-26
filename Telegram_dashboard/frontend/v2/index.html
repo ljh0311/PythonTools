@@ -21,7 +21,16 @@
         <button type="button" class="v2-nav-btn" data-view="act">Act</button>
         <button type="button" class="v2-nav-btn" data-view="profiles">Profiles</button>
       </nav>
-      <a class="v2-classic-link" href="/">Open classic dashboard</a>
+      <div class="v2-version-switch" role="group" aria-label="Dashboard version">
+        <a class="v2-version-btn" href="/" id="switch-to-v1" title="Operator dashboard (v1)">
+          <img src="/static/assets/icons/icon-ui-v1.svg" width="18" height="18" alt="" />
+          <span>v1</span>
+        </a>
+        <button type="button" class="v2-version-btn is-active" aria-current="page" title="Awareness dashboard (v2)" disabled>
+          <img src="/static/assets/icons/icon-ui-v2.svg" width="18" height="18" alt="" />
+          <span>v2</span>
+        </button>
+      </div>
     </header>
 
     <main class="v2-main">

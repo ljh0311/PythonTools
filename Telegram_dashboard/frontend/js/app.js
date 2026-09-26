@@ -297,6 +297,14 @@ async function init() {
   const authed = await ensureAuthenticated();
   if (!authed) return;
 
+  const { setUiVersion } = await import("./ui-version.js");
+  setUiVersion("v1");
+  document.getElementById("switch-to-v2")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    setUiVersion("v2");
+    window.location.href = "/v2";
+  });
+
   initTheme();
   const sidebar = initSidebar();
   state.nav = initNavigation(() => sidebar.closeSidebar());

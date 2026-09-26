@@ -3,6 +3,7 @@ import {
   buildAiFilterPayload,
   collectFiltersFromForm,
   displayName,
+  formatDegradationNotice,
 } from "./inbox.js";
 
 function escapeHtml(value) {
@@ -110,7 +111,7 @@ function renderFallbackNotice() {
 
 function renderDegradationNotice(result) {
   if (!result?.degraded && !result?.failure_reason) return "";
-  const text = result.failure_reason || "Using fallback provider";
+  const text = formatDegradationNotice(result.failure_reason || "Using fallback provider");
   return `<p class="degradation-notice">${escapeHtml(text)}</p>`;
 }
 

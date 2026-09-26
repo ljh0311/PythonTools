@@ -41,7 +41,20 @@ def gemini_key_configured(key: str = GEMINI_API_KEY) -> bool:
     return True
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
+# llama3.2 on some installs emits garbled "@@@" output — prefer qwen2.5:3b locally.
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+_OLLAMA_FALLBACK_RAW = os.getenv(
+    "OLLAMA_FALLBACK_MODELS",
+    "qwen2.5:3b,qwen2.5:latest,llama3.2",
+)
+OLLAMA_FALLBACK_MODELS = [
+    m.strip() for m in _OLLAMA_FALLBACK_RAW.split(",") if m.strip()
+]
+
+# Primary AI provider: "gemini" | "ollama".
+# On Gemini 429/errors the other provider is tried; failure text redacts API keys.
+_AI_PRIMARY_RAW = (os.getenv("AI_PRIMARY_PROVIDER") or "gemini").strip().lower()
+AI_PRIMARY_PROVIDER = _AI_PRIMARY_RAW if _AI_PRIMARY_RAW in ("ollama", "gemini") else "gemini"
 
 DASHBOARD_API_KEY = os.getenv("DASHBOARD_API_KEY", "dev-dashboard-key")
 OPERATOR_USERNAME = os.getenv("OPERATOR_USERNAME", "admin")
@@ -74,4 +87,25 @@ SMARTPERSONA_ENABLED = os.getenv("SMARTPERSONA_ENABLED", "false").lower() in (
 )
 SMARTPERSONA_PATH = os.getenv(
     "SMARTPERSONA_PATH", str(BASE_DIR.parent / "SmartPersona")
+)
+
+# Needs-reply digest (Telegram bot → operator chat). Dev: prefer AI_PRIMARY_PROVIDER=ollama.
+NOTIFY_TELEGRAM_CHAT_ID = (os.getenv("NOTIFY_TELEGRAM_CHAT_ID") or "").strip()
+UNREAD_DIGEST_ENABLED = os.getenv("UNREAD_DIGEST_ENABLED", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+_UNREAD_DIGEST_CHAT = (os.getenv("UNREAD_DIGEST_CHAT_ID") or "").strip()
+UNREAD_DIGEST_CHAT_ID = _UNREAD_DIGEST_CHAT or NOTIFY_TELEGRAM_CHAT_ID
+UNREAD_DIGEST_INTERVAL_MIN = int(os.getenv("UNREAD_DIGEST_INTERVAL_MIN", "180") or "180")
+UNREAD_DIGEST_MAX_THREADS = int(os.getenv("UNREAD_DIGEST_MAX_THREADS", "8") or "8")
+# Quiet hours as local clock hours 0–23; empty disables quiet-hours skip.
+_QUIET_START_RAW = (os.getenv("UNREAD_DIGEST_QUIET_START") or "").strip()
+_QUIET_END_RAW = (os.getenv("UNREAD_DIGEST_QUIET_END") or "").strip()
+UNREAD_DIGEST_QUIET_START: int | None = (
+    int(_QUIET_START_RAW) if _QUIET_START_RAW.isdigit() else None
+)
+UNREAD_DIGEST_QUIET_END: int | None = (
+    int(_QUIET_END_RAW) if _QUIET_END_RAW.isdigit() else None
 )

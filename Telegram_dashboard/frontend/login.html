@@ -8,26 +8,120 @@
 </head>
 <body>
   <div class="app login-page">
-    <section class="card login-card">
-      <h1>Telegram Dashboard</h1>
-      <p class="subtitle">Sign in to manage your operator inbox</p>
-      <form id="login-form" class="login-form">
-        <label>
+    <section class="card login-card" id="login-step" aria-labelledby="login-title">
+      <header class="login-brand">
+        <img
+          class="login-brand-mark"
+          src="/static/assets/icons/icon-login-brand.svg"
+          width="48"
+          height="48"
+          alt=""
+        />
+        <div class="login-brand-copy">
+          <p class="login-kicker">Operator access</p>
+          <h1 id="login-title">Telegram Dashboard</h1>
+          <p class="subtitle">Sign in to manage your operator inbox</p>
+        </div>
+      </header>
+
+      <form id="login-form" class="login-form" novalidate>
+        <label for="username">
           Username
-          <input id="username" type="text" autocomplete="username" required />
+          <input
+            id="username"
+            name="username"
+            type="text"
+            autocomplete="username"
+            required
+            autofocus
+            spellcheck="false"
+            placeholder="Your operator username"
+          />
         </label>
-        <label>
+        <label for="password">
           Password
-          <input id="password" type="password" autocomplete="current-password" required />
+          <span class="login-password-field">
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              placeholder="••••••••"
+            />
+            <button
+              type="button"
+              class="login-password-toggle"
+              id="toggle-password"
+              aria-pressed="false"
+              aria-label="Show password"
+            >
+              Show
+            </button>
+          </span>
         </label>
-        <button class="btn btn-primary" type="submit">Sign in</button>
+        <button class="btn btn-primary login-submit" type="submit" id="login-submit">
+          Sign in
+        </button>
       </form>
-      <p id="login-error" class="error-text" hidden></p>
+      <p id="login-error" class="error-text login-error" role="alert" aria-live="assertive" hidden></p>
+    </section>
+
+    <section class="card login-card login-version-card" id="version-step" hidden aria-labelledby="version-title">
+      <header class="login-brand login-brand--compact">
+        <img
+          class="login-brand-mark"
+          src="/static/assets/icons/icon-login-brand.svg"
+          width="40"
+          height="40"
+          alt=""
+        />
+        <div class="login-brand-copy">
+          <h1 id="version-title">Choose your dashboard</h1>
+          <p class="subtitle">You can switch anytime from the header or sidebar.</p>
+        </div>
+      </header>
+      <div class="version-choice-grid" role="group" aria-label="Dashboard version">
+        <button type="button" class="version-choice" data-version="v1">
+          <img src="/static/assets/icons/icon-ui-v1.svg" width="40" height="40" alt="" />
+          <span class="version-choice-title">Operator (v1)</span>
+          <span class="version-choice-desc">Inbox, workflow, analytics, tools — classic console</span>
+        </button>
+        <button type="button" class="version-choice" data-version="v2">
+          <img src="/static/assets/icons/icon-ui-v2.svg" width="40" height="40" alt="" />
+          <span class="version-choice-title">Awareness (v2)</span>
+          <span class="version-choice-desc">Talk, Act, and contact profiles</span>
+        </button>
+      </div>
     </section>
   </div>
   <script type="module">
+    import { getUiVersion, homePathForUi, setUiVersion } from "/static/js/ui-version.js";
+
     const form = document.getElementById("login-form");
     const errorEl = document.getElementById("login-error");
+    const loginStep = document.getElementById("login-step");
+    const versionStep = document.getElementById("version-step");
+    const submitBtn = document.getElementById("login-submit");
+    const passwordInput = document.getElementById("password");
+    const togglePassword = document.getElementById("toggle-password");
+
+    function goHome(version) {
+      setUiVersion(version);
+      window.location.href = homePathForUi(version);
+    }
+
+    function showVersionPicker() {
+      loginStep.hidden = true;
+      versionStep.hidden = false;
+      versionStep.querySelector("[data-version]")?.focus();
+    }
+
+    function setSubmitting(busy) {
+      submitBtn.disabled = busy;
+      submitBtn.textContent = busy ? "Signing in…" : "Sign in";
+      form.setAttribute("aria-busy", busy ? "true" : "false");
+    }
 
     async function checkAuth() {
       const token = sessionStorage.getItem("dashboard-token");
@@ -35,14 +129,30 @@
       const res = await fetch("/api/auth/me", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) window.location.href = "/";
+      if (res.ok) window.location.href = homePathForUi(getUiVersion());
     }
+
+    togglePassword.addEventListener("click", () => {
+      const showing = passwordInput.type === "password";
+      passwordInput.type = showing ? "text" : "password";
+      togglePassword.setAttribute("aria-pressed", showing ? "true" : "false");
+      togglePassword.setAttribute("aria-label", showing ? "Hide password" : "Show password");
+      togglePassword.textContent = showing ? "Hide" : "Show";
+      passwordInput.focus();
+    });
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       errorEl.hidden = true;
+      errorEl.textContent = "";
       const username = document.getElementById("username").value.trim();
-      const password = document.getElementById("password").value;
+      const password = passwordInput.value;
+      if (!username || !password) {
+        errorEl.textContent = "Enter both username and password.";
+        errorEl.hidden = false;
+        return;
+      }
+      setSubmitting(true);
       try {
         const res = await fetch("/api/auth/login", {
           method: "POST",
@@ -52,11 +162,18 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || "Login failed");
         sessionStorage.setItem("dashboard-token", data.token);
-        window.location.href = "/";
+        showVersionPicker();
       } catch (error) {
         errorEl.textContent = error.message;
         errorEl.hidden = false;
+        document.getElementById("username").focus();
+      } finally {
+        setSubmitting(false);
       }
+    });
+
+    versionStep.querySelectorAll("[data-version]").forEach((btn) => {
+      btn.addEventListener("click", () => goHome(btn.getAttribute("data-version")));
     });
 
     checkAuth();

@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { asList, escapeHtml, formatTime, showToast, threadTitle } from "./utils.js";
+import { openProfileChat } from "./profiles.js";
 
 const state = {
   threads: [],
@@ -7,6 +8,8 @@ const state = {
   messages: [],
   loadingThreads: false,
   loadingMessages: false,
+  loadError: null,
+  messageError: null,
 };
 
 function root() {
@@ -23,41 +26,139 @@ function previewText(thread) {
 function renderShell() {
   const el = root();
   el.innerHTML = `
-    <div class="panel-grid">
-      <aside class="panel">
-        <div class="panel-header">
-          <h2>Threads</h2>
-          <div class="panel-actions">
-            <button type="button" class="btn btn-ghost" id="talk-refresh">Refresh</button>
+    <div class="talk-workspace">
+      <p class="view-hint">What others are saying on your personal account. Pick a thread, then decide if Act or Profiles need an update.</p>
+      <div class="panel-grid talk-grid">
+        <aside class="panel talk-threads">
+          <div class="panel-header">
+            <div>
+              <h2>Threads</h2>
+              <p class="panel-sub" id="talk-thread-count"></p>
+            </div>
+            <div class="panel-actions">
+              <button type="button" class="btn btn-ghost" id="talk-refresh">Refresh</button>
+            </div>
           </div>
-        </div>
-        <div class="panel-body" id="talk-thread-list"></div>
-      </aside>
-      <section class="panel">
-        <div class="panel-header">
-          <h2 id="talk-pane-title">Messages</h2>
-        </div>
-        <div class="panel-body" id="talk-message-pane">
-          <p class="empty-state">Select a thread to read the conversation.</p>
-        </div>
-      </section>
+          <div class="panel-body tight" id="talk-thread-list"></div>
+        </aside>
+        <section class="panel talk-messages">
+          <div class="panel-header">
+            <h2 id="talk-pane-title">Messages</h2>
+            <div class="panel-actions">
+              <button type="button" class="btn btn-primary" id="talk-create-profile" disabled title="Create or refresh a Markdown profile for this chat">
+                Create profile
+              </button>
+            </div>
+          </div>
+          <div class="panel-body" id="talk-message-pane">
+            <p class="empty-state">Select a thread to read the conversation.</p>
+          </div>
+        </section>
+      </div>
     </div>
   `;
 
   el.querySelector("#talk-refresh").addEventListener("click", () => loadThreads());
+  el.querySelector("#talk-create-profile").addEventListener("click", () => createProfileFromThread());
+}
+
+function setCreateProfileEnabled(enabled) {
+  const btn = document.getElementById("talk-create-profile");
+  if (btn) btn.disabled = !enabled;
+}
+
+function stubMarkdown(chatId, name) {
+  const safe = String(name || `Chat ${chatId}`).replace(/"/g, "'");
+  return [
+    "---",
+    `chat_id: ${chatId}`,
+    `name: "${safe}"`,
+    `updated_at: ${new Date().toISOString()}`,
+    "relationship: ",
+    "---",
+    "",
+    "## Summary",
+    "",
+    "(Created from Talk — use Refresh from chat to fill from history.)",
+    "",
+    "## Relationship",
+    "",
+    "",
+    "## Facts/Memories",
+    "",
+    "",
+    "## Notes",
+    "",
+    "",
+  ].join("\n");
+}
+
+async function createProfileFromThread() {
+  const chatId = state.selectedChatId;
+  if (chatId == null) return;
+  const btn = document.getElementById("talk-create-profile");
+  if (btn) btn.disabled = true;
+  const thread = state.threads.find((t) => String(t.chat_id) === String(chatId));
+  const name = thread ? threadTitle(thread) : `Chat ${chatId}`;
+  try {
+    try {
+      await api.refreshProfile(chatId);
+      showToast("Profile created from chat");
+    } catch (err) {
+      // No messages / AI down — still create an editable stub on disk
+      await api.saveProfile(chatId, {
+        name,
+        markdown: stubMarkdown(chatId, name),
+      });
+      showToast(err.message ? `Stub profile saved (${err.message})` : "Stub profile saved");
+    }
+    sessionStorage.setItem("v2-profiles-chat", String(chatId));
+    const next = `#profiles?chat=${encodeURIComponent(chatId)}`;
+    if (window.location.hash === next) {
+      await openProfileChat(chatId, { forceReload: true });
+    } else {
+      window.location.hash = next;
+    }
+  } catch (err) {
+    showToast(err.message || "Could not create profile", { error: true });
+  } finally {
+    setCreateProfileEnabled(Boolean(state.selectedChatId));
+  }
 }
 
 function renderThreads() {
   const list = document.getElementById("talk-thread-list");
+  const count = document.getElementById("talk-thread-count");
   if (!list) return;
+
+  if (count) {
+    count.textContent = state.loadingThreads
+      ? "Refreshing…"
+      : `${state.threads.length} conversation${state.threads.length === 1 ? "" : "s"}`;
+  }
 
   if (state.loadingThreads) {
     list.innerHTML = `<p class="loading-state">Loading threads…</p>`;
     return;
   }
 
+  if (state.loadError) {
+    list.innerHTML = `
+      <div class="empty-card">
+        <p class="error-state">${escapeHtml(state.loadError)}</p>
+        <button type="button" class="btn btn-primary" id="talk-retry">Try again</button>
+      </div>`;
+    list.querySelector("#talk-retry")?.addEventListener("click", () => loadThreads());
+    return;
+  }
+
   if (!state.threads.length) {
-    list.innerHTML = `<p class="empty-state">No personal threads yet. MTProto ingest will fill this list.</p>`;
+    list.innerHTML = `
+      <div class="empty-card">
+        <p class="empty-state">No personal-account threads yet.</p>
+        <p class="empty-detail">Enable MTProto ingest, or open the classic dashboard if you still need the bot inbox.</p>
+        <a class="btn btn-ghost" href="/">Open classic dashboard</a>
+      </div>`;
     return;
   }
 
@@ -100,16 +201,28 @@ function renderMessages() {
 
   if (!state.selectedChatId) {
     pane.innerHTML = `<p class="empty-state">Select a thread to read the conversation.</p>`;
+    setCreateProfileEnabled(false);
     return;
   }
+
+  setCreateProfileEnabled(!state.loadingMessages && !state.messageError);
 
   if (state.loadingMessages) {
     pane.innerHTML = `<p class="loading-state">Loading messages…</p>`;
     return;
   }
 
+  if (state.messageError) {
+    pane.innerHTML = `<p class="error-state">${escapeHtml(state.messageError)}</p>`;
+    return;
+  }
+
   if (!state.messages.length) {
-    pane.innerHTML = `<p class="empty-state">No messages in this thread.</p>`;
+    pane.innerHTML = `
+      <div class="empty-card">
+        <p class="empty-state">No messages in this thread.</p>
+        <p class="empty-detail">You can still create a stub profile, then fill it later.</p>
+      </div>`;
     return;
   }
 
@@ -133,11 +246,11 @@ function renderMessages() {
 
 async function loadThreads() {
   state.loadingThreads = true;
+  state.loadError = null;
   renderThreads();
   try {
     const data = await api.getTalkThreads();
     state.threads = asList(data, ["threads", "items"]);
-    renderThreads();
     if (state.selectedChatId) {
       const stillThere = state.threads.some(
         (t) => String(t.chat_id) === String(state.selectedChatId),
@@ -145,43 +258,54 @@ async function loadThreads() {
       if (!stillThere) {
         state.selectedChatId = null;
         state.messages = [];
-        renderMessages();
       }
     }
   } catch (err) {
-    const list = document.getElementById("talk-thread-list");
-    if (list) {
-      list.innerHTML = `<p class="error-state">${escapeHtml(err.message || "Failed to load threads")}</p>`;
-    }
-    showToast(err.message || "Failed to load threads", { error: true });
+    state.loadError = err.message || "Failed to load threads";
+    showToast(state.loadError, { error: true });
   } finally {
     state.loadingThreads = false;
+    renderThreads();
+    renderMessages();
   }
 }
 
 async function selectThread(chatId) {
   state.selectedChatId = chatId;
   state.loadingMessages = true;
+  state.messageError = null;
   renderThreads();
   renderMessages();
   try {
     const data = await api.getTalkMessages(chatId);
     state.messages = asList(data, ["messages", "items"]);
-    renderMessages();
   } catch (err) {
-    const pane = document.getElementById("talk-message-pane");
-    if (pane) {
-      pane.innerHTML = `<p class="error-state">${escapeHtml(err.message || "Failed to load messages")}</p>`;
-    }
-    showToast(err.message || "Failed to load messages", { error: true });
+    state.messageError = err.message || "Failed to load messages";
+    showToast(state.messageError, { error: true });
   } finally {
     state.loadingMessages = false;
+    renderThreads();
+    renderMessages();
   }
 }
 
 export async function mountTalk() {
   renderShell();
   await loadThreads();
+  const pending = sessionStorage.getItem("v2-talk-chat");
+  if (pending) {
+    sessionStorage.removeItem("v2-talk-chat");
+    await openTalkChat(pending);
+  }
+}
+
+export async function openTalkChat(chatId) {
+  if (chatId == null || chatId === "") return;
+  if (!root()?.querySelector(".talk-workspace")) {
+    sessionStorage.setItem("v2-talk-chat", String(chatId));
+    return;
+  }
+  await selectThread(chatId);
 }
 
 export function refreshTalkIfVisible() {
